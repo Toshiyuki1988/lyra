@@ -43,7 +43,6 @@
     properties: {
       modules: {
         type: 'ARRAY',
-        maxItems: 40,
         items: {
           type: 'OBJECT',
           properties: {
@@ -52,7 +51,7 @@
             pages: { type: 'STRING' },
             pdfStart: { type: 'INTEGER' },
             pdfEnd: { type: 'INTEGER' },
-            params: { type: 'ARRAY', maxItems: 40, items: { type: 'STRING' } },
+            params: { type: 'ARRAY', items: { type: 'STRING' } },
           },
           required: ['name', 'params'],
         },
