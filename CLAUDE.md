@@ -117,6 +117,7 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 | `js/midi.js` | MIDIカード(発言→MIDI、SMF書き出し、簡易シンセ試聴、OfflineAudioContextでのWAV書き出し) |
 | `js/audio.js` | オーディオカード(Opus/Oggへの圧縮+peaks、Drive保存、Web Audioで再生) |
 | `js/daily.js` | 日次課題(1日1回、未確認パラメータから選んでコンサートホールのアンサンブルへ) |
+| `js/marquee.js` | 矩形選択と一括移動(Shift+ドラッグ。CONSTELLATIONのFlight Engineerの簡易版。全画面共通) |
 | `js/scales.js` | 音階スケールの一覧(内蔵72種+Geminiにたずねて足したもの)とリスケーリング(MIDIの編集画面から) |
 
 - **画面の仕組み**: `applyRoute()`が画面モジュール(`LYRA.screens.*`)の`enter(route)`を呼ぶ。画面は
@@ -314,6 +315,15 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
     **作曲家AIを参加させる時は`voices()`に足す**(例: 作曲家のソウルから、そのソウルの知識と語り口で話す話し手を作る)。
     話し手が1人なら選ぶダイアログは出さない。CONSTELLATIONと同じく、話し手を登録・保存する時にGeminiは呼ばない方針にする
   - 感想・まとめのカードは編集なし(ASTRとDeleteのみ)。ASTRでつなぐと、アンサンブル・鳴らす・作り直しに文として渡る
+- **矩形選択と一括移動(2026-09-25、ユーザー要望「ConstellationのFlight Engineerの機能を簡単に使えるように。Shift+ドラッグで
+  矩形選択、Shift+矩形範囲タップ&ドラッグで内のカードを一括移動」)**: `js/marquee.js`。モードは持たずShiftだけで使う。
+  Shift+背景ドラッグで囲んだカード(一部でも重なれば)を選び、点線の枠(`contentEl`の中なのでズームに追従)で囲む。
+  Shift+枠の中(カードの上でもよい)からのドラッグでまとめて動かし、指を離した時に`onCardMoved`・位置の保存・線の引き直し。
+  **viewportの捕獲フェーズのpointerdownで受けてstopPropagationする**ので、カードの長押し(編集ガイド)とinteract.jsのパンより先に
+  取れる(パンは`lockPan()`でも止める)。Esc・Shiftなしで背景を押す・画面の切り替えで解除。Shiftの無いスマホでは使えない。
+  自動テストのブラウザ操作ツールの合成ドラッグ/クリックはページに届かないことがあったので、確認は合成PointerEventで行った
+- **ダイアログは画面の高さに収めて中をスクロール**(2026-09-25、MIDIを作るダイアログが縦に長く「作る」が見切れた指摘)。
+  `.modal`に`max-height`+`overflow-y: auto`、`.modal-actions`は`position: sticky`で下に貼り付けて常に見えるようにした
 - **アンサンブル画面でShift+A**: 全ソウル(今の舞台を除く)の一覧を区分ごとに出し、クリックしたソウルのカードを置く
   (対象のカードがあればその右隣)。線は自動で結ばない(Asterismは手動接続のみ)。入力欄にフォーカスがある時と、
   ダイアログを表示中は反応しない
