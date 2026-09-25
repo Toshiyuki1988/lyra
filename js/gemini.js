@@ -111,17 +111,38 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
   debugLog(`Gemini${label ? `[${label}]` : ''}: ${((Date.now() - startedAt) / 1000).toFixed(1)}秒, ` +
     `入力${usage.promptTokenCount ?? '?'}tok, 出力${usage.candidatesTokenCount ?? '?'}tok, ` +
     `終了理由${data.candidates?.[0]?.finishReason ?? '?'}`);
-  return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+  // 出力が上限(maxOutputTokens)で途中で切れた。JSONモードではJSONが壊れているので、原因の分かるエラーにする
+  // (2026-09-25、Aesthetics Wikiの記事の解体で「Expected ',' or '}' ... position 8306」で止まった件。
+  //  Liteモデルが同じ語句を繰り返し続けて上限に達したとみられる)
+  if (responseSchema && data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+    debugLog(`Gemini${label ? `[${label}]` : ''}: 出力が上限で切れた。末尾: ${text.slice(-200)}`);
+    throw Object.assign(new Error('Geminiの出力が長くなりすぎて途中で切れました(同じ語句を繰り返し続けた可能性があります)'), { truncated: true });
+  }
+  return text;
 }
 
 /**
  * responseSchemaで構造化出力させ、パース済みのオブジェクトを返す。
  * JSONモードでもまれにコードフェンス付きで返ることがあるため、念のため除去してからparseする。
+ * 出力が途中で切れた・JSONが壊れていた時は、1回だけ自動でやり直す(Liteモデルの暴走は毎回は起きないため)。
  */
 async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label }) {
-  const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label });
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-  return JSON.parse(cleaned);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label });
+      const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+      try {
+        return JSON.parse(cleaned);
+      } catch (err) {
+        debugLog(`Gemini${label ? `[${label}]` : ''}: JSONとして読めない(${err.message})。末尾: ${cleaned.slice(-200)}`);
+        throw Object.assign(new Error(`Geminiの出力をJSONとして読めませんでした: ${err.message}`), { badJson: true });
+      }
+    } catch (err) {
+      if (attempt >= 1 || !(err.truncated || err.badJson) || (signal && signal.aborted)) throw err;
+      debugLog(`Gemini${label ? `[${label}]` : ''}: 出力が壊れていたので1回だけやり直す`);
+    }
+  }
 }
 
 /**

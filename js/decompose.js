@@ -43,6 +43,7 @@
     properties: {
       modules: {
         type: 'ARRAY',
+        maxItems: 40,
         items: {
           type: 'OBJECT',
           properties: {
@@ -51,7 +52,7 @@
             pages: { type: 'STRING' },
             pdfStart: { type: 'INTEGER' },
             pdfEnd: { type: 'INTEGER' },
-            params: { type: 'ARRAY', items: { type: 'STRING' } },
+            params: { type: 'ARRAY', maxItems: 40, items: { type: 'STRING' } },
           },
           required: ['name', 'params'],
         },
@@ -751,7 +752,9 @@ ${subjectLine(soul)}
 
 ルール:
 - 名前は資料での表記(英語のパラメータ名は英語のまま)に合わせる
-- 説明文は書かない。名前の一覧だけ
+- 説明文は書かない。名前の一覧だけ。名前は短く(30字以内)、同じ名前を繰り返さない
+- 1モジュールあたりの項目は多くても40個
+- アーティスト名・曲名・作品名などの固有名詞の長い列挙は、1つずつ項目にしない(「代表的なアーティスト」のように1項目にまとめる)
 - locationには、${soul.category === 'plugin'
       ? 'そのモジュールがプラグインの画面上のどこにあるか(上部のタブ名など。例: "OSCタブ"、"FXタブ"、"MATRIXタブ")'
       : 'そのモジュールが資料のどの章・分類に属するか'}を書く。同じ場所のモジュールは同じ表記にそろえる
