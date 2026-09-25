@@ -1399,12 +1399,18 @@ a.btn-secondary { display: block; }
 .roll-notes rect { fill: var(--accent); }
 .roll-notes rect.roll-chords { fill: #b5a071; }
 .roll-notes rect.roll-bass { fill: #7d6f58; }
-.roll-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--faint); margin: 4px 0 2px; }
+.roll-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--faint); margin: 4px 0 12px; }
 .roll-legend span[class^="roll-legend-"]::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 .roll-legend-melody::before { background: var(--accent); }
 .roll-legend-chords::before { background: #b5a071; }
 .roll-legend-bass::before { background: #7d6f58; }
 .midi-chords { font-size: 11px; letter-spacing: 0.02em; }
+.midi-concept { font-size: 11px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.midi-writeup { font-size: 12px; line-height: 1.8; color: var(--ink); }
+.midi-drags { display: flex; flex-wrap: wrap; gap: 6px; }
+.midi-drag { font-size: 12px; padding: 4px 10px; border: 1px dashed var(--accent); border-radius: 5px; color: var(--accent-deep); background: #fdf6e8; cursor: grab; user-select: none; }
+.midi-drag:active { cursor: grabbing; }
+.midi-drag-hint { font-size: 10px; color: var(--faint); margin-top: 6px; line-height: 1.6; }
 .sketch-sign { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 12px; line-height: 1.6; }
 .sketch-sign:last-child { border-bottom: none; }
 .sketch-trait { color: var(--muted); font-size: 11px; }
@@ -1512,3 +1518,8 @@ a.btn-secondary { display: block; }
 
 /* レシピで設定し終えた行(小窓のチェック) */
 .recipe-row--done { opacity: 0.5; }
+
+/* 小窓モードはCubaseと並べるデスクトップ用(js/mini.js) */
+@media (max-width: 640px) {
+  #mini-btn { display: none; }
+}

@@ -16,11 +16,21 @@
   const PPQ = 480;
   const MAX_NOTES = 400;
 
+  /* 2026-09-25: 「コンセプトや解説までMIDIカードに書いてほしい」「盗作になる危険は?」を受けて追加。
+   * 旋律はGeminiが書いた音をほぼそのまま使うため、既存曲の引用・模倣をしないようプロンプトで縛る
+   * (既存曲との照合手段は無い)。解説にも曲名・アーティスト名を出させない。 */
+  const ORIGINALITY_RULE = '- 既存の曲の旋律・リフ・特徴的なフレーズを引用・模倣しない。特定の曲やアーティストに寄せず、らしさはジャンル・美学に共通する語法(和声・旋法・リズム・音域・伴奏の型)だけで出す';
+  const WRITEUP_RULES = `- concept は、この断片のコンセプト(情景・狙い)を60字以内で
+- commentary は解説。コード・旋律・リズムの仕掛けがそれぞれ何を表しているか、Cubaseで肉付けする時(音色・アレンジ)のヒントを200字以内で。特定の曲名・アーティスト名は出さない`;
+  const writeup = (raw) => ({ concept: String(raw.concept || '').slice(0, 100), commentary: String(raw.commentary || '').slice(0, 400) });
+
   const MIDI_SCHEMA = {
     type: 'OBJECT',
     properties: {
       name: { type: 'STRING' },
       description: { type: 'STRING' },
+      concept: { type: 'STRING' },
+      commentary: { type: 'STRING' },
       tempo: { type: 'NUMBER' },
       beatsPerBar: { type: 'INTEGER' },
       notes: {
@@ -181,7 +191,9 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
 - cc は連続的に変えたいパラメータ用のオートメーション(例: 74=明るさ、1=モジュレーション、11=エクスプレッション)。label には「CC74 → 何のつまみに割り当てる想定か」を書く。割り当て先は次の手持ちのパラメータから選ぶ: ${paramNames.slice(0, 40).join('、') || '(なし。一般的な名前で)'}
 - markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクションの名前(例: 「間:余白」「緊張:上昇」)
 - tempoChanges は、テンポを途中で変える意図がある時だけ
-- name は「〜.mid」の形の短いファイル名、description は40字以内の説明`;
+- name は「〜.mid」の形の短いファイル名、description は40字以内の説明
+${ORIGINALITY_RULE}
+${WRITEUP_RULES}`;
     setStatus('MIDIを作っています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: MIDI_SCHEMA, maxOutputTokens: 8192 });
@@ -194,6 +206,7 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
         type: 'midi',
         name,
         description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
         memberIds: speech.memberIds || [],
         speechId: speech.id,
         midi,
@@ -205,6 +218,7 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
         createdAt: new Date().toISOString(),
       };
       addCardToEnsemble(stage, card);
+      refreshMini();
       setStatus(`「${name}」を作りました。タップで試聴・書き出しができます`);
     } catch (err) {
       console.error(err);
@@ -254,7 +268,8 @@ ${JSON.stringify(sketchForPrompt(m.sketch))}
 コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)。signature(ソウルらしさの仕掛け)は、コメントで否定されない限り保つ。
 
 ${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bars}小節`)}
-- description は、前回から何を変えたかを40字以内で`
+- description は、前回から何を変えたかを40字以内で
+${WRITEUP_RULES}(今回の版に合わせて書き直す)`
       : `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
 ${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
 
@@ -266,7 +281,9 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
 - notes は最大${MAX_NOTES}個。キースイッチ用のノートは入れない
 - cc の label は「CC74 → 何のつまみに割り当てる想定か」の形を保つ
 - markers は構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名
-- description は、前回から何を変えたかを40字以内で`;
+- description は、前回から何を変えたかを40字以内で
+${ORIGINALITY_RULE}
+${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     setStatus('MIDIを作り直しています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'MIDIの作り直し' });
@@ -278,6 +295,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
         type: 'midi',
         name: `${baseName(card.name)}_v${version}.mid`,
         description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
         comment: values.comment.slice(0, 200),
         version,
         revisionOf: card.id,
@@ -292,6 +310,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
         createdAt: new Date().toISOString(),
       };
       addCardToEnsemble(stage, next);
+      refreshMini();
       connectEnsembleCards(stage, card.id, next.id);
       setStatus(isSketch ? sketchStatus(midi, next.name) : `「${next.name}」を作りました`);
     } catch (err) {
@@ -315,6 +334,8 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
     properties: {
       name: { type: 'STRING' },
       description: { type: 'STRING' },
+      concept: { type: 'STRING' },
+      commentary: { type: 'STRING' },
       tempo: { type: 'NUMBER' },
       beatsPerBar: { type: 'INTEGER' },
       key: { type: 'STRING' },
@@ -716,7 +737,8 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
 - signature: trait にソウル側の特徴(15字以内)、device にそれを表す音楽の仕掛け(40字以内)。3〜4個
 - markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名(無ければ空の配列)
 - name は「〜.mid」の形の短い英数字のファイル名
-- 資料の文章を引用しない`;
+- 資料の文章を引用しない
+${ORIGINALITY_RULE}`;
   }
 
   function sketchStatus(midi, name) {
@@ -755,7 +777,8 @@ ${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 3. 選んだ仕掛けを、コード・旋律・伴奏の型のどこかで必ず全部使う
 
 ${sketchRules(`${bars}小節`)}
-- description は「どこがそのソウルらしいか」を40字以内で`;
+- description は「どこがそのソウルらしいか」を40字以内で
+${WRITEUP_RULES}`;
     setStatus('コードと旋律を作っています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
@@ -768,6 +791,7 @@ ${sketchRules(`${bars}小節`)}
         type: 'midi',
         name,
         description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
         memberIds: memberIds || [],
         speechId: speechId || null,
         midi,
@@ -779,6 +803,7 @@ ${sketchRules(`${bars}小節`)}
         createdAt: new Date().toISOString(),
       };
       addCardToEnsemble(stage, card);
+      refreshMini();
       setStatus(`${sketchStatus(midi, name)}。タップで試聴・書き出しができます`);
     } catch (err) {
       console.error(err);
@@ -825,6 +850,7 @@ ${sketchRules(`${bars}小節`)}
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
+      (card.concept ? `<div class="ens-card-sub midi-concept">${escapeHtml(card.concept)}</div>` : '') +
       (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
       `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
@@ -848,7 +874,7 @@ ${sketchRules(`${bars}小節`)}
   function describe(card) {
     const m = card.midi;
     const sk = m.sketch;
-    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
+    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
       (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
         (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
@@ -886,6 +912,9 @@ ${sketchRules(`${bars}小節`)}
       `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${m.beatsPerBar}/4 · ${Math.ceil(totalBeats(m) / m.beatsPerBar)}小節 · ${m.notes.length}音</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
+      (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
+      (card.commentary ? `<div class="panel-section"><div class="panel-label">解説</div><div class="midi-writeup">${escapeHtml(card.commentary)}</div></div>` : '') +
+      dragOutHtml(card) +
       `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}">${pianoRollSvg(m, 300, m.sketch ? 140 : 90)}</div>` +
       (m.sketch ? `<div class="roll-legend"><span class="roll-legend-melody">旋律</span><span class="roll-legend-chords">コード</span><span class="roll-legend-bass">ベース</span>(.midでは別トラック)</div>` + sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
@@ -905,7 +934,10 @@ ${sketchRules(`${bars}小節`)}
       card.name = name.value;
       scheduleAutoSave();
     });
-    name.addEventListener('change', () => refreshEnsembleCard(card));
+    name.addEventListener('change', () => {
+      refreshEnsembleCard(card);
+      refreshMini();
+    });
     const playBtn = panel.querySelector('[data-midi-action="play"]');
     playBtn.addEventListener('click', () => {
       togglePlay(card);
@@ -917,6 +949,7 @@ ${sketchRules(`${bars}小節`)}
     });
     panel.querySelector('[data-midi-action="wav"]').addEventListener('click', () => exportWav(card));
     panel.querySelector('[data-midi-action="revise"]').addEventListener('click', () => reviseMidi(card));
+    bindDragOut(panel, card);
   }
 
   function downloadBlob(blob, filename) {
@@ -928,6 +961,50 @@ ${sketchRules(`${bars}小節`)}
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  /* ---------------- Cubaseへドラッグで持ち出す ----------------
+   * 2026-09-25追加(ユーザー要望「小窓からドラッグ&ドロップでCubaseに移したい」)。
+   * Chrome/Edgeの DownloadURL ドラッグ(dragstartで 'DownloadURL' に「MIME:ファイル名:URL」を入れると、
+   * ドロップ先にファイルとして渡る)を使う。**Cubaseへ直接ドロップできるかは実機未確認**。入らない時は
+   * デスクトップ・エクスプローラーへ一度ドロップしてから持ち込む。コード+旋律は全トラックか、パート1つずつ。 */
+
+  const PART_LABELS = { melody: '旋律', chords: 'コード', bass: 'ベース' };
+
+  function partsOf(m) {
+    return ['melody', 'chords', 'bass'].filter((part) => m.notes.some((n) => n.part === part));
+  }
+
+  function midiFileName(card, part) {
+    const base = String(card.name || 'lyra').replace(/\.mid$/i, '').replace(/[\\/:*?"<>|]/g, '') || 'lyra';
+    return `${base}${part ? `_${PART_NAMES[part]}` : ''}.mid`;
+  }
+
+  function dragChipsHtml(card) {
+    const parts = partsOf(card.midi);
+    const chip = (part, label) => `<span class="midi-drag" draggable="true" data-drag-part="${part}" title="Cubaseのプロジェクトへドラッグ&ドロップ">⇲ ${escapeHtml(label)}</span>`;
+    return `<div class="midi-drags">${chip('', parts.length > 1 ? '全トラック' : 'MIDI')}${parts.length > 1 ? parts.map((p) => chip(p, PART_LABELS[p])).join('') : ''}</div>`;
+  }
+
+  function dragOutHtml(card) {
+    return `<div class="panel-section"><div class="panel-label">Cubaseへドラッグ</div>${dragChipsHtml(card)}` +
+      `<div class="midi-drag-hint">つまんでCubaseのプロジェクトへ落とします。直接入らない時は、デスクトップへ一度落としてから持ち込んでください</div></div>`;
+  }
+
+  /** root の中のドラッグ用チップに dragstart を付ける(小窓の文書でも使えるよう、要素単位で付ける) */
+  function bindDragOut(root, card) {
+    root.querySelectorAll('[data-drag-part]').forEach((el) => {
+      el.addEventListener('dragstart', (event) => {
+        const part = el.dataset.dragPart || null;
+        const url = URL.createObjectURL(new Blob([buildSmf(card, part)], { type: 'audio/midi' }));
+        const filename = midiFileName(card, part);
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData('DownloadURL', `audio/midi:${filename}:${url}`);
+        event.dataTransfer.setData('text/plain', filename);
+        debugLog(`MIDIのドラッグ開始: ${filename}`);
+        setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+      });
+    });
   }
 
   /* ---------------- SMF(Standard MIDI File)の書き出し ---------------- */
@@ -974,7 +1051,7 @@ ${sketchRules(`${bars}小節`)}
    * format 1: トラック0=テンポ・拍子・マーカー(Cubaseのテンポトラック・マーカートラックに入る)、
    * トラック1以降=ノートとCC。コード+旋律の断片は Melody(ch1)/ Chords(ch2)/ Bass(ch3)の別トラック。
    */
-  function buildSmf(card) {
+  function buildSmf(card, onlyPart) {
     const m = card.midi;
     const t = (beat) => Math.round(beat * PPQ);
     const conductor = [
@@ -998,7 +1075,7 @@ ${sketchRules(`${bars}小節`)}
       }
       return events;
     };
-    const parts = ['melody', 'chords', 'bass'].filter((part) => m.notes.some((n) => n.part === part));
+    const parts = partsOf(m).filter((part) => !onlyPart || part === onlyPart);
     const tracks = parts.length
       ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), ch, PART_NAMES[part], ch === 0))
       : [noteTrack(m.notes, 0, 'LYRA', true)];
@@ -1027,6 +1104,9 @@ ${sketchRules(`${bars}小節`)}
     };
   }
 
+  const refreshMini = () => {
+    if (window.LyraMini) window.LyraMini.refresh();
+  };
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
   const PART_GAIN = { melody: 0.5, chords: 0.32, bass: 1.1 };
 
@@ -1140,6 +1220,7 @@ ${sketchRules(`${bars}小節`)}
     const card = getCardById(playing.cardId);
     playing = null;
     if (card) refreshEnsembleCard(card);
+    refreshMini();
   }
 
   function togglePlay(card) {
@@ -1156,6 +1237,7 @@ ${sketchRules(`${bars}小節`)}
       timer: setTimeout(() => stopAll(), handle.duration * 1000 + 200),
     };
     refreshEnsembleCard(card);
+    refreshMini();
   }
 
   /* ---------------- WAV書き出し ---------------- */
@@ -1210,5 +1292,7 @@ ${sketchRules(`${bars}小節`)}
     }
   }
 
-  window.LyraMidi = { createFromSpeech, createSketch, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  const isPlaying = (cardId) => Boolean(playing && playing.cardId === cardId);
+
+  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();
