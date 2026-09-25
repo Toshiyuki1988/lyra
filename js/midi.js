@@ -1038,7 +1038,7 @@ ${WRITEUP_RULES}`;
       : '<div class="panel-empty">なし</div>';
     return `<div class="panel-head"><div class="panel-title-wrap">` +
       `<input class="panel-title-input" data-midi-field="name" value="${escapeHtml(card.name)}">` +
-      `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${m.beatsPerBar}/4 · ${Math.ceil(totalBeats(m) / m.beatsPerBar)}小節 · ${m.notes.length}音</div>` +
+      `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${m.beatsPerBar}/4 · ${Math.ceil(totalBeats(m) / m.beatsPerBar)}小節 · ${m.notes.length}音 · 試聴の音色: ${escapeHtml(voiceOf(card).label)}(編集画面で変更)</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
@@ -1071,8 +1071,8 @@ ${WRITEUP_RULES}`;
       refreshMini();
     });
     const playBtn = panel.querySelector('[data-midi-action="play"]');
-    playBtn.addEventListener('click', () => {
-      togglePlay(card);
+    playBtn.addEventListener('click', async () => {
+      await togglePlay(card);
       playBtn.textContent = playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴';
     });
     panel.querySelector('[data-midi-action="mid"]').addEventListener('click', () => {
@@ -1275,6 +1275,7 @@ ${WRITEUP_RULES}`;
       `<div class="re-tools"><div class="re-modes">` +
       `<button type="button" class="re-mode" data-re-mode="note">ノートを直す</button>` +
       `<button type="button" class="re-mode" data-re-mode="range">書き出す範囲を囲む</button></div>` +
+      `<label class="re-field">音色<select data-re-voice>${VOICES.map((v) => `<option value="${v.id}"${v.id === voiceOf(card).id ? ' selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}</select></label>` +
       `<label class="re-field">細かさ<select data-re-snap><option value="1">1拍</option><option value="0.5">8分</option><option value="0.25" selected>16分</option></select></label>` +
       partSelect +
       `<button type="button" class="btn-small" data-re="delete">選んだ音を消す</button>` +
@@ -1476,6 +1477,7 @@ ${WRITEUP_RULES}`;
       drawSel();
     };
     const close = () => {
+      previewRequest++;
       stopPreview();
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
@@ -1526,17 +1528,35 @@ ${WRITEUP_RULES}`;
       sel = null;
       drawSel();
     });
-    playBtn.addEventListener('click', () => {
+    let previewRequest = 0;
+    playBtn.addEventListener('click', async () => {
       if (preview) {
         stopPreview();
         return;
       }
       stopAll();
-      const ctx = soundAudioCtx();
-      const handle = scheduleSynth(ctx, { midi: sliceMidi(draftMidi(), sel) }, ctx.currentTime + 0.05);
+      const request = ++previewRequest;
+      const handle = await scheduleVoiced(soundAudioCtx, { voice: card.voice, midi: sliceMidi(draftMidi(), sel) }, (ctx) => ctx.currentTime + 0.05);
+      // 読み込みを待つ間に閉じた・もう一度押した時は鳴らさない
+      if (request !== previewRequest || !overlay.isConnected) {
+        handle.stop();
+        return;
+      }
       preview = { handle, timer: setTimeout(stopPreview, handle.duration * 1000 + 200) };
       drawSel();
     });
+    // 音色はノートの編集と違って、選んだ時点でカードに残す(「やめる」でも戻さない)。試聴・小窓・WAVもこの音色で鳴る
+    overlay.querySelector('[data-re-voice]').addEventListener('change', (event) => {
+      card.voice = event.target.value;
+      scheduleAutoSave();
+      stopPreview();
+      previewRequest++;
+      prepareVoice(voiceOf(card), draftMidi()); // 先に読み込んでおく(試聴を押した時に待たせない)
+      setStatus(`音色を「${voiceOf(card).label}」にしました`);
+      if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
+      refreshMini();
+    });
+    prepareVoice(voiceOf(card), m);
     overlay.querySelector('[data-re="ok"]').addEventListener('click', () => {
       const draft = draftMidi();
       if (!draft.notes.length) {
@@ -1836,13 +1856,89 @@ ${WRITEUP_RULES}`;
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
   const PART_GAIN = { melody: 0.5, chords: 0.32, bass: 1.1 };
 
+  /* ---- Webの音色(試聴・WAV用) ----
+   * 2026-09-25追加(ユーザー要望「編集画面からウェブ音色を選べるように。デフォルトはピアノ」)。
+   * 試聴は三角波・のこぎり波の簡易シンセだけだったが、FluidR3 GMの音色(gleitz/midi-js-soundfonts、1音ずつのmp3)を
+   * jsDelivrから、鳴らす音の高さの分だけ読み込んで使う(1音20〜40KB。読み込んだ音はページを開いている間だけ覚えておく)。
+   * 音色はカードごとに card.voice(無ければピアノ)。'synth' は従来の簡易シンセ。ドラム(GM配置)は常に簡易の打楽器音。
+   * 読み込めなかった時は簡易シンセで鳴らす。.mid の書き出しには関係しない(Cubase側の音源で鳴らす)。 */
+  const VOICES = [
+    { id: 'piano', label: 'ピアノ', gm: 'acoustic_grand_piano' },
+    { id: 'epiano', label: 'エレピ', gm: 'electric_piano_1' },
+    { id: 'vibes', label: 'ビブラフォン', gm: 'vibraphone' },
+    { id: 'guitar', label: 'ナイロンギター', gm: 'acoustic_guitar_nylon' },
+    { id: 'strings', label: 'ストリングス', gm: 'string_ensemble_1' },
+    { id: 'pad', label: 'シンセパッド', gm: 'pad_2_warm' },
+    { id: 'flute', label: 'フルート', gm: 'flute' },
+    { id: 'synth', label: '簡易シンセ(読み込みなし)', gm: null },
+  ];
+  const DEFAULT_VOICE = 'piano';
+  const SAMPLE_BASE = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/';
+  const SAMPLE_GAIN = { melody: 1, chords: 0.55, bass: 0.9 };
+  const sampleCache = new Map(); // `${gm}/${pitch}` → AudioBuffer | Promise | null(読み込めなかった)
+
+  const voiceOf = (card) => VOICES.find((v) => v.id === (card && card.voice)) || VOICES.find((v) => v.id === DEFAULT_VOICE);
+  const samplePitch = (p) => Math.min(108, Math.max(21, p)); // 音色の収録範囲 A0〜C8(外は近い音を速さで上下させる)
+  function sampleName(p) {
+    const names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+    return `${names[p % 12]}${Math.floor(p / 12) - 1}`;
+  }
+
+  /** そのMIDIを鳴らすのに要る音を読み込む。1つでも読めなければ false(簡易シンセで鳴らす) */
+  async function prepareVoice(voice, midi) {
+    if (!voice.gm) return true;
+    const pitches = [...new Set(midi.notes.map((n) => samplePitch(n.pitch)))];
+    const load = (p) => {
+      const key = `${voice.gm}/${p}`;
+      if (!sampleCache.has(key)) {
+        sampleCache.set(key, (async () => {
+          try {
+            const res = await fetch(`${SAMPLE_BASE}${voice.gm}-mp3/${sampleName(p)}.mp3`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const buf = await soundAudioCtx().decodeAudioData(await res.arrayBuffer());
+            sampleCache.set(key, buf);
+            return buf;
+          } catch (err) {
+            debugLog(`音色の読み込みに失敗: ${key} ${err.message}`);
+            sampleCache.set(key, null);
+            return null;
+          }
+        })());
+      }
+      return sampleCache.get(key);
+    };
+    const results = await Promise.all(pitches.map(load));
+    return results.every(Boolean);
+  }
+
+  /** 読み込み済みの音(無ければ null) */
+  function cachedSample(voice, p) {
+    const buf = sampleCache.get(`${voice.gm}/${samplePitch(p)}`);
+    return buf instanceof AudioBuffer ? buf : null;
+  }
+
+  /** 音色の読み込みを待ってから予約する(試聴・WAVの入口) */
+  async function scheduleVoiced(ctxOrMake, card, startAt) {
+    const voice = voiceOf(card);
+    let useSamples = Boolean(voice.gm);
+    if (useSamples) {
+      const needsLoad = card.midi.notes.some((n) => !cachedSample(voice, n.pitch));
+      if (needsLoad) setStatus(`音色(${voice.label})を読み込んでいます…`, { busy: true });
+      useSamples = await prepareVoice(voice, card.midi);
+      if (needsLoad) setStatus(useSamples ? `音色(${voice.label})を読み込みました` : `音色(${voice.label})を読み込めなかったので、簡易シンセで鳴らします`, { important: !useSamples });
+    }
+    const ctx = typeof ctxOrMake === 'function' ? ctxOrMake() : ctxOrMake;
+    return scheduleSynth(ctx, card, typeof startAt === 'function' ? startAt(ctx) : startAt, useSamples ? voice : null);
+  }
+
   /**
    * ctx(AudioContext / OfflineAudioContext)にカードの音を予約する。音色の再現ではなく構造確認用:
    * 三角波+ローパス。CC74があれば明るさ(カットオフ)、CC11/CC7があれば音量として反映する。
    * ドラム(GM配置)の時はノイズ/サインの簡単な打楽器音にする。
+   * voice(読み込み済みのWebの音色)があれば、打楽器以外はその音色のサンプルで鳴らす(scheduleVoiced() から)。
    * @returns {{duration: number, stop: Function}}
    */
-  function scheduleSynth(ctx, card, startAt) {
+  function scheduleSynth(ctx, card, startAt, voice) {
     const m = card.midi;
     const toSec = beatToSeconds(m);
     const out = ctx.createGain();
@@ -1901,6 +1997,24 @@ ${WRITEUP_RULES}`;
         env.connect(out); // 打楽器はローパスを通さない
         return;
       }
+      const sample = voice ? cachedSample(voice, n.pitch) : null;
+      if (sample) {
+        const src = ctx.createBufferSource();
+        src.buffer = sample;
+        const shift = n.pitch - samplePitch(n.pitch);
+        if (shift) src.playbackRate.value = Math.pow(2, shift / 12);
+        src.connect(env);
+        // 明るさのCC(CC74)がある時だけローパスを通す。無ければ音色そのままで
+        env.connect(cutoff ? filter : out);
+        const level = (n.velocity / 127) * 1.6 * (SAMPLE_GAIN[n.part] || 1);
+        env.gain.linearRampToValueAtTime(level, t0 + 0.005);
+        env.gain.setValueAtTime(level, Math.max(t0 + 0.005, t1));
+        env.gain.linearRampToValueAtTime(0, t1 + 0.3); // 離した後の余韻
+        src.start(t0);
+        src.stop(t1 + 0.35);
+        nodes.push(src);
+        return;
+      }
       const osc = ctx.createOscillator();
       osc.type = n.part === 'melody' ? 'sawtooth' : 'triangle';
       osc.frequency.value = midiToFreq(n.pitch);
@@ -1940,6 +2054,7 @@ ${WRITEUP_RULES}`;
   let playing = null; // { cardId, handle, timer }
 
   function stopAll() {
+    playRequest++; // 音色の読み込み待ちの試聴も取り消す
     if (!playing) return;
     playing.handle.stop();
     clearTimeout(playing.timer);
@@ -1949,14 +2064,20 @@ ${WRITEUP_RULES}`;
     refreshMini();
   }
 
-  function togglePlay(card) {
+  let playRequest = 0; // 音色を読み込んでいる間に別の試聴が押されたら、古い方は鳴らさない
+
+  async function togglePlay(card) {
     if (playing && playing.cardId === card.id) {
       stopAll();
       return;
     }
     stopAll();
-    const ctx = soundAudioCtx();
-    const handle = scheduleSynth(ctx, card, ctx.currentTime + 0.08);
+    const request = ++playRequest;
+    const handle = await scheduleVoiced(soundAudioCtx, card, (ctx) => ctx.currentTime + 0.08);
+    if (request !== playRequest) {
+      handle.stop();
+      return;
+    }
     playing = {
       cardId: card.id,
       handle,
@@ -2006,7 +2127,8 @@ ${WRITEUP_RULES}`;
       const rate = 44100;
       const probe = scheduleSynth(new OfflineAudioContext(1, 1, rate), card, 0);
       const ctx = new OfflineAudioContext(2, Math.ceil(probe.duration * rate), rate);
-      scheduleSynth(ctx, card, 0);
+      await scheduleVoiced(ctx, card, 0);
+      setStatus('WAVを書き出しています…', { busy: true });
       const rendered = await ctx.startRendering();
       const wav = encodeWav(rendered);
       const filename = card.name.replace(/\.mid$/i, '') + '.wav';

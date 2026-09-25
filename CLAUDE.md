@@ -216,6 +216,13 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
   MIDIカードにASTRでつないだカード(MIDI・発言以外)と持ち主のソウルの知識(`window.LyraMidiLinks()`、js/screens/ensemble.js)も
   渡し、つないだものがあればコメントは空でよい。改善版はそのソウルを`memberIds`に引き継ぎ、`linkedNames`をカードに出す。
   `midi.edited`なら手で直した実際の音(パートごと)も渡して尊重させる。旋律を作る経路ではアーティスト名・曲名の項目を外す
+- **試聴の音色(Webの音色、2026-09-25、ユーザー要望「編集画面からウェブ音色を選べるように。デフォルトはピアノ」)**:
+  FluidR3 GM(gleitz/midi-js-soundfonts)の1音ずつのmp3を、jsDelivr(`cdn.jsdelivr.net/gh/.../FluidR3_GM/<音色>-mp3/<Db4など>.mp3`、
+  CORS可)から**鳴らす音の高さの分だけ**読み込む(`prepareVoice()`、ページを開いている間だけ覚える)。音色はカードごとの
+  `card.voice`(無ければピアノ)で、編集画面の「音色」で選ぶと即カードに残る(ノートの編集と違い「やめる」でも戻さない)。
+  カードの試聴・小窓・編集画面の試聴・WAV書き出しがこの音色で鳴る(`scheduleVoiced()`)。ドラム(GM配置)は常に簡易の打楽器音、
+  「簡易シンセ」は従来の三角波・のこぎり波。読み込めない時は簡易シンセに落とす。.midの中身には関係しない。
+  ファイル名はフラット表記(C#4.mp3は404、Db4.mp3が正しい)。一部のGM名(例: nylon_string_guitar)は無く、acoustic_guitar_nylon
 - **CubaseへはフォルダへのMIDI保存を経由する(2026-09-25、実機で判明)**: 最初はChrome/Edgeの`DownloadURL`ドラッグ
   (dragstartで「MIME:ファイル名:blob URL」)だけにしたが、**Cubaseのインストゥルメントトラックへ落とすと禁止マークで
   入らなかった**。Windowsでは実体のファイルでなく「落とされてから中身を渡す仮のファイル」として渡るため、パスを求める

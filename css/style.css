@@ -1539,7 +1539,7 @@ a.btn-secondary { display: block; }
 .range-editor .re-mode + .re-mode { border-left: 1px solid var(--line); }
 .range-editor .re-mode--active { background: var(--accent); color: #fff; }
 .re-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.re-field select { font-size: 12px; padding: 3px 4px; }
+.re-field select { font-size: 12px; padding: 3px 4px; width: auto; }
 .re-svg--note { cursor: cell; }
 .re-svg--note .re-note { cursor: grab; }
 .re-note--picked { stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
