@@ -94,6 +94,7 @@
         { id: 'text', label: '気づき', icon: '<path d="M5 6h14M12 6v13M9 19h6"/>', onClick: () => addTextCard() },
         { id: 'task', label: '課題', icon: '<path d="M9 11l2 2 4-4"/><rect x="4" y="4" width="16" height="16" rx="3"/>', onClick: () => addUserTask() },
         { id: 'audio', label: 'オーディオ', icon: '<path d="M4 12h2l2-6 3 12 3-9 2 3h4"/>', onClick: () => pickAudio() },
+        { id: 'summary', label: 'まとめ', icon: '<path d="M6 5h12M6 10h12M6 15h8M6 20h5"/>', onClick: () => summarize() },
       ]);
       els.viewport.addEventListener('dragover', onDragOver);
       els.viewport.addEventListener('drop', onDrop);
@@ -126,7 +127,9 @@
       const editable = card.type === 'text' || card.type === 'midi' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools;
+      // 気づきカードには上に「感想」(Geminiなどの話し手に一言もらう)
+      const noteTools = card.type === 'text' ? hexHtml('comment', '感想') : '';
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools;
     },
 
     onHexAction(action, card, el) {
@@ -139,6 +142,7 @@
       else if (action === 'delete') confirmDeleteCard(card);
       else if (action === 'listen') listenFromTask(card);
       else if (action === 'sketch') sketchFromTask(card);
+      else if (action === 'comment') commentOnNote(card, el);
     },
 
     onCardTap(card) {
@@ -165,6 +169,8 @@
     if (card.type === 'speech') return 360;
     if (card.type === 'soul') return 190;
     if (card.type === 'audio' || card.type === 'midi') return 210;
+    if (card.type === 'summary') return 320;
+    if (card.type === 'comment') return 230;
     return 180;
   }
 
@@ -186,6 +192,20 @@
   }
 
   const CARD_BUILDERS = {
+    comment(card, el) {
+      el.innerHTML =
+        `<div class="ens-card-kind voice-kind"><span class="voice-avatar">${escapeHtml(voiceOf(card.speaker).avatar)}</span>感想 · ${escapeHtml(card.speakerLabel || voiceOf(card.speaker).label)}</div>` +
+        `<div class="voice-text">${escapeHtml(card.text || '')}</div>`;
+    },
+
+    summary(card, el) {
+      el.innerHTML =
+        `<div class="ens-card-kind voice-kind"><span class="voice-avatar">${escapeHtml(voiceOf(card.speaker).avatar)}</span>まとめ · ${escapeHtml(card.speakerLabel || voiceOf(card.speaker).label)} · ${escapeHtml(card.scopeLabel || '')}</div>` +
+        (card.title ? `<div class="ens-card-title">${escapeHtml(card.title)}</div>` : '') +
+        (card.direction ? `<div class="ens-card-sub">問い: ${escapeHtml(card.direction)}</div>` : '') +
+        `<div class="voice-text voice-text--summary">${escapeHtml(card.text || '')}</div>`;
+    },
+
     text(card, el) {
       el.innerHTML =
         `<div class="ens-card-kind">気づき</div>` +
@@ -457,6 +477,205 @@
     });
   }
 
+  /* ---------------- 感想とまとめ(CONSTELLATIONのCrewsに近い) ----------------
+   * 2026-09-25追加(ユーザー要望「気付きからGeminiAIに感想を聞けるように。ゆくゆくは作曲家AIも参加できるように。
+   * ConstellationのCrews機能に近い」「サマリー機能もだね」)。
+   *   - 感想: 気づきカードの上の「感想」ヘックス → 話し手を選ぶ → Geminiを1回呼び、短い感想カードを右隣に置いて線でつなぐ
+   *     (線は原則手で結ぶが、MIDIの改善版と同じく「何への感想か」を辿れるようにここだけ自動で結ぶ。connection.auto)
+   *   - まとめ: 下の道具バーの「まとめ」→ 範囲(最後にタップしたまとまり/この舞台全体)・話し手・問い(任意)を聞いて
+   *     Geminiを1回呼び、まとめカードを置く(線は結ばない)。CONSTELLATIONのサマリーと同じく、問いがある時は前置きの総括を書かせない
+   *   - 話し手は voices()。今は「Gemini」(素。文体の指定なし)と「楽典」(アンサンブルと同じ汎用の音楽理論の専門家)。
+   *     作曲家AIを参加させる時は、ここに話し手を足す(例: 作曲家のソウルから、そのソウルの知識と語り口で話す話し手を作る)。
+   *     話し手が1人だけなら選ぶダイアログは出さない
+   *   - 感想・まとめのカードもASTRでつなげる(アンサンブル・鳴らす・作り直しに渡る文として使える)。編集はしない */
+  const BASE_VOICES = [
+    { id: 'gemini', label: 'Gemini', avatar: '✦', role: 'AI(文体の指定なし)', style: '' },
+    { id: 'theory', label: '楽典', avatar: '♮', role: '汎用の音楽理論の専門家', style: 'あなたは汎用の音楽理論の専門家「楽典」です。一般的な楽典・音楽理論の知識を使って、具体的な音楽の言葉で語ってください。特定のプラグインや製品の機能には触れないこと。' },
+  ];
+
+  function voices() {
+    return BASE_VOICES; // 作曲家AIはここに加える予定
+  }
+
+  function voiceOf(id) {
+    return voices().find((v) => v.id === id) || { id, label: id || '?', avatar: '・', role: '', style: '' };
+  }
+
+  async function chooseVoice(title) {
+    const list = voices();
+    if (list.length === 1) return list[0];
+    const id = await showChoiceDialog({
+      title,
+      message: 'Geminiを1回呼びます。',
+      options: [...list.map((v) => ({ label: `${v.avatar} ${v.label}`, value: v.id })), { label: 'やめる', value: null, secondary: true }],
+    });
+    return id ? voiceOf(id) : null;
+  }
+
+  /** そのカードと線で直接つながったカード */
+  function neighbors(cardId) {
+    const ids = new Set();
+    scope.connections.forEach((c) => {
+      if (c.cardIdA === cardId) ids.add(c.cardIdB);
+      if (c.cardIdB === cardId) ids.add(c.cardIdA);
+    });
+    return [...ids].map((id) => getCardById(id)).filter(Boolean);
+  }
+
+  const commenting = new Set();
+
+  async function commentOnNote(card, el) {
+    if (el) deactivateEditGuide(el);
+    if (!String(card.text || '').trim()) {
+      setStatus('気づきを書いてから「感想」を押してください', { important: true });
+      return;
+    }
+    if (commenting.has(card.id)) return;
+    const voice = await chooseVoice('誰に感想を聞きますか?');
+    if (!voice) return;
+    const around = neighbors(card.id).map(cardLine).filter(Boolean).slice(0, 12);
+    const prompt = `${voice.style ? `${voice.style}\n\n` : ''}ユーザーは作曲支援アプリLYRAで、Cubase Pro 15とMax 9を使って作曲しています。作曲の途中で次の気づきを書き留めました。
+${stage.name}のアンサンブルの一枚です。
+
+気づき: ${card.text}
+${around.length ? `\nこの気づきと線でつないであるカード:\n${around.map((l) => `- ${l}`).join('\n')}\n` : ''}
+この気づきへの感想を、一人の聞き手として率直に話してください。共感・疑問・連想・次に試すと面白そうなこと、のどれかに絞ってよい。気づきを言い直したり要約したりしない。前置きや挨拶はしない。120字以内。
+出力は text だけ。`;
+    commenting.add(card.id);
+    setStatus(`${voice.label}が感想を考えています…`, { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] }, maxOutputTokens: 1024, label: '気づきへの感想' });
+      const text = String(raw.text || '').trim().slice(0, 240);
+      if (!text) throw new Error('感想が空でした');
+      const comment = {
+        id: newId(),
+        type: 'comment',
+        speaker: voice.id,
+        speakerLabel: voice.label,
+        text,
+        targetId: card.id,
+        x: (card.x || 0) + (card.width || defaultWidth(card)) + 50,
+        y: (card.y || 0) + neighbors(card.id).filter((c) => c.type === 'comment').length * 90,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      addCardToEnsemble(stage, comment);
+      connectEnsembleCards(stage, card.id, comment.id);
+      setStatus(`${voice.label}の感想が届きました`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`感想を聞けませんでした: ${err.message}`, { important: true });
+    } finally {
+      commenting.delete(card.id);
+    }
+  }
+
+  /** まとめに渡すカードの記録(発言は声をつなげる。長すぎる時は後ろから切る) */
+  function summaryLines(cards) {
+    const lines = cards.map((c) => {
+      if (c.type === 'speech') {
+        const who = (v) => (v.speaker === THEORY_ID ? '楽典' : (getSoul(v.speaker) || {}).name || '?');
+        return `[アンサンブルの発言${c.feedback ? `・${c.feedback === 'worked' ? '効いた' : '効かなかった'}` : ''}] ${(c.voices || []).map((v) => `${who(v)}: ${v.text}`).join(' / ')}`;
+      }
+      return cardLine(c);
+    }).filter(Boolean);
+    let total = 0;
+    return lines.filter((l) => (total += l.length) < 9000);
+  }
+
+  let summarizing = false;
+
+  async function summarize() {
+    if (summarizing) return;
+    const comp = focusComponent();
+    const hasAll = scope.cards.length > 0;
+    if (!hasAll) {
+      setStatus('まだカードがありません', { important: true });
+      return;
+    }
+    const list = voices();
+    const values = await showFormDialog({
+      title: 'まとめ',
+      message: 'ここまでの作曲の流れを、選んだ話し手にまとめてもらいます(Geminiを1回呼びます)。',
+      submitLabel: 'まとめる',
+      fields: [
+        {
+          name: 'range',
+          label: '範囲',
+          type: 'select',
+          value: comp ? 'focus' : 'all',
+          options: [
+            ...(comp ? [{ value: 'focus', label: `最後にタップしたまとまり(${comp.length}枚)` }] : []),
+            { value: 'all', label: `この舞台のカード全部(${scope.cards.length}枚)` },
+          ],
+        },
+        ...(list.length > 1 ? [{ name: 'voice', label: '話し手', type: 'select', value: list[0].id, options: list.map((v) => ({ value: v.id, label: `${v.avatar} ${v.label}(${v.role})` })) }] : []),
+        { name: 'direction', label: '問い・視点(任意)', type: 'textarea', placeholder: '何が効いて、何が効かなかった? / 次の一手は? / この曲の核は何? など。空欄なら全体のまとめ' },
+      ],
+    });
+    if (!values) return;
+    const voice = voiceOf(values.voice || list[0].id);
+    const useFocus = values.range === 'focus' && comp;
+    const cards = (useFocus ? comp.map((id) => getCardById(id)) : scope.cards).filter(Boolean).filter((c) => c.type !== 'summary');
+    const lines = summaryLines(cards);
+    if (!lines.length) {
+      setStatus('まとめる中身のあるカードがありません', { important: true });
+      return;
+    }
+    const direction = String(values.direction || '').trim().slice(0, 200);
+    const scopeLabel = useFocus ? 'まとまり' : `${stage.name}全体`;
+    // CONSTELLATIONのサマリーと同じく、問いがある時は全体の総括を前置きに書かせない(前置きが8割になる実例があった)
+    const task = direction
+      ? `次の問い・視点に直接答える形で書いてください: 「${direction}」\nこの作曲が全体として何を目指しているかは理解の中で踏まえるだけにし、文章には書かない。最初の一文から問いへの答えそのものを書き始める。`
+      : '作曲の流れをまとめてください。どこから始まり、何を試し、何が効いて何が効かなかったか、いまどこにいて、次の一手は何か。';
+    const prompt = `${voice.style ? `${voice.style}\n\n` : ''}以下は、作曲支援アプリLYRAの「アンサンブル in ${stage.name}」に置かれたカードの記録です(ユーザーはCubase Pro 15とMax 9で作曲しています)。${useFocus ? '線でつないだひとまとまりのカードです。' : ''}
+
+${lines.map((l) => `- ${l}`).join('\n')}
+
+${task}
+前置き・見出し・箇条書き記号は使わず、自然な文章で200〜400字。カードの文をそのまま長く引用しない。
+出力: title(20字以内の見出し)、text(本文)`;
+    summarizing = true;
+    setStatus(`${voice.label}がまとめています…`, { busy: true });
+    try {
+      const raw = await askGeminiJson({
+        prompt,
+        responseSchema: { type: 'OBJECT', properties: { title: { type: 'STRING' }, text: { type: 'STRING' } }, required: ['title', 'text'] },
+        maxOutputTokens: 2048,
+        label: 'まとめ',
+      });
+      const text = String(raw.text || '').trim().slice(0, 800);
+      if (!text) throw new Error('まとめが空でした');
+      const placed = cards.filter((c) => Number.isFinite(c.x));
+      const pos = useFocus && placed.length
+        ? { x: Math.max(...placed.map((c) => (c.x || 0) + (c.width || defaultWidth(c)))) + 60, y: Math.min(...placed.map((c) => c.y || 0)) }
+        : newCardSpawnPos();
+      addCardToEnsemble(stage, {
+        id: newId(),
+        type: 'summary',
+        speaker: voice.id,
+        speakerLabel: voice.label,
+        title: String(raw.title || '').trim().slice(0, 40),
+        text,
+        direction,
+        scopeLabel,
+        sourceIds: cards.map((c) => c.id),
+        x: pos.x,
+        y: pos.y,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      });
+      setStatus(`${voice.label}のまとめを置きました`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`まとめられませんでした: ${err.message}`, { important: true });
+    } finally {
+      summarizing = false;
+    }
+  }
+
   /* ---------------- アンサンブルを聴く ---------------- */
 
   function cardLine(card) {
@@ -486,6 +705,10 @@
         return window.LyraMidi ? window.LyraMidi.describe(card) : `[MIDI] ${card.name}`;
       case 'audio':
         return `[オーディオ] ${card.name}${card.duration ? `(${Math.round(card.duration)}秒)` : ''}`;
+      case 'comment':
+        return card.text ? `[感想 · ${card.speakerLabel || voiceOf(card.speaker).label}] ${card.text}` : null;
+      case 'summary':
+        return card.text ? `[まとめ · ${card.speakerLabel || voiceOf(card.speaker).label}] ${card.title ? `${card.title}: ` : ''}${card.text}` : null;
       case 'speech':
         return null;
       default:
@@ -1038,6 +1261,12 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
         `<div class="panel-section"><div class="panel-readonly">${escapeHtml(card.text || '')}</div></div>` +
         (card.reason ? `<div class="panel-section"><div class="panel-label">なぜ今日これを</div><div class="panel-readonly">${escapeHtml(card.reason)}</div></div>` : '') +
         (p ? `<div class="panel-empty">試したら、ソウル画面で「確認済みにする」を押すと進行度が育ちます。</div>` : '');
+    } else if (card.type === 'comment' || card.type === 'summary') {
+      const v = voiceOf(card.speaker);
+      html = head(`${card.type === 'comment' ? '感想' : 'まとめ'} · ${escapeHtml(card.speakerLabel || v.label)}`, `${escapeHtml(v.role)}${card.scopeLabel ? ` · ${escapeHtml(card.scopeLabel)}` : ''} · ${formatDate(card.createdAt)}`) +
+        (card.title ? `<div class="panel-section"><div class="panel-label">見出し</div><div class="panel-readonly">${escapeHtml(card.title)}</div></div>` : '') +
+        (card.direction ? `<div class="panel-section"><div class="panel-label">問い・視点</div><div class="panel-readonly">${escapeHtml(card.direction)}</div></div>` : '') +
+        `<div class="panel-section"><div class="panel-readonly voice-panel-text">${escapeHtml(card.text || '')}</div></div>`;
     } else if (card.type === 'midi' && window.LyraMidi) {
       html = window.LyraMidi.panelHtml(card);
     } else if (card.type === 'audio' && window.LyraAudio) {

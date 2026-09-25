@@ -1576,3 +1576,13 @@ a.btn-secondary { display: block; }
 .re-scale-root { fill: rgba(184, 134, 59, 0.22); }
 .re-check { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .re-check input { width: auto; margin: 0; }
+
+/* ---------- 感想・まとめ(js/screens/ensemble.js。CONSTELLATIONのCrewsに近い) ---------- */
+.star-card-hex--comment { left: 50%; top: 0; background: #5e8a8c; letter-spacing: 0.04em; transform: translate(-50%, calc(-100% - 10px)); }
+.star-card-hex-strut--comment { display: none; }
+.star-card--ens-comment, .star-card--ens-summary { background: #f3f8f7; border-color: #b9d3d1; }
+.voice-kind { display: flex; align-items: center; gap: 6px; color: #4d7477; }
+.voice-avatar { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #5e8a8c; color: #fff; font-size: 10px; flex: none; }
+.voice-text { font-size: 12.5px; line-height: 1.7; color: var(--ink); white-space: pre-wrap; margin-top: 4px; }
+.voice-text--summary { font-size: 12px; max-height: 260px; overflow-y: auto; }
+.voice-panel-text { white-space: pre-wrap; line-height: 1.8; }
