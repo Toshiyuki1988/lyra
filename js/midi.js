@@ -21,7 +21,46 @@
    * (既存曲との照合手段は無い)。解説にも曲名・アーティスト名を出させない。 */
   // 2026-09-25改訂: 主旋律は既存曲に似せない(さらに ruminateMelody() で反芻させる)。コード進行・リズムの型・音色の傾向は
   // ジャンルに共有された語法なので、よく知られた定番進行も使ってよい(ユーザー判断「全体的にいい塩梅に」)
-  const ORIGINALITY_RULE = '- 主旋律は、既存の曲の旋律・リフ・特徴的なフレーズを引用・模倣しない。特定の曲やアーティストに寄せない(知識やカードに人名・曲名が出てきても、その人・曲の旋律に似せない)。一方、コード進行・リズムの型・伴奏の型・音色の傾向は、そのジャンル・美学の定番(よく知られた進行も含む)を積極的に使ってよい';
+  // 2026-09-25改訂2: 作曲家の「技法」は引用してよい(ユーザー要望「特定の旋律は用いずに、クラシックの作曲家の用いた技法を
+  // 要望を聞いてから引用してMIDIに反映」)。引いてよいのは技法(和声・旋法・リズム・拍子・形式など)で、旋律・動機は引かない
+  const ORIGINALITY_RULE = '- 主旋律と対旋律は、既存の曲の旋律・リフ・特徴的なフレーズ・動機を引用・模倣しない(知識やカードに人名・曲名が出てきても、その曲の旋律に似せない)。一方、作曲家が用いた技法(和声・旋法・リズム・拍子・形式・声部の扱い)は技法として取り入れてよく、コード進行・リズムの型・伴奏の型・音色の傾向は、そのジャンル・美学の定番(よく知られた進行も含む)を積極的に使ってよい';
+
+  /* 2026-09-25追加(ユーザー要望「このアプリでの生成MIDIは、途中で拍子を変えたり、2つのコードを重ねたり、かなり自由に」)。
+   * 拍子の変化(meters)・ポリコード(「C|F#」)・対旋律/オスティナート(counter、コード+旋律のみ)を書けるようにし、無難に
+   * まとめないよう促す。作曲家の技法の要望(style)は、ダイアログで聞いてから渡し、使った技法を techniques に出典つきで書かせる。 */
+  const FREEDOM_RULES = `- 無難にまとめない。ソウル・要望・つないだカードに合うなら、途中の拍子の変化、ポリコード(2つのコードの重ね)、クラスター、旋法の混合、非機能的な進行、オスティナート、ずらしたアクセントなど、自由で大胆な書き方をしてよい
+- 位置(start・duration・beat)は曲頭からの通しの拍(4分音符=1)。拍子が変わっても通しで数える(7/8 の小節は3.5拍、5/8 は2.5拍、3/4 は3拍)
+- beatsPerBar は最初の小節の4分音符の数(4/4 なら 4)。4分音符以外の拍子や、途中での拍子の変化は meters に書く: [{bar: 変わる小節の番号(1始まり), num: 分子, den: 分母(2/4/8/16)}]。変えなければ空の配列`;
+
+  /** 作曲家の技法の要望(ダイアログの「取り入れたい作曲家・技法」)に応じた指示 */
+  function techniqueRule(style) {
+    if (!style) return '- techniques: 特定の作曲家の技法を意識して使ったら書く(composer・work・technique・use)。無ければ空の配列';
+    return `- ユーザーの要望「${style}」: 要望の作曲家が実際に用いた作曲技法(和声・旋法・音階・リズム・拍子・形式・声部の扱いなど)を2〜4個選び、この断片で必ず使う。techniques に、composer(作曲家)、work(その技法が見られる代表的な作品名。技法の出典として)、technique(技法の名前。例: ポリコード、八音音階、加算リズム、変拍子、オスティナート、全音音階)、use(この断片のどこでどう使ったか。60字以内)を書く
+- 引用するのは技法だけ。その作曲家の作品の旋律・動機・特徴的なリズムの音型や和声進行の並びを、そのまま使わない`;
+  }
+
+  const TECHNIQUES_SCHEMA = {
+    type: 'ARRAY',
+    items: {
+      type: 'OBJECT',
+      properties: { composer: { type: 'STRING' }, work: { type: 'STRING' }, technique: { type: 'STRING' }, use: { type: 'STRING' } },
+      required: ['technique', 'use'],
+    },
+  };
+  const METERS_SCHEMA = {
+    type: 'ARRAY',
+    items: {
+      type: 'OBJECT',
+      properties: { bar: { type: 'INTEGER' }, num: { type: 'INTEGER' }, den: { type: 'INTEGER' } },
+      required: ['bar', 'num', 'den'],
+    },
+  };
+  const sanitizeTechniques = (list) => (list || []).slice(0, 5).map((x) => ({
+    composer: String(x.composer || '').slice(0, 30),
+    work: String(x.work || '').slice(0, 40),
+    technique: String(x.technique || '').slice(0, 40),
+    use: String(x.use || '').slice(0, 100),
+  })).filter((x) => x.technique);
   const WRITEUP_RULES = `- concept は、この断片のコンセプト(情景・狙い)を60字以内で
 - commentary は解説。コード・旋律・リズムの仕掛けがそれぞれ何を表しているか、Cubaseで肉付けする時(音色・アレンジ)のヒントを200字以内で。特定の曲名・アーティスト名は出さない`;
   const writeup = (raw) => ({ concept: String(raw.concept || '').slice(0, 100), commentary: String(raw.commentary || '').slice(0, 400) });
@@ -83,6 +122,8 @@
           required: ['beat', 'bpm'],
         },
       },
+      meters: METERS_SCHEMA,
+      techniques: TECHNIQUES_SCHEMA,
     },
     required: ['name', 'tempo', 'notes'],
   };
@@ -111,9 +152,12 @@
         .sort((a, b) => a.beat - b.beat)
         .slice(0, 256),
     }));
+    const meters = sanitizeMeters(raw.meters, Math.round(clampNum(raw.beatsPerBar, 1, 12, 4)));
     return {
       tempo: clampNum(raw.tempo, 20, 300, 100),
-      beatsPerBar: Math.round(clampNum(raw.beatsPerBar, 1, 12, 4)),
+      beatsPerBar: meterLen(meters[0]),
+      meters,
+      techniques: sanitizeTechniques(raw.techniques),
       notes,
       cc,
       markers: (raw.markers || []).slice(0, 32).map((m) => ({ beat: clampNum(m.beat, 0, 512, 0), label: String(m.label || '').slice(0, 40) })),
@@ -128,6 +172,67 @@
     return Math.max(end, midi.beatsPerBar);
   }
 
+  /* ---- 拍子 ----
+   * midi.meters(と設計図の sketch.meters)= [{bar, num, den}]。bar は1始まりの小節番号で、その小節から num/den 拍子。
+   * 無い古いカードは beatsPerBar/4 拍子のまま。位置は今までどおり曲頭からの通しの4分音符の拍で、beatsPerBar は
+   * 最初の小節の長さ(4分音符の数。7/8 なら 3.5)として残す。小節の位置は barList() で計算する。 */
+  const DENS = [2, 4, 8, 16];
+  const meterLen = (x) => (x.num * 4) / x.den;
+
+  function sanitizeMeters(list, fallbackBpb) {
+    let out = (list || [])
+      .map((x) => ({ bar: Math.round(clampNum(x.bar, 1, 256, 1)), num: Math.round(clampNum(x.num, 1, 15, 4)), den: DENS.includes(Number(x.den)) ? Number(x.den) : 4 }))
+      .sort((a, b) => a.bar - b.bar)
+      .filter((x, i, arr) => i === arr.length - 1 || arr[i + 1].bar !== x.bar);
+    if (!out.length || out[0].bar !== 1) out.unshift({ bar: 1, num: fallbackBpb, den: 4 });
+    out = out.filter((x, i, arr) => i === 0 || x.num !== arr[i - 1].num || x.den !== arr[i - 1].den);
+    return out.slice(0, 64);
+  }
+
+  function metersOf(m) {
+    return m.meters && m.meters.length ? m.meters : [{ bar: 1, num: m.beatsPerBar, den: 4 }];
+  }
+
+  /** 拍子が変わる所ごとの { bar, num, den, start(拍) } */
+  function meterStarts(m) {
+    const meters = metersOf(m);
+    let start = 0;
+    return meters.map((x, i) => {
+      if (i > 0) start += (x.bar - meters[i - 1].bar) * meterLen(meters[i - 1]);
+      return { ...x, start };
+    });
+  }
+
+  /** 小節の一覧 [{ bar, start, len, num, den }](until 拍まで。最低1小節) */
+  function barList(m, until) {
+    const meters = metersOf(m);
+    const out = [];
+    let start = 0;
+    let k = 0;
+    let cur = meters[0];
+    for (let bar = 1; bar === 1 || start < until - EPS; bar++) {
+      while (k < meters.length && meters[k].bar <= bar) cur = meters[k++];
+      out.push({ bar, start, len: meterLen(cur), num: cur.num, den: cur.den });
+      start += meterLen(cur);
+      if (out.length >= 512) break;
+    }
+    return out;
+  }
+
+  /** その拍を含む小節 */
+  function barAt(bars, beat) {
+    let hit = bars[0];
+    for (const b of bars) {
+      if (b.start <= beat + EPS) hit = b;
+      else break;
+    }
+    return hit;
+  }
+
+  /** 「4/4 → 7/8(5小節目)→ …」 */
+  function meterLabel(m) {
+    return metersOf(m).map((x, i) => `${x.num}/${x.den}${i ? `(${x.bar}小節目)` : ''}`).join(' → ');
+  }
   /* ---------------- 発言からMIDIを作る ---------------- */
 
   async function createFromSpeech(speech, stage) {
@@ -152,11 +257,13 @@
           ],
         },
         { name: 'bars', label: '小節数', value: '8' },
+        { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
         { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: 'キーはDマイナー、後半で緊張を高める など' },
       ],
     });
     if (!values) return;
     const bars = Math.round(clampNum(values.bars, 1, 32, 8));
+    const style = String(values.style || '').trim().slice(0, 120);
     if (values.kind === 'sketch') {
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので、それ以外のソウルを渡す
       const nonStage = members.filter((s) => s.category !== 'stage');
@@ -174,6 +281,7 @@
         y: (speech.y || 0) + (speech.height || 280) + 40,
         bars: Math.max(2, bars),
         hint: values.hint,
+        style,
       });
       return;
     }
@@ -188,12 +296,14 @@ ${(speech.voices || []).map((v) => `- ${v.text}`).join('\n')}
 ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
 作るもの: ${kindText}、${bars}小節
 出力の約束:
-- start・duration・beat は拍(4分音符=1)単位、0始まり。${bars}小節 × beatsPerBar 拍に収める
-- notes は最大${MAX_NOTES}個。キースイッチ用のノート(音源の奏法切り替え用の低音域の音)は入れない
+- start・duration・beat は拍(4分音符=1)単位、0始まり。${bars}小節に収める
+${FREEDOM_RULES}
+- notes は最大${MAX_NOTES}個。同時に鳴らす音(和音・2つのコードの重ね)も自由に置いてよい。キースイッチ用のノート(音源の奏法切り替え用の低音域の音)は入れない
 - cc は連続的に変えたいパラメータ用のオートメーション(例: 74=明るさ、1=モジュレーション、11=エクスプレッション)。label には「CC74 → 何のつまみに割り当てる想定か」を書く。割り当て先は次の手持ちのパラメータから選ぶ: ${paramNames.slice(0, 40).join('、') || '(なし。一般的な名前で)'}
 - markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクションの名前(例: 「間:余白」「緊張:上昇」)
 - tempoChanges は、テンポを途中で変える意図がある時だけ
 - name は「〜.mid」の形の短いファイル名、description は40字以内の説明
+${techniqueRule(style)}
 ${ORIGINALITY_RULE}
 ${WRITEUP_RULES}`;
     setStatus('MIDIを作っています…', { busy: true });
@@ -266,10 +376,18 @@ ${WRITEUP_RULES}`;
       message: `どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを${melodic ? '2回。主旋律の反芻を含みます' : '1回'}呼びます)。` +
         (m.edited ? '手で編集した音も踏まえます。' : '') + linkNote,
       submitLabel: '作り直す',
-      fields: [{ name: 'comment', label: 'コメント', type: 'textarea', required: !links, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' }],
+      fields: [
+        { name: 'comment', label: 'コメント', type: 'textarea', required: false, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' },
+        { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
+      ],
     });
     if (!values) return;
     const comment = String(values.comment || '').trim();
+    const style = String(values.style || '').trim().slice(0, 120);
+    if (!comment && !style && !links) {
+      setStatus('コメントか「取り入れたい作曲家・技法」を書くか、ASTRでカードをつないでから作り直してください', { important: true });
+      return;
+    }
     const material = window.LyraSoulMaterial || (() => '');
     const linkText = links
       ? `\nASTRでこのMIDIにつないだカード(今回のブラッシュアップで取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n') || '- (ソウルのカードのみ)'}\n` +
@@ -287,24 +405,26 @@ ${WRITEUP_RULES}`;
     }
     const prompt = isSketch
       ? `あなたは作曲支援アプリLYRAの作曲担当です。前に作ったコード+旋律の断片を、ユーザーのコメントに沿って作り直してください。
-${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || '(なし。つないだカード・ソウルを取り入れる)'}
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || (style ? '(なし。下の作曲家・技法を取り入れる)' : '(なし。つないだカード・ソウルを取り入れる)')}
 ${linkText}${editedText}
 前回の設計図(JSON):
 ${JSON.stringify(sketchForPrompt(m.sketch))}
 
 コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)。signature(ソウルらしさの仕掛け)は、コメントで否定されない限り保つ。
 
-${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bars}小節`)}
+${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bars}小節`, style)}
 - description は、前回から何を変えたかを40字以内で
 ${WRITEUP_RULES}(今回の版に合わせて書き直す)`
       : `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
-${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || '(なし。つないだカード・ソウルを取り入れる)'}
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || (style ? '(なし。下の作曲家・技法を取り入れる)' : '(なし。つないだカード・ソウルを取り入れる)')}
 ${linkText}${editedText}
 前回のMIDI(JSON。start・duration・beat は拍単位):
-${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, notes: m.notes, cc: m.cc, markers: m.markers, tempoChanges: m.tempoChanges })}
+${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, meters: metersOf(m), techniques: m.techniques || [], notes: m.notes, cc: m.cc, markers: m.markers, tempoChanges: m.tempoChanges })}
 
 出力の約束:
 - コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)
+${FREEDOM_RULES}
+${techniqueRule(style)}
 - notes は最大${MAX_NOTES}個。キースイッチ用のノートは入れない
 - cc の label は「CC74 → 何のつまみに割り当てる想定か」の形を保つ
 - markers は構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名
@@ -412,6 +532,21 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         },
       },
       markers: MIDI_SCHEMA.properties.markers,
+      counter: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            note: { type: 'STRING' },
+            start: { type: 'NUMBER' },
+            duration: { type: 'NUMBER' },
+            velocity: { type: 'INTEGER' },
+          },
+          required: ['note', 'start', 'duration'],
+        },
+      },
+      meters: METERS_SCHEMA,
+      techniques: TECHNIQUES_SCHEMA,
     },
     required: ['name', 'tempo', 'beatsPerBar', 'key', 'signature', 'chords', 'melody', 'comping', 'voicing', 'bass'],
   };
@@ -424,7 +559,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     close: '密集', open: '開離', shell: '3度と7度', cluster: '2度でぶつける', quartal: '4度堆積', power: 'ルートと5度',
     'root-fifth': 'ルートと5度', root: 'ルート', octave: '8分のオクターブ', pedal: '主音の持続', none: 'なし',
   };
-  const PART_NAMES = { melody: 'Melody', chords: 'Chords', bass: 'Bass' };
+  const PART_NAMES = { melody: 'Melody', counter: 'Counter', chords: 'Chords', bass: 'Bass' };
+  const PART_ORDER = ['melody', 'counter', 'chords', 'bass'];
   const MAX_SKETCH_NOTES = 1500;
   const EPS = 1e-6;
 
@@ -530,6 +666,17 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     return { root, bass, tones, third, fifth, seventh };
   }
 
+  /**
+   * 「C|F#」のように「|」で区切ったポリコード(2つか3つのコードの重ね)→ [下のコード, 上のコード…]。
+   * 普通のコードネームは要素1つ。どれか1つでも読めなければ null。
+   */
+  function parseLayers(symbol) {
+    const layers = String(symbol || '').split('|').map((x) => x.trim()).filter(Boolean).slice(0, 3);
+    if (!layers.length) return null;
+    const parsed = layers.map(parseChord);
+    return parsed.every(Boolean) ? parsed : null;
+  }
+
   /** 和音の型ごとの「積み方」。rotate: 転回形を候補にする / drop2: 上から2番目を1オクターブ下げる */
   function voicingShape(chord, type) {
     const pcs = [...new Set(chord.tones.map((t) => t % 12))];
@@ -606,17 +753,19 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
   }
 
   /** 伴奏の型 → コードの区間 [s, e) の中で鳴らす位置と長さ(拍)。小節の頭を基準にした型 */
-  function compOnsets(type, s, e, bpb) {
+  function compOnsets(type, s, e, bars) {
     if (type === 'sustain') return [{ t: s, d: e - s }];
     const list = [];
     const push = (t, d) => {
       if (t >= s - EPS && t < e - EPS && !list.some((x) => Math.abs(x.t - t) < EPS)) list.push({ t, d: Math.min(d, e - t) });
     };
-    for (let bar = Math.floor(s / bpb) * bpb; bar < e; bar += bpb) {
-      if (type === 'stabs') (bpb >= 4 ? [0, 1.5, 3] : [0, 1.5]).forEach((o) => push(bar + o, 0.4));
-      else if (type === 'offbeat') for (let b = 0; b < bpb; b++) push(bar + b + 0.5, 0.4);
-      else for (let b = 0; b < bpb * 2; b++) push(bar + b / 2, type === 'pulse' ? 0.42 : 0.5);
-    }
+    // 小節ごとの型(拍子が途中で変わっても、その小節の長さの中だけで刻む)
+    bars.filter((b) => b.start < e - EPS && b.start + b.len > s + EPS).forEach(({ start: bar, len }) => {
+      const inBar = (o) => o < len - EPS;
+      if (type === 'stabs') [0, 1.5, 3].filter(inBar).forEach((o) => push(bar + o, 0.4));
+      else if (type === 'offbeat') for (let b = 0; inBar(b + 0.5); b++) push(bar + b + 0.5, 0.4);
+      else for (let b = 0; inBar(b / 2); b++) push(bar + b / 2, type === 'pulse' ? 0.42 : 0.5);
+    });
     // コードが変わる瞬間は必ず鳴らす(裏拍の型は、鳴らす所が無い時だけ)
     if ((type !== 'offbeat' || !list.length) && !list.some((x) => Math.abs(x.t - s) < EPS)) list.push({ t: s, d: Math.min(0.5, e - s) });
     return list.sort((x, y) => x.t - y.t);
@@ -643,20 +792,22 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       .slice(0, 256);
   }
 
-  function sketchBars(chords, melody, beatsPerBar) {
+  /** 設計図の小節数(拍子の変化を考慮) */
+  function sketchBars(sk) {
     let end = 0;
-    chords.forEach((c) => { end = Math.max(end, c.start + c.duration); });
-    melody.forEach((n) => { end = Math.max(end, n.start + n.duration); });
-    return Math.max(1, Math.ceil(end / beatsPerBar - EPS));
+    sk.chords.forEach((c) => { end = Math.max(end, c.start + c.duration); });
+    [...sk.melody, ...(sk.counter || [])].forEach((n) => { end = Math.max(end, n.start + n.duration); });
+    return barList(sk, end).length;
   }
 
   function sanitizeSketch(raw) {
-    const beatsPerBar = Math.round(clampNum(raw.beatsPerBar, 2, 7, 4));
-    const limit = 32 * beatsPerBar;
+    const meters = sanitizeMeters(raw.meters, Math.round(clampNum(raw.beatsPerBar, 2, 7, 4)));
+    const beatsPerBar = meterLen(meters[0]);
+    const limit = 256;
     const grid = (v) => Math.round(v * 12) / 12; // 16分と3連の両方が乗る細かさ
     const chords = (raw.chords || [])
       .map((c) => ({
-        symbol: normalizeAccidentals(c.symbol).slice(0, 16),
+        symbol: normalizeAccidentals(c.symbol).replace(/[｜]/g, '|').slice(0, 32),
         start: grid(clampNum(c.start, 0, limit, 0)),
         duration: grid(clampNum(c.duration, 0.25, limit, beatsPerBar)),
       }))
@@ -664,11 +815,13 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       .sort((a, b) => a.start - b.start)
       .slice(0, 64);
     const melody = sanitizeMelody(raw.melody, limit);
+    const counter = sanitizeMelody(raw.counter, limit);
     return {
       tempo: clampNum(raw.tempo, 40, 220, 96),
       beatsPerBar,
-      bars: sketchBars(chords, melody, beatsPerBar),
-      key: normalizeAccidentals(raw.key).slice(0, 6),
+      meters,
+      bars: sketchBars({ meters, beatsPerBar, chords, melody, counter }),
+      key: normalizeAccidentals(raw.key).slice(0, 12),
       scale: String(raw.scale || '').slice(0, 20),
       swing: clampNum(raw.swing, 0, 1, 0),
       comping: pickWord(raw.comping, COMPINGS, 'sustain'),
@@ -680,6 +833,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         .filter((x) => x.trait || x.device),
       chords,
       melody,
+      counter,
+      techniques: sanitizeTechniques(raw.techniques),
       markers: (raw.markers || []).slice(0, 32).map((x) => ({ beat: clampNum(x.beat, 0, limit, 0), label: String(x.label || '').slice(0, 40) })),
     };
   }
@@ -687,18 +842,33 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
   /** 設計図 → カードの midi(ノートに part 付き) */
   function renderSketch(sk) {
     const notes = [];
-    const bpb = sk.beatsPerBar;
-    const onBar = (t) => Math.abs(t / bpb - Math.round(t / bpb)) < EPS;
-    const keyChord = parseChord(sk.key);
+    let end = 0;
+    sk.chords.forEach((c) => { end = Math.max(end, c.start + c.duration); });
+    const bars = barList(sk, end);
+    const onBar = (t) => bars.some((b) => Math.abs(b.start - t) < EPS);
+    const keyChord = parseChord(String(sk.key || '').split('|')[0]);
+    const mean = (arr) => arr.reduce((sum, x) => sum + x, 0) / arr.length;
     let prev = null;
+    const prevUpper = [];
     sk.chords.forEach((c) => {
-      const chord = parseChord(c.symbol);
-      if (!chord) return;
+      const layers = parseLayers(c.symbol);
+      if (!layers) return;
+      const chord = layers[0];
       const s = c.start;
       const e = c.start + c.duration;
-      const voicing = chooseVoicing(chord, sk.voicing, prev);
-      prev = voicing;
-      const onsets = compOnsets(sk.comping, s, e, bpb);
+      const lower = chooseVoicing(chord, sk.voicing, prev);
+      prev = lower;
+      // ポリコード: 上のコードは密集で、下のコードより上(平均で5度〜1オクターブ半上)に積む
+      let voicing = lower;
+      layers.slice(1).forEach((upperChord, i) => {
+        let up = chooseVoicing(upperChord, 'close', prevUpper[i]);
+        const floor = mean(voicing);
+        while (mean(up) < floor + 7) up = up.map((p) => p + 12);
+        while (mean(up) > floor + 19) up = up.map((p) => p - 12);
+        prevUpper[i] = up;
+        voicing = [...voicing, ...up];
+      });
+      const onsets = compOnsets(sk.comping, s, e, bars);
       if (sk.comping === 'arpeggio' || sk.comping === 'broken') {
         const n = voicing.length;
         const idx = [...voicing.keys()];
@@ -723,13 +893,13 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         for (let t = s, k = 0; t < e - EPS; t += 0.5, k++) hits.push({ t, p: k % 2 ? low + 12 : low });
       } else {
         hits.push({ t: s, p: low });
-        for (let bar = Math.ceil(s / bpb - EPS) * bpb; bar < e - EPS; bar += bpb) {
+        bars.filter((b) => b.start >= s - EPS && b.start < e - EPS).forEach(({ start: bar, len }) => {
           if (bar > s + EPS) hits.push({ t: bar, p: low });
           if (sk.bass === 'root-fifth') {
-            const mid = bar + (bpb % 2 === 0 ? bpb / 2 : 2);
-            if (mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: low + 7 > 50 ? low - 5 : low + 7 });
+            const mid = bar + (Number.isInteger(len) && len % 2 === 0 ? len / 2 : Math.ceil(len / 2 - EPS));
+            if (mid < bar + len - EPS && mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: low + 7 > 50 ? low - 5 : low + 7 });
           }
-        }
+        });
         hits.sort((x, y) => x.t - y.t);
       }
       hits.forEach((h, i) => {
@@ -739,6 +909,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       });
     });
     sk.melody.forEach((n) => notes.push({ part: 'melody', ...n }));
+    (sk.counter || []).forEach((n) => notes.push({ part: 'counter', ...n }));
 
     // ハネ: 8分の裏(拍の.5)を後ろへずらす。swing=1で3連の3つ目の位置
     if (sk.swing > 0.01) {
@@ -753,7 +924,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     notes.sort((a, b) => a.start - b.start);
     return {
       tempo: sk.tempo,
-      beatsPerBar: bpb,
+      beatsPerBar: sk.beatsPerBar,
+      meters: metersOf(sk),
       notes: notes.slice(0, MAX_SKETCH_NOTES),
       cc: [],
       markers: sk.markers,
@@ -780,9 +952,10 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     required: ['melody', 'check', 'changes'],
   };
 
-  async function ruminateMelody({ notes, chords, key, scale, beatsPerBar, purpose }) {
+  async function ruminateMelody({ notes, chords, key, scale, meters, techniques, purpose }) {
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。下の主旋律の案を、一度立ち止まって見直し(反芻し)、仕上げてください。
-${purpose ? `この断片の狙い: ${purpose}\n` : ''}${key ? `キー: ${key}${scale ? ` ${scale}` : ''} / ` : ''}1小節 ${beatsPerBar}拍
+${purpose ? `この断片の狙い: ${purpose}\n` : ''}${key ? `キー: ${key}${scale ? ` ${scale}` : ''} / ` : ''}拍子: ${meters}(位置は曲頭からの通しの拍)
+${techniques && techniques.length ? `使っている作曲技法(保つ): ${techniques.map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''} — ${t.use}`).join(' / ')}\n` : ''}
 ${chords && chords.length ? `コード進行(変えない。数字は拍): ${chords.map((c) => `${c.symbol}(${c.start}〜${c.start + c.duration})`).join(' ')}\n` : ''}
 主旋律の案(note は音名+オクターブ、C4が中央のド。start・duration は拍):
 ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })))}
@@ -790,7 +963,7 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
 見直すこと:
 1. 既存の有名な曲の旋律やフック(サビ・リフ・テーマ)に似ていないかを、音程の並び(上下の向きと音程の幅)とリズムの両方で点検する。特に最初の動機と、繰り返される音型を重点的に見る
 2. 似ている、または似ている可能性がある所は、音程の向き・跳躍の幅・リズム・休符の位置を変えて、別の旋律にする。似ていなければ大きく変えなくてよい
-3. 音楽として保つこと: 強拍はそのときのコードの構成音かテンション、最初の動機の展開(繰り返し・移高・リズムの変形)、休符、最後はコードの構成音で終える。長さ・音域・音数は案と同程度(おおむねC4〜C6)
+3. 音楽として保つこと: 最初の動機の展開(繰り返し・移高・リズムの変形)、休符、長さ・音域・音数は案と同程度(おおむねC4〜C6)。拍子の変化・ポリコード・旋法など案の大胆さや、上の作曲技法は無難に戻さない。調性的な断片なら、強拍はそのときのコードの構成音かテンションにし、最後はコードの構成音で終える
 4. start にはハネを付けない(アプリが付ける)
 
 出力:
@@ -807,16 +980,17 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
   /** 設計図の旋律を反芻させ、置き換えた設計図を返す */
   async function ruminateSketch(sk, purpose) {
     setStatus('主旋律を反芻しています…(Geminiの2回目)', { busy: true });
-    const r = await ruminateMelody({ notes: sk.melody, chords: sk.chords, key: sk.key, scale: sk.scale, beatsPerBar: sk.beatsPerBar, purpose });
-    const melody = sanitizeMelody(r.melody, 32 * sk.beatsPerBar);
+    const r = await ruminateMelody({ notes: sk.melody, chords: sk.chords, key: sk.key, scale: sk.scale, meters: meterLabel(sk), techniques: sk.techniques, purpose });
+    const melody = sanitizeMelody(r.melody, 256);
     if (!melody.length) throw new Error('主旋律の反芻で音が1つも返ってきませんでした');
-    return { ...sk, melody, bars: sketchBars(sk.chords, melody, sk.beatsPerBar), rumination: r.rumination };
+    const next = { ...sk, melody, rumination: r.rumination };
+    return { ...next, bars: sketchBars(next) };
   }
 
   /** 「旋律だけ」のMIDI(音番号の形)を反芻させる */
   async function ruminateMidi(midi, purpose) {
     setStatus('主旋律を反芻しています…(Geminiの2回目)', { busy: true });
-    const r = await ruminateMelody({ notes: midi.notes, chords: null, beatsPerBar: midi.beatsPerBar, purpose });
+    const r = await ruminateMelody({ notes: midi.notes, chords: null, meters: meterLabel(midi), techniques: midi.techniques, purpose });
     const notes = sanitizeMelody(r.melody, 512);
     if (!notes.length) throw new Error('主旋律の反芻で音が1つも返ってきませんでした');
     return { ...midi, notes, rumination: r.rumination };
@@ -825,24 +999,28 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
   /** 作り直しの時にGeminiへ渡す設計図(旋律は音名に戻す) */
   function sketchForPrompt(sk) {
     return {
-      tempo: sk.tempo, beatsPerBar: sk.beatsPerBar, key: sk.key, scale: sk.scale, swing: sk.swing,
-      comping: sk.comping, voicing: sk.voicing, bass: sk.bass, signature: sk.signature, chords: sk.chords,
+      tempo: sk.tempo, beatsPerBar: sk.beatsPerBar, meters: metersOf(sk), key: sk.key, scale: sk.scale, swing: sk.swing,
+      comping: sk.comping, voicing: sk.voicing, bass: sk.bass, signature: sk.signature, techniques: sk.techniques || [], chords: sk.chords,
       melody: sk.melody.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })),
+      counter: (sk.counter || []).map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })),
       markers: sk.markers,
     };
   }
 
-  function sketchRules(barsText) {
+  function sketchRules(barsText, style) {
     return `出力の約束:
-- 長さは${barsText}。beatsPerBar は1小節の拍数(4分音符=1拍)
-- key は主音(例: D、F#)、scale は旋法・音階の名前(例: ドリアン)
-- chords: symbol はコードネーム(例: Fmaj7、Em9、Bb/C、C#m7b5、Gsus4、Dm7(11))。start・duration は拍単位(0始まり)。隙間なく並べる
+- 長さは${barsText}
+${FREEDOM_RULES}
+- key は主音(例: D、F#)、scale は旋法・音階の名前(例: ドリアン、八音音階、全音音階)
+- chords: symbol はコードネーム(例: Fmaj7、Em9、Bb/C、C#m7b5、Gsus4、Dm7(11))。「C|F#」のように「|」で区切ると、2つ(最大3つ)のコードを同時に重ねたポリコードになる(左が下、右が上に積まれる。「/」は分数コード=ベース音の指定で別物)。start・duration は拍単位(0始まり)。隙間なく並べる
 - comping(伴奏の型): sustain(伸ばす)/ stabs(短く刻む)/ offbeat(裏拍)/ pulse(8分で刻む)/ arpeggio(分散和音)/ broken(アルベルティ風)のどれか1つ
 - voicing(和音の積み方): close(密集)/ open(開離)/ shell(3度と7度だけ)/ cluster(2度でぶつける)/ quartal(4度堆積)/ power(ルートと5度)のどれか1つ
 - bass: root(ルートを伸ばす)/ root-fifth(ルートと5度)/ octave(8分のオクターブ)/ pedal(主音を持続)/ none のどれか1つ
 - swing: 0(まっすぐ)〜1(3連のハネ)。melody の start にはハネを付けずに書く(アプリが付ける)
 - melody: note は音名+オクターブ(C4が中央のド。例: E5、F#4、Bb4)で、おおむねC4〜C6。最初の1〜2小節で印象に残る動機を作り、それを繰り返し・移高・リズムの変形で展開する。休符(音の無い拍)も作る。強拍の音はそのときのコードの構成音かテンションにし、最後はコードの構成音で終える。1小節あたり2〜8音くらい
+- counter(任意): 対旋律、または短い音型を繰り返すオスティナート。melody と同じ形式で、音域は旋律とぶつからない所に。要らなければ空の配列
 - signature: trait にソウル側の特徴(15字以内)、device にそれを表す音楽の仕掛け(40字以内)。3〜4個
+${techniqueRule(style)}
 - markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名(無ければ空の配列)
 - name は「〜.mid」の形の短い英数字のファイル名
 - 資料の文章を引用しない
@@ -850,7 +1028,7 @@ ${ORIGINALITY_RULE}`;
   }
 
   function sketchStatus(midi, name) {
-    const unreadable = midi.sketch.chords.filter((c) => !parseChord(c.symbol)).length;
+    const unreadable = midi.sketch.chords.filter((c) => !parseLayers(c.symbol)).length;
     return `「${name}」を作りました${unreadable ? `(読めなかったコード${unreadable}個は鳴らしていません)` : ''}`;
   }
 
@@ -869,14 +1047,15 @@ ${ORIGINALITY_RULE}`;
       submitLabel: '作る',
       fields: [
         { name: 'bars', label: '小節数', value: '8' },
+        { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
         { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: 'テンポはゆっくり、最後は解決させない など' },
       ],
     });
     if (!values) return;
-    await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint });
+    await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint, style: String(values.style || '').trim().slice(0, 120) });
   }
 
-  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint }) {
+  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint, style }) {
     const material = window.LyraSoulMaterial || (() => '');
     const focus = focusParamIds || new Set();
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
@@ -891,7 +1070,7 @@ ${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 2. それぞれの特徴を、耳ですぐ分かる音楽の仕掛けにする。例: 和声の色(maj7・9thの多用、sus、借用和音、クロマチック・メディアント、ペダル上の和音)、旋法(ドリアン、リディアン、フリジアン、五音音階など)、リズムの感じ(ハネ、シンコペーション、ハーフタイム)、テンポ、伴奏の型、旋律の輪郭(跳躍・反復・装飾)
 3. 選んだ仕掛けを、コード・旋律・伴奏の型のどこかで必ず全部使う
 
-${sketchRules(`${bars}小節`)}
+${sketchRules(`${bars}小節`, style)}
 - description は「どこがそのソウルらしいか」を40字以内で
 ${WRITEUP_RULES}`;
     setStatus('コードと旋律を作っています…', { busy: true });
@@ -945,11 +1124,10 @@ ${WRITEUP_RULES}`;
         return `<rect${n.part ? ` class="roll-${n.part}"` : ''} x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1.5, rowH - 0.5).toFixed(1)}" rx="1"/>`;
       })
       .join('');
-    const bars = [];
-    for (let b = midi.beatsPerBar; b < beats; b += midi.beatsPerBar) {
-      const x = (b / beats) * width;
-      bars.push(`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${height}"/>`);
-    }
+    const bars = barList(midi, beats).slice(1).filter((b) => b.start < beats - EPS).map((b) => {
+      const x = (b.start / beats) * width;
+      return `<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${height}"/>`;
+    });
     const markers = midi.markers
       .map((m) => `<line class="roll-marker" x1="${((m.beat / beats) * width).toFixed(1)}" y1="0" x2="${((m.beat / beats) * width).toFixed(1)}" y2="${height}"/>`)
       .join('');
@@ -976,6 +1154,8 @@ ${WRITEUP_RULES}`;
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="ens-card-sub midi-concept">${escapeHtml(card.concept)}</div>` : '') +
       (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
+      (techniquesOf(card.midi).length ? `<div class="ens-card-sub midi-comment">技法: ${escapeHtml(techniquesOf(card.midi).map((t) => t.technique).join('・'))}</div>` : '') +
+      (metersOf(card.midi).length > 1 ? `<div class="ens-card-sub midi-comment">拍子: ${escapeHtml(meterLabel(card.midi))}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
       `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
       `<button type="button" class="btn-small" data-midi="revise">作り直す</button></div>`;
@@ -1001,8 +1181,24 @@ ${WRITEUP_RULES}`;
     return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${card.midi.edited ? '(ユーザーが手で編集済み)' : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
       (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
         (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
+      (metersOf(m).length > 1 || metersOf(m)[0].den !== 4 ? `、拍子 ${meterLabel(m)}` : '') +
+      (techniquesOf(m).length ? `、引用した技法 ${techniquesOf(m).map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''}`).join(' / ')}` : '') +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
       (m.cc.length ? `、CC ${m.cc.map((l) => l.label || `CC${l.controller}`).join(' / ')}` : '');
+  }
+
+  /** 引用した作曲家の技法(コード+旋律は設計図の中、それ以外は midi 直下) */
+  function techniquesOf(m) {
+    return (m.sketch && m.sketch.techniques) || m.techniques || [];
+  }
+
+  function techniquesPanelHtml(m) {
+    const list = techniquesOf(m);
+    if (!list.length) return '';
+    return `<div class="panel-section"><div class="panel-label">引用した作曲技法(旋律は引用していません)</div>` +
+      list.map((t) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(t.technique)}</span>` +
+        `<span class="sketch-device">${t.composer ? `${escapeHtml(t.composer)}${t.work ? `『${escapeHtml(t.work)}』など` : ''} — ` : ''}${escapeHtml(t.use)}</span></div>`).join('') +
+      `</div>`;
   }
 
   /** 主旋律の反芻の記録(コード+旋律は設計図の中、旋律だけのMIDIは midi 直下) */
@@ -1015,7 +1211,7 @@ ${WRITEUP_RULES}`;
       ? sk.signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')
       : '<div class="panel-empty">なし</div>';
     const chords = sk.chords
-      .map((c) => `<span class="sketch-chord" title="${(c.start / sk.beatsPerBar + 1).toFixed(2)}小節目から${c.duration}拍">${escapeHtml(c.symbol)}${parseChord(c.symbol) ? '' : '(読めず)'}</span>`)
+      .map((c) => `<span class="sketch-chord" title="${beatLabel(c.start, sk)}から${c.duration}拍">${escapeHtml(c.symbol.replace(/\|/g, ' | '))}${parseLayers(c.symbol) ? '' : '(読めず)'}</span>`)
       .join('');
     const plan = [
       `${sk.key}${sk.scale ? ` ${sk.scale}` : ''}`,
@@ -1034,11 +1230,11 @@ ${WRITEUP_RULES}`;
       ? m.cc.map((l) => `<div class="panel-source">CC${l.controller}${l.label ? ` — ${escapeHtml(l.label.replace(/^CC\d+\s*→?\s*/, ''))}` : ''}(${l.points.length}点)</div>`).join('')
       : '<div class="panel-empty">なし</div>';
     const markers = m.markers.length
-      ? m.markers.map((x) => `<div class="panel-source">${(x.beat / m.beatsPerBar + 1).toFixed(1)}小節目 — ${escapeHtml(x.label)}</div>`).join('')
+      ? m.markers.map((x) => `<div class="panel-source">${beatLabel(x.beat, m)} — ${escapeHtml(x.label)}</div>`).join('')
       : '<div class="panel-empty">なし</div>';
     return `<div class="panel-head"><div class="panel-title-wrap">` +
       `<input class="panel-title-input" data-midi-field="name" value="${escapeHtml(card.name)}">` +
-      `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${m.beatsPerBar}/4 · ${Math.ceil(totalBeats(m) / m.beatsPerBar)}小節 · ${m.notes.length}音 · 試聴の音色: ${escapeHtml(voiceOf(card).label)}(編集画面で変更)</div>` +
+      `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${escapeHtml(meterLabel(m))} · ${barList(m, totalBeats(m)).length}小節 · ${m.notes.length}音 · 試聴の音色: ${escapeHtml(voiceOf(card).label)}(編集画面で変更)</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
@@ -1047,10 +1243,12 @@ ${WRITEUP_RULES}`;
       (rumination(m) ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rumination(m).check)}` +
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
       `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch ? 140 : 90, card.selection)}</div>` +
-      (m.sketch ? `<div class="roll-legend"><span class="roll-legend-melody">旋律</span><span class="roll-legend-chords">コード</span><span class="roll-legend-bass">ベース</span>(.midでは別トラック)</div>` + sketchPanelHtml(m.sketch) : '') +
+      (m.sketch ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${PART_LABELS[p]}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      techniquesPanelHtml(m) +
+      (m.sketch ? sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
       (m.sketch && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
-      (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${(t.beat / m.beatsPerBar + 1).toFixed(1)}小節目 → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
+      (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${beatLabel(t.beat, m)} → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="edit">編集する</button>` +
@@ -1108,10 +1306,10 @@ ${WRITEUP_RULES}`;
    * フォルダの選択(ハンドル)はIndexedDBに残す。APIが無いブラウザでは普通のダウンロード。
    * ドラッグ(DownloadURL)はデスクトップ・エクスプローラー向けに残す。コード+旋律は全トラックか、パート1つずつ。 */
 
-  const PART_LABELS = { melody: '旋律', chords: 'コード', bass: 'ベース' };
+  const PART_LABELS = { melody: '旋律', counter: '対旋律', chords: 'コード', bass: 'ベース' };
 
   function partsOf(m) {
-    return ['melody', 'chords', 'bass'].filter((part) => m.notes.some((n) => n.part === part));
+    return PART_ORDER.filter((part) => m.notes.some((n) => n.part === part));
   }
 
   function midiFileName(card, part) {
@@ -1156,10 +1354,18 @@ ${WRITEUP_RULES}`;
       .filter((n) => n.duration >= 0.125 - EPS); // 範囲の端でほんの少しだけかかった音は捨てる
     let tempo = m.tempo;
     m.tempoChanges.forEach((t) => { if (t.beat <= sel.start + EPS) tempo = t.bpm; });
+    // 拍子: 範囲の頭の小節の拍子から始め、範囲の中で変わる所を小節番号を付け直して残す
+    const first = barAt(barList(m, sel.end), sel.start);
+    const meters = [
+      { bar: 1, num: first.num, den: first.den },
+      ...meterStarts(m).filter((x) => x.start > first.start + EPS && x.start < sel.end - EPS).map((x) => ({ bar: x.bar - first.bar + 1, num: x.num, den: x.den })),
+    ];
     const within = (beat) => beat >= sel.start - EPS && beat < sel.end - EPS;
     return {
       ...m,
       tempo,
+      beatsPerBar: meterLen(meters[0]),
+      meters,
       notes,
       cc: m.cc.map((l) => ({ ...l, points: l.points.filter((p) => within(p.beat)).map((p) => ({ ...p, beat: p.beat - sel.start })) })).filter((l) => l.points.length),
       markers: m.markers.filter((x) => within(x.beat)).map((x) => ({ ...x, beat: x.beat - sel.start })),
@@ -1171,27 +1377,33 @@ ${WRITEUP_RULES}`;
   function exportCard(card) {
     if (!card.selection) return card;
     const sel = card.selection;
-    const bpb = card.midi.beatsPerBar;
+    const bars = barList(card.midi, sel.end);
     const base = String(card.name || 'lyra').replace(/\.mid$/i, '');
-    const from = Math.floor(sel.start / bpb) + 1;
-    const to = Math.ceil(sel.end / bpb - EPS);
+    const from = barAt(bars, sel.start).bar;
+    const to = barAt(bars, sel.end - 0.001).bar;
     return { ...card, name: `${base}_bars${from}${to > from ? `-${to}` : ''}.mid`, midi: sliceMidi(card.midi, sel) };
   }
 
-  function beatLabel(beat, bpb) {
-    const bar = Math.floor(beat / bpb + EPS) + 1;
-    const inBar = Math.round((beat - (bar - 1) * bpb) * 100) / 100;
-    return inBar ? `${bar}小節${inBar + 1}拍目` : `${bar}小節目`;
+  /** 「3小節目」「3小節2.5拍目」(拍は4分音符で数える。m は midi か設計図) */
+  function beatLabel(beat, m) {
+    const b = barAt(barList(m, beat + 1), beat);
+    const inBar = Math.round((beat - b.start) * 100) / 100;
+    return inBar ? `${b.bar}小節${inBar + 1}拍目` : `${b.bar}小節目`;
   }
 
   function selectionLabel(card) {
     const sel = card.selection;
     if (!sel) return '書き出す範囲: 全体';
-    const bpb = card.midi.beatsPerBar;
-    const onBars = Math.abs(sel.start % bpb) < EPS && Math.abs(sel.end % bpb) < EPS;
-    const span = onBars
-      ? `${sel.start / bpb + 1}〜${sel.end / bpb}小節`
-      : `${beatLabel(sel.start, bpb)}〜${beatLabel(sel.end, bpb)}の手前`;
+    const m = card.midi;
+    const bars = barList(m, sel.end + 16);
+    const isBarLine = (beat) => bars.some((b) => Math.abs(b.start - beat) < EPS);
+    const span = isBarLine(sel.start) && isBarLine(sel.end)
+      ? (() => {
+        const from = barAt(bars, sel.start).bar;
+        const to = barAt(bars, sel.end - 0.001).bar;
+        return from === to ? `${from}小節` : `${from}〜${to}小節`;
+      })()
+      : `${beatLabel(sel.start, m)}〜${beatLabel(sel.end, m)}の手前`;
     const count = sliceMidi(card.midi, sel).notes.length;
     return `書き出す範囲: ${span}・${midiToNoteName(sel.low)}〜${midiToNoteName(sel.high)}(${count}音)`;
   }
@@ -1231,10 +1443,12 @@ ${WRITEUP_RULES}`;
   /** 編集画面を開く。opts.mode: 'note'(既定)/ 'range'、opts.onDone: 保存した後に呼ぶ */
   function openMidiEditor(card, opts = {}) {
     const m = card.midi;
-    const bpb = m.beatsPerBar;
     let notes = m.notes.map((n) => ({ ...n }));
-    // 後ろに1小節の余白を足して、終わりの先にも音を置けるようにする
-    const beats = (Math.ceil(totalBeats(m) / bpb - EPS) + 1) * bpb;
+    // 後ろに1小節の余白を足して、終わりの先にも音を置けるようにする(拍子が途中で変わっても小節の線を正しく引く)
+    const usedBars = barList(m, totalBeats(m));
+    const lastBar = usedBars[usedBars.length - 1];
+    const beats = lastBar.start + lastBar.len * 2;
+    const allBars = barList(m, beats - EPS);
     let lo = 127;
     let hi = 0;
     notes.forEach((n) => { lo = Math.min(lo, n.pitch); hi = Math.max(hi, n.pitch); });
@@ -1259,9 +1473,18 @@ ${WRITEUP_RULES}`;
       if (p % 12 === 0) rowBg.push(`<line class="re-c" x1="0" y1="${(yOf(p) + rowH).toFixed(1)}" x2="${W}" y2="${(yOf(p) + rowH).toFixed(1)}"/>`);
     }
     const grid = [];
-    for (let b = 0; b <= beats; b++) grid.push(`<line class="${b % bpb === 0 ? 're-bar' : 're-beat'}" x1="${xOf(b).toFixed(1)}" y1="0" x2="${xOf(b).toFixed(1)}" y2="${H}"/>`);
+    const gridLine = (beat, cls) => grid.push(`<line class="${cls}" x1="${xOf(beat).toFixed(1)}" y1="0" x2="${xOf(beat).toFixed(1)}" y2="${H}"/>`);
+    allBars.forEach((b) => {
+      gridLine(b.start, 're-bar');
+      for (let k = 1; k < b.len - EPS; k++) gridLine(b.start + k, 're-beat');
+    });
+    gridLine(beats, 're-bar');
     const barNums = [];
-    for (let b = 0; b < beats; b += bpb) barNums.push(`<span style="left:${(b / beats) * 100}%">${b / bpb + 1}</span>`);
+    allBars.forEach((b, i) => {
+      const prevBar = allBars[i - 1];
+      const meter = !prevBar || prevBar.num !== b.num || prevBar.den !== b.den ? ` <em>${b.num}/${b.den}</em>` : '';
+      barNums.push(`<span style="left:${(b.start / beats) * 100}%">${b.bar}${meter}</span>`);
+    });
     const cLabels = [];
     for (let p = lo; p <= hi; p++) if (p % 12 === 0) cLabels.push(`<span style="top:${(yOf(p) / H) * 100}%;height:${(rowH / H) * 100}%">${midiToNoteName(p)}</span>`);
     const partSelect = parts.length > 1
@@ -1342,7 +1565,7 @@ ${WRITEUP_RULES}`;
       const n = notes[picked];
       const range = sel ? selectionLabel({ ...card, midi: draftMidi(), selection: sel }).replace('書き出す範囲', '範囲') : '書き出す範囲: 全体';
       info.textContent = `${notes.length}音${dirty ? '(未保存の変更あり)' : ''} · ${range}` +
-        (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, bpb)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${PART_LABELS[n.part]}` : ''})` : '');
+        (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, m)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${PART_LABELS[n.part]}` : ''})` : '');
       playBtn.textContent = preview ? '■ 停止' : sel ? '▶ 範囲を試聴' : '▶ 試聴';
     };
     const setMode = (next) => {
@@ -1434,12 +1657,19 @@ ${WRITEUP_RULES}`;
     const rangeUpdate = (event) => {
       const a = anchor;
       const b = point(event);
-      const q = event.shiftKey ? bpb : 1;
-      let start = Math.floor(Math.min(a.beat, b.beat) / q) * q;
-      let end = Math.ceil(Math.max(a.beat, b.beat) / q) * q;
-      if (end - start < q) end = start + q;
+      let start;
+      let end;
+      if (event.shiftKey) {
+        // 小節単位(拍子が途中で変わっても、その小節の頭と終わりにそろえる)
+        start = barAt(allBars, Math.min(a.beat, b.beat)).start;
+        const last = barAt(allBars, Math.max(a.beat, b.beat) - 0.001);
+        end = Math.max(last.start + last.len, start + barAt(allBars, start).len);
+      } else {
+        start = Math.floor(Math.min(a.beat, b.beat));
+        end = Math.max(Math.ceil(Math.max(a.beat, b.beat)), start + 1);
+      }
       end = Math.min(end, beats);
-      start = Math.min(start, end - q);
+      start = Math.min(start, end - 0.25);
       sel = { start, end, low: Math.min(a.pitch, b.pitch), high: Math.max(a.pitch, b.pitch) };
       drawSel();
     };
@@ -1599,7 +1829,13 @@ ${WRITEUP_RULES}`;
           const start = unswing(n.start);
           return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
         });
-      sk.bars = sketchBars(sk.chords, sk.melody, sk.beatsPerBar);
+      sk.counter = m.notes
+        .filter((n) => n.part === 'counter')
+        .map((n) => {
+          const start = unswing(n.start);
+          return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
+        });
+      sk.bars = sketchBars(sk);
     }
   }
 
@@ -1802,7 +2038,8 @@ ${WRITEUP_RULES}`;
     const t = (beat) => Math.round(beat * PPQ);
     const conductor = [
       { tick: 0, order: 0, bytes: metaEvent(0x03, textBytes(card.name.replace(/\.mid$/i, ''))) },
-      { tick: 0, order: 1, bytes: metaEvent(0x58, [m.beatsPerBar, 2, 24, 8]) },
+      // 拍子(途中で変わる所ごと)。分母は2の累乗の指数で書く
+      ...meterStarts(m).map((x) => ({ tick: t(x.start), order: 1, bytes: metaEvent(0x58, [x.num, Math.round(Math.log2(x.den)), 24, 8]) })),
       { tick: 0, order: 2, bytes: tempoBytes(m.tempo) },
       ...m.tempoChanges.map((x) => ({ tick: t(x.beat), order: 3, bytes: tempoBytes(x.bpm) })),
       ...m.markers.map((x) => ({ tick: t(x.beat), order: 4, bytes: metaEvent(0x06, textBytes(x.label)) })),
@@ -1854,7 +2091,7 @@ ${WRITEUP_RULES}`;
     if (window.LyraMini) window.LyraMini.refresh();
   };
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
-  const PART_GAIN = { melody: 0.5, chords: 0.32, bass: 1.1 };
+  const PART_GAIN = { melody: 0.5, counter: 0.4, chords: 0.32, bass: 1.1 };
 
   /* ---- Webの音色(試聴・WAV用) ----
    * 2026-09-25追加(ユーザー要望「編集画面からウェブ音色を選べるように。デフォルトはピアノ」)。
@@ -1874,7 +2111,7 @@ ${WRITEUP_RULES}`;
   ];
   const DEFAULT_VOICE = 'piano';
   const SAMPLE_BASE = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/';
-  const SAMPLE_GAIN = { melody: 1, chords: 0.55, bass: 0.9 };
+  const SAMPLE_GAIN = { melody: 1, counter: 0.75, chords: 0.55, bass: 0.9 };
   const sampleCache = new Map(); // `${gm}/${pitch}` → AudioBuffer | Promise | null(読み込めなかった)
 
   const voiceOf = (card) => VOICES.find((v) => v.id === (card && card.voice)) || VOICES.find((v) => v.id === DEFAULT_VOICE);

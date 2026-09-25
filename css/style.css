@@ -1383,6 +1383,8 @@ a.btn-secondary { display: block; }
 .roll-legend-melody::before { background: var(--accent); }
 .roll-legend-chords::before { background: #b5a071; }
 .roll-legend-bass::before { background: #7d6f58; }
+.roll-notes rect.roll-counter, .re-note.roll-counter { fill: #6f8a8a; }
+.roll-legend-counter::before { background: #6f8a8a; }
 .midi-chords { font-size: 11px; letter-spacing: 0.02em; }
 .midi-concept { font-size: 11px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .midi-writeup { font-size: 12px; line-height: 1.8; color: var(--ink); }
@@ -1522,6 +1524,7 @@ a.btn-secondary { display: block; }
 .re-main { flex: 1; min-width: 0; }
 .re-bars { position: relative; height: 18px; font-size: 10px; color: var(--muted); }
 .re-bars span { position: absolute; top: 2px; padding-left: 3px; }
+.re-bars em { font-style: normal; color: var(--accent-deep); margin-left: 3px; }
 .re-svg { display: block; width: 100%; height: min(56vh, 520px); background: #fbf8f1; border: 1px solid var(--line); border-radius: 4px; touch-action: none; cursor: crosshair; user-select: none; }
 .re-black { fill: #f1ebdf; }
 .re-c { stroke: #e0d6c3; stroke-width: 1; vector-effect: non-scaling-stroke; }
