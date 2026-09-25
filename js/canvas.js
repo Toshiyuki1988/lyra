@@ -48,8 +48,8 @@ const CARD_LONG_PRESS_MS = 300; // 0.25〜0.35秒の範囲で現代的なバラ�
 const CARD_PRESS_TOLERANCE_PX = 10; // 長押し待機中、指が多少動いてもキャンセルしない許容半径
 const AUTO_PAN_MARGIN = 48; // この距離より画面端に近づいたらキャンバスを自動でパンする
 const AUTO_PAN_MAX_SPEED = 14; // 端にぴったり張り付いた場合の1フレームあたりの移動量(px)
-const CARD_MIN_WIDTH = 120;
-const CARD_MIN_HEIGHT = 140;
+const CARD_MIN_WIDTH = 100;
+const CARD_MIN_HEIGHT = 48; // LYRAのカードは1〜2行の短いものが多いため、CONSTELLATION(140)より小さくした
 const CARD_MAX_SIZE = 900; // ハンドルドラッグで際限なく巨大化しないための上限
 
 // 背景ダブルタップ(俯瞰ズーム)関連の調整値
@@ -235,8 +235,14 @@ function onViewportWheel(event) {
 
 /* ---------------- 非ガイドモードでのダブルタップ: 全カードが収まるまでズームアウト ---------------- */
 
+/**
+ * 全カードが収まるまでズームする。LYRAでは、カード以外にも俯瞰に含めたい要素(ソウル画面の
+ * スクリーンショット)に`.canvas-fit-extra`を付けておけば一緒に収める。
+ * ズームの上限はjs/app.jsのgetFitMaxScale()(画面ごとに決まる)。入口画面でソウルが1つだけの時に
+ * 4倍まで拡大されて球体が画面いっぱいになる、といったことを防ぐため。
+ */
 function fitAllCardsToScreen() {
-  const cardEls = contentEl.querySelectorAll('.star-card');
+  const cardEls = contentEl.querySelectorAll('.star-card, .canvas-fit-extra');
   if (cardEls.length === 0) return;
 
   let minX = Infinity;
@@ -260,16 +266,34 @@ function fitAllCardsToScreen() {
   const contentHeight = Math.max(1, maxY - minY);
   const scaleX = (rect.width - PADDING * 2) / contentWidth;
   const scaleY = (rect.height - PADDING * 2) / contentHeight;
-  const newScale = clamp(Math.min(scaleX, scaleY), MIN_SCALE, MAX_SCALE);
+  const maxScale = typeof getFitMaxScale === 'function' ? getFitMaxScale() : MAX_SCALE;
+  const newScale = clamp(Math.min(scaleX, scaleY), MIN_SCALE, Math.min(MAX_SCALE, maxScale));
   const centerX = minX + contentWidth / 2;
   const centerY = minY + contentHeight / 2;
+  animateViewportTo(centerX, centerY, newScale);
+}
 
+/** キャンバス座標(centerX, centerY)が画面中央に来るよう、なめらかに移動する。scale省略時は今の倍率のまま */
+function animateViewportTo(centerX, centerY, scale) {
+  const rect = viewportEl.getBoundingClientRect();
+  const newScale = typeof scale === 'number' ? clamp(scale, MIN_SCALE, MAX_SCALE) : viewportState.scale;
   contentEl.classList.add('canvas-content--animated');
   viewportState.scale = newScale;
   viewportState.x = rect.width / 2 - centerX * newScale;
   viewportState.y = rect.height / 2 - centerY * newScale;
   applyViewportTransform();
   setTimeout(() => contentEl.classList.remove('canvas-content--animated'), 400);
+}
+
+/** 画面(ルート)を切り替える時に、前の画面の表示位置を覚えておく/戻すためのもの */
+function getViewportSnapshot() {
+  return { scale: viewportState.scale, x: viewportState.x, y: viewportState.y };
+}
+function setViewportSnapshot(snap) {
+  viewportState.scale = snap.scale;
+  viewportState.x = snap.x;
+  viewportState.y = snap.y;
+  applyViewportTransform();
 }
 
 /* ---------------- カードの自動パン(移動中に画面端へ近づいたらキャンバスが追従する) ---------------- */
@@ -418,6 +442,8 @@ function attachCardGestures(el) {
     if (card) {
       card.x = parseFloat(el.dataset.x) || 0;
       card.y = parseFloat(el.dataset.y) || 0;
+      // 画面ごとの後処理(ソウル画面でパラメータを動かしたら「ピン留め済み」にする等)
+      if (typeof onCardMoved === 'function') onCardMoved(card, el);
     }
     redrawAsterismLines(); // ドラッグ中は軽量パスのみだったため、確定時にフル再構築で整合を取る
     interact(viewportEl).draggable({ enabled: true }).gesturable({ enabled: true });

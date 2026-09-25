@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260924a">
+<link rel="stylesheet" href="css/style.css?v=20260925a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
   // URLに ?debug を付けたときだけ、画面下部にログを表示する簡易デバッグ機能。
   (function () {
@@ -52,30 +52,41 @@
 </head>
 <body>
   <header class="toolbar">
-    <h1>LYRA</h1>
+    <a class="brand" href="#/" title="はじめの画面へ">
+      <span class="brand-orb"></span>
+      <span class="brand-name">LYRA</span>
+    </a>
+    <nav id="crumbs" class="crumbs"></nav>
+    <span id="status" class="status"></span>
+    <div class="ensemble-nav">
+      <button id="ensemble-nav-btn" class="nav-link" disabled>アンサンブル <span class="nav-caret">▾</span></button>
+      <div id="ensemble-menu" class="ensemble-menu" hidden></div>
+    </div>
     <div class="toolbar-actions">
       <button id="sign-in-btn" hidden>Googleでサインイン</button>
       <button id="sign-out-btn" class="secondary" hidden>サインアウト</button>
-      <button id="settings-btn" class="secondary" title="設定">⚙</button>
+      <button id="settings-btn" class="secondary icon-btn" title="設定">⚙</button>
     </div>
-    <span id="status" class="status"></span>
     <div id="status-progress" class="status-progress" hidden><div id="status-progress-bar" class="status-progress-bar"></div></div>
   </header>
 
-  <div id="canvas-viewport" class="canvas-viewport">
-    <div id="canvas-content" class="canvas-content"></div>
-  </div>
+  <main id="stage" class="stage">
+    <div class="stage-main">
+      <div id="canvas-viewport" class="canvas-viewport">
+        <div id="canvas-content" class="canvas-content"></div>
+      </div>
+      <!-- 画面ごとの浮遊UI(検索欄・タブなど)。キャンバスのズームの影響を受けない -->
+      <div id="screen-overlay" class="screen-overlay"></div>
+    </div>
+    <!-- 右パネル(ソウル画面のパラメータ詳細など)。スマホでは下から出るシートになる -->
+    <aside id="side-panel" class="side-panel" hidden></aside>
+  </main>
 
-  <nav id="bottombar">
-    <button id="tool-text" class="tool-btn" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M12 6v13M9 19h6"/></svg>
-      テキスト
-    </button>
-  </nav>
+  <nav id="bottombar" hidden></nav>
 
   <div id="settings-modal" class="modal-overlay">
     <div class="modal">
-      <h2>初期設定</h2>
+      <h2>設定</h2>
       <p class="modal-desc">
         LYRA用のGoogle OAuthクライアントIDとGemini APIキーを入力してください
         (CONSTELLATIONとは別のものを使います)。
@@ -108,7 +119,10 @@
   <script src="js/drive.js?v=20260924a"></script>
   <script src="js/gemini.js?v=20260924a"></script>
   <script src="js/sound.js?v=20260924a"></script>
-  <script src="js/canvas.js?v=20260924a"></script>
-  <script src="js/app.js?v=20260924a"></script>
+  <script src="js/canvas.js?v=20260925a"></script>
+  <script src="js/app.js?v=20260925a"></script>
+  <script src="js/screens/home.js?v=20260925a"></script>
+  <script src="js/screens/soul.js?v=20260925a"></script>
+  <script src="js/screens/ensemble.js?v=20260925a"></script>
 </body>
 </html>
