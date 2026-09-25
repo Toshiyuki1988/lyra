@@ -1871,6 +1871,8 @@ ${WRITEUP_RULES}`;
       `<label class="re-field" data-sc-src-wrap>元<select data-sc-src-root>${rootOptions(guess.root)}</select><select data-sc-src-id class="re-scale-select">${scaleOptions(guess.id, false)}</select><small data-sc-from>${guess.from}</small></label>` +
       `<label class="re-field">新しい<select data-sc-root>${rootOptions(guess.root)}</select><select data-sc-id class="re-scale-select">${scaleOptions(guess.id, true)}</select></label>` +
       `<label class="re-field">対象<select data-sc-parts>${scaleParts}</select></label>` +
+      `<button type="button" class="btn-small" data-sc-preview title="選んだ音階をルートから1オクターブ上って下りる(カードの音色で)">▶ 音階を聴く</button>` +
+      `<label class="re-check"><input type="checkbox" data-sc-autoplay checked>選んだら鳴らす</label>` +
       `<button type="button" class="btn-small btn-small--accent" data-sc-apply>リスケール</button></div>`;
 
     const overlay = document.createElement('div');
@@ -2227,12 +2229,45 @@ ${WRITEUP_RULES}`;
       scEl('src-id').innerHTML = scaleOptions(scEl('src-id').value, false);
       scEl('id').innerHTML = scaleOptions(selId, true);
     };
+    /* 音階のプレビュー(2026-09-25、ユーザー要望「各音階をプレビューできるように」): ルートから1オクターブ上って下りる。
+     * 編集画面の試聴と同じ preview を使うので、どちらかを鳴らすともう一方は止まる */
+    const previewScale = async () => {
+      const scale = S.byId(scEl('id').value);
+      if (!scale) return;
+      stopAll();
+      stopPreview();
+      const root = Number(scEl('root').value);
+      let base = 60 + root;
+      if (base > 66) base -= 12;
+      const up = [...scale.intervals, 12].map((i) => base + i);
+      const pitches = [...up, ...up.slice(0, -1).reverse()];
+      const step = 0.5;
+      const scaleMidi = {
+        tempo: 120, beatsPerBar: 4, cc: [], markers: [], tempoChanges: [],
+        notes: pitches.map((pitch, i) => ({ pitch, start: i * step, duration: i === pitches.length - 1 ? 1.5 : step * 0.95, velocity: i === 0 || i === pitches.length - 1 ? 96 : 84 })),
+      };
+      const request = ++previewRequest;
+      const handle = await scheduleVoiced(soundAudioCtx, { voice: card.voice, midi: scaleMidi }, (ctx) => ctx.currentTime + 0.05);
+      if (request !== previewRequest || !overlay.isConnected) {
+        handle.stop();
+        return;
+      }
+      preview = { handle, timer: setTimeout(stopPreview, handle.duration * 1000 + 200) };
+      info.textContent = `${S.NOTE_NAMES[root]} ${scale.label}: ${scale.intervals.map((i) => S.NOTE_NAMES[(root + i) % 12]).join(' ')}`;
+      playBtn.textContent = '■ 停止';
+    };
+    const autoPreview = () => { if (scEl('autoplay').checked) previewScale(); };
+    scEl('preview').addEventListener('click', previewScale);
     scEl('method').addEventListener('change', syncMethod);
-    scEl('root').addEventListener('change', drawScaleRows);
+    scEl('root').addEventListener('change', () => {
+      drawScaleRows();
+      autoPreview();
+    });
     scEl('id').addEventListener('change', async () => {
       if (scEl('id').value !== '__ask') {
         lastScaleId = scEl('id').value;
         drawScaleRows();
+        autoPreview();
         return;
       }
       scEl('id').value = lastScaleId;
@@ -2249,6 +2284,7 @@ ${WRITEUP_RULES}`;
         refillScaleSelects(added.id);
         lastScaleId = added.id;
         drawScaleRows();
+        autoPreview();
         setStatus(`「${added.label}」を一覧に足しました(${added.intervals.map((i) => S.NOTE_NAMES[i]).join(' ')}、Cをルートにした時)`);
       } catch (err) {
         console.error(err);
@@ -2580,19 +2616,19 @@ ${WRITEUP_RULES}`;
    * 2026-09-25追加(ユーザー要望「編集画面からウェブ音色を選べるように。デフォルトはピアノ」)。
    * 試聴は三角波・のこぎり波の簡易シンセだけだったが、FluidR3 GMの音色(gleitz/midi-js-soundfonts、1音ずつのmp3)を
    * jsDelivrから、鳴らす音の高さの分だけ読み込んで使う(1音20〜40KB。読み込んだ音はページを開いている間だけ覚えておく)。
-   * 音色はカードごとに card.voice(無ければピアノ)。'synth' は従来の簡易シンセ。ドラム(GM配置)は常に簡易の打楽器音。
+   * 音色はカードごとに card.voice(無ければフルート。2026-09-25にユーザー要望でピアノから変更)。'synth' は従来の簡易シンセ。ドラム(GM配置)は常に簡易の打楽器音。
    * 読み込めなかった時は簡易シンセで鳴らす。.mid の書き出しには関係しない(Cubase側の音源で鳴らす)。 */
   const VOICES = [
+    { id: 'flute', label: 'フルート', gm: 'flute' },
     { id: 'piano', label: 'ピアノ', gm: 'acoustic_grand_piano' },
     { id: 'epiano', label: 'エレピ', gm: 'electric_piano_1' },
     { id: 'vibes', label: 'ビブラフォン', gm: 'vibraphone' },
     { id: 'guitar', label: 'ナイロンギター', gm: 'acoustic_guitar_nylon' },
     { id: 'strings', label: 'ストリングス', gm: 'string_ensemble_1' },
     { id: 'pad', label: 'シンセパッド', gm: 'pad_2_warm' },
-    { id: 'flute', label: 'フルート', gm: 'flute' },
     { id: 'synth', label: '簡易シンセ(読み込みなし)', gm: null },
   ];
-  const DEFAULT_VOICE = 'piano';
+  const DEFAULT_VOICE = 'flute';
   const SAMPLE_BASE = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/';
   const SAMPLE_GAIN = { melody: 1, counter: 0.75, chords: 0.55, bass: 0.9 };
   const sampleCache = new Map(); // `${gm}/${pitch}` → AudioBuffer | Promise | null(読み込めなかった)

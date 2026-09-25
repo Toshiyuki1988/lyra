@@ -1574,3 +1574,5 @@ a.btn-secondary { display: block; }
 .re-field--off { opacity: 0.4; }
 .re-scale-row { fill: rgba(184, 134, 59, 0.10); }
 .re-scale-root { fill: rgba(184, 134, 59, 0.22); }
+.re-check { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.re-check input { width: auto; margin: 0; }
