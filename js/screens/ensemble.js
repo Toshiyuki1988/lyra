@@ -443,6 +443,9 @@
       ? { x: Math.min(...placed.map((c) => c.x || 0)), y: Math.max(...placed.map((c) => (c.y || 0) + (c.height || 120))) + 60 }
       : newCardSpawnPos();
     window.LyraMidi.createSketch({
+      // つないだMIDIのパートは差し替えに使える。気づき・課題カードの文は「光景・物語」の初期値にする(ダイアログで直せる)
+      midiSources: placed.filter((c) => c.type === 'midi').slice(0, 3),
+      storyDefault: userTexts(placed).join(' / '),
       stage,
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので渡さない
       souls: souls.filter((s) => s.category !== 'plugin' && s.category !== 'stage'),
@@ -1225,6 +1228,11 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     }
   }
 
+  /** 気づき・(ユーザーが書いた)課題カードの文 */
+  function userTexts(cards) {
+    return cards.filter((c) => (c.type === 'text' || (c.type === 'task' && c.origin !== 'app')) && String(c.text || '').trim()).map((c) => c.text.trim().slice(0, 200));
+  }
+
   /** 右パネルがそのカードを表示中なら描き直す(MIDIの編集画面で保存した後など) */
   function refreshEnsemblePanel(card) {
     if (!currentRoute || currentRoute.screen !== 'ensemble' || els.sidePanel.hidden || panelCardId !== card.id) return;
@@ -1233,13 +1241,25 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
 
   /**
    * MIDIカードのブラッシュアップ用に、ASTRでつないだカードとその持ち主のソウルを集める(js/midi.js の reviseMidi)。
-   * 改善版どうしの自動の線でつながったMIDIカードと発言カードは数えない。ほかに何もつながっていなければnull。
+   * 発言カードは数えない。MIDIカードは、改善の系譜(revisionOf でつながる版どうし)の外のものだけを midis に分けて返す
+   * (パートの差し替えに使う)。texts は気づき・課題カードの文(光景・物語の初期値)。ほかに何もつながっていなければnull。
    * opts.excludeReferences: アーティスト名・曲名などのパラメータカードを外す(旋律を作る時)
    */
   function midiLinks(card, opts = {}) {
     if (!currentRoute || currentRoute.screen !== 'ensemble' || !getCardById(card.id)) return null;
     const comp = componentOf(card.id);
     if (!comp) return null;
+    // 改善の系譜: 元の版・改善版を revisionOf で両方向にたどる
+    const lineage = new Set([card.id]);
+    for (let changed = true; changed;) {
+      changed = false;
+      scope.cards.forEach((c) => {
+        if (c.type !== 'midi' || !c.revisionOf) return;
+        if (lineage.has(c.id) && !lineage.has(c.revisionOf)) { lineage.add(c.revisionOf); changed = true; }
+        if (lineage.has(c.revisionOf) && !lineage.has(c.id)) { lineage.add(c.id); changed = true; }
+      });
+    }
+    const midis = comp.map((id) => getCardById(id)).filter((c) => c && c.type === 'midi' && !lineage.has(c.id)).slice(0, 3);
     const linked = comp.map((id) => getCardById(id)).filter((c) => {
       if (!c || c.type === 'midi' || c.type === 'speech') return false;
       if (c.type === 'soul' && c.soulId === stage.id) return false;
@@ -1249,7 +1269,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       }
       return true;
     });
-    if (!linked.length) return null;
+    if (!linked.length && !midis.length) return null;
     const soulIds = new Set();
     linked.forEach((c) => ownerIdsOf(c).forEach((id) => soulIds.add(id)));
     soulIds.delete(stage.id);
@@ -1264,7 +1284,9 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     return {
       souls: [...soulIds].map((id) => getSoul(id)).filter(Boolean),
       lines: linked.filter((c) => c.type !== 'soul').map(cardLine).filter(Boolean),
-      names: [...new Set(linked.map(nameOf).filter(Boolean))],
+      names: [...new Set([...linked.map(nameOf), ...midis.map((c) => `「${c.name}」`)].filter(Boolean))],
+      midis,
+      texts: userTexts(linked),
       focusParamIds: new Set(linked.filter((c) => c.type === 'param').map((c) => c.paramId)),
     };
   }

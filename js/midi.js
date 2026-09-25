@@ -85,6 +85,175 @@
     return notes;
   }
 
+  /* ---- 時間の設計図(物語)と、ASTRでつないだMIDIのパートの差し替え ----
+   * 2026-09-25追加(ユーザー指摘「何かを計算して並べた感が強い。序破急や起承転結がない」)。
+   * 原因は (1) 伴奏の型・積み方・ベースが曲全体で1つ (2) 旋律に目的地(頂点・終わり方)が無い (3) 「転」が無い
+   * (4) 全体の起伏を考える段階が無い、とみた。そこで:
+   *   - 生成前にダイアログで「型」「イメージ元の光景・物語」を聞く(APIを使わない質問)
+   *   - Geminiには音を書く前に時間の設計図 arc(型・物語・頂点の小節・転の仕掛け・セクションごとの情景/緊張度/音域/
+   *     伴奏/役割/終わり方)を書かせる。キー名を arc にしてあるのは、構造化出力のプロパティがアルファベット順に
+   *     出てくる場合でも最初に書かれるようにするため(先に書いた設計図を踏まえて後の音が書かれる)。1回の呼び出しに収める
+   *   - renderSketch() がセクションごとに伴奏の型・積み方・ベース・和音の高さを切り替え、緊張度で強弱を動かす
+   *   - 反芻で「物語として聞こえるか」(頂点・動機の回帰・転・終わり方)も点検させる
+   * さらにユーザー要望「アステリズムで外部からつなげたものを置き換える」: ASTRでつないだ(改善の系譜の外の)MIDIカードの
+   * パート(旋律/コード/ベース)を、ダイアログで選ぶとそのまま使う。Geminiにはそのパートを固定として渡して他を書かせ、
+   * 生成後にアプリが差し替える。旋律を差し替える時は反芻を省く(ユーザーの旋律なので)= Geminiの呼び出しは1回。 */
+  const FORM_OPTIONS = [
+    { value: '', label: 'おまかせ(ソウルと物語から選ぶ)' },
+    { value: '序破急', label: '序破急' },
+    { value: '起承転結', label: '起承転結' },
+    { value: 'AABA', label: 'AABA(繰り返して、転じて、戻る)' },
+    { value: 'ABA', label: 'ABA(三部形式)' },
+    { value: '一続きの物語', label: '一続きの物語(型にはめない)' },
+  ];
+  const SOURCE_USES = [
+    { value: '', label: '使わない' },
+    { value: 'melody', label: '旋律をそのまま使う' },
+    { value: 'chords', label: 'コード(和音)をそのまま使う' },
+    { value: 'bass', label: 'ベースをそのまま使う' },
+    { value: 'melody+chords', label: '旋律とコードをそのまま使う' },
+  ];
+
+  /** 生成前にユーザーへ聞く欄(型・光景/物語・つないだMIDIから使うパート) */
+  function narrativeFields({ form, story, sources }) {
+    return [
+      { name: 'form', label: '型(時間の設計)', type: 'select', value: FORM_OPTIONS.some((o) => o.value === form) ? form : '', options: FORM_OPTIONS },
+      { name: 'story', label: 'イメージ元の光景・物語(任意)', type: 'textarea', value: story || '', placeholder: '夜明け前の港。霧の中で汽笛が一度だけ鳴り、やがて陽が射す… など。空欄ならソウルから考えます' },
+      ...(sources || []).slice(0, 3).map((c, i) => ({ name: `src${i}`, label: `つないだMIDI「${c.name}」から`, type: 'select', value: '', options: SOURCE_USES })),
+    ];
+  }
+
+  function readNarrative(values, sources) {
+    const fixed = (sources || []).slice(0, 3)
+      .map((card, i) => ({ card, parts: String(values[`src${i}`] || '').split('+').filter(Boolean) }))
+      .filter((x) => x.parts.length);
+    // 同じパートを2枚から取ろうとしたら、先のカードを優先する
+    const taken = new Set();
+    fixed.forEach((x) => { x.parts = x.parts.filter((part) => !taken.has(part) && taken.add(part)); });
+    return {
+      form: String(values.form || ''),
+      story: String(values.story || '').trim().slice(0, 300),
+      fixed: fixed.filter((x) => x.parts.length),
+    };
+  }
+
+  const fixedParts = (nar) => new Set(((nar && nar.fixed) || []).flatMap((x) => x.parts));
+
+  /** つないだMIDIの、そのパートの音(パートの無いMIDIは全部の音をそのパートとして) */
+  function sourceNotes(card, part) {
+    const all = card.midi.notes;
+    const tagged = all.some((n) => n.part);
+    return (tagged ? all.filter((n) => n.part === part) : all).map((n) => ({ ...n, part }));
+  }
+
+  /** プロンプト: 型・物語の指定と、固定するパート */
+  function narrativeRule(nar) {
+    if (!nar) return '';
+    const lines = [
+      `- 型: ${nar.form || 'おまかせ(ソウル・物語・つないだカードに合う型を選ぶ。序破急・起承転結・AABA・ABA・一続きの物語など)'}`,
+      nar.story ? `- イメージ元の光景・物語(ユーザーが書いたもの。これを時間の流れとして音にする): ${nar.story}` : '- イメージ元の光景・物語: ユーザーの指定なし。ソウルとつないだカードから、時間とともに変化する光景か物語を1つ考える',
+    ];
+    (nar.fixed || []).forEach(({ card, parts }) => {
+      const notes = parts.flatMap((part) => sourceNotes(card, part));
+      lines.push(`- 次のパートは、ユーザーがASTRでつないだMIDI「${card.name}」のものをそのまま使う(アプリが差し替えるので書き換えない)。` +
+        `テンポ${Math.round(card.midi.tempo)}・拍子 ${meterLabel(card.midi)} にそろえる:\n${editedNotesText({ notes })}`);
+    });
+    const fixedSet = fixedParts(nar);
+    if (fixedSet.has('melody')) lines.push('- 固定の旋律があるので、melody は空の配列にし、その旋律を引き立てるコード・ベース・対旋律を書く。arc もその旋律の起伏(頂点・終わり方)に合わせる');
+    if (fixedSet.has('chords')) lines.push('- 固定のコードがあるので、chords のコードネームはその和音の響きを表すように書く(ベースと鳴らし分けの計算に使う)');
+    if (fixedSet.has('bass')) lines.push('- 固定のベースがあるので、bass は none にしてよい');
+    return lines.join('\n');
+  }
+
+  /** 生成したMIDIの固定パートを、つないだMIDIの音に差し替える。設計図の旋律・対旋律も合わせる */
+  function applyFixedParts(midi, nar) {
+    if (!nar || !nar.fixed || !nar.fixed.length) return midi;
+    nar.fixed.forEach(({ card, parts }) => {
+      parts.forEach((part) => {
+        midi.notes = [...midi.notes.filter((n) => n.part !== part), ...sourceNotes(card, part)];
+      });
+    });
+    midi.notes.sort((a, b) => a.start - b.start);
+    midi.fixedFrom = nar.fixed.map(({ card, parts }) => ({ name: card.name, parts }));
+    if (midi.sketch) syncSketchFromNotes(midi);
+    return midi;
+  }
+
+  /** 固定するパートがある時、テンポ・拍子・ハネをつないだMIDIにそろえる(音の位置がずれないように) */
+  function alignToSource(sk, nar) {
+    const first = nar && nar.fixed && nar.fixed[0];
+    if (!first) return sk;
+    const src = first.card.midi;
+    const meters = metersOf(src).map((x) => ({ ...x }));
+    return { ...sk, tempo: src.tempo, meters, beatsPerBar: meterLen(meters[0]), swing: src.sketch ? src.sketch.swing : 0 };
+  }
+
+  const ARC_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      form: { type: 'STRING' },
+      story: { type: 'STRING' },
+      climaxBar: { type: 'INTEGER' },
+      turn: { type: 'STRING' },
+      sections: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            startBar: { type: 'INTEGER' },
+            bars: { type: 'INTEGER' },
+            scene: { type: 'STRING' },
+            tension: { type: 'INTEGER' },
+            register: { type: 'STRING' },
+            comping: { type: 'STRING' },
+            voicing: { type: 'STRING' },
+            bass: { type: 'STRING' },
+            role: { type: 'STRING' },
+            ending: { type: 'STRING' },
+          },
+          required: ['name', 'startBar', 'tension', 'role'],
+        },
+      },
+    },
+    required: ['form', 'story', 'climaxBar', 'sections'],
+  };
+
+  const REGISTERS = ['low', 'mid', 'high'];
+  const REGISTER_LABELS = { low: '低め', mid: '中音域', high: '高め' };
+  const REGISTER_CENTER = { low: 55, mid: 62, high: 69 };
+
+  function sanitizeArc(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const str = (v, n) => String(v || '').slice(0, n);
+    const sections = (raw.sections || [])
+      .slice(0, 8)
+      .map((x) => ({
+        name: str(x.name, 12),
+        startBar: Math.round(clampNum(x.startBar, 1, 256, 1)),
+        bars: Math.round(clampNum(x.bars, 0, 64, 0)),
+        scene: str(x.scene, 60),
+        tension: Math.round(clampNum(x.tension, 0, 10, 5)),
+        register: pickWord(x.register, REGISTERS, 'mid'),
+        comping: x.comping ? pickWord(x.comping, [...COMPINGS, 'none'], null) : null,
+        voicing: x.voicing ? pickWord(x.voicing, VOICINGS, null) : null,
+        bass: x.bass ? pickWord(x.bass, BASSES, null) : null,
+        role: str(x.role, 20),
+        ending: str(x.ending, 20),
+      }))
+      .sort((a, b) => a.startBar - b.startBar)
+      .filter((x, i, arr) => i === 0 || x.startBar !== arr[i - 1].startBar);
+    return { form: str(raw.form, 20), story: str(raw.story, 200), climaxBar: Math.round(clampNum(raw.climaxBar, 0, 256, 0)), turn: str(raw.turn, 80), sections };
+  }
+
+  /** 設計図の一行要約(反芻・作り直し・アンサンブルへの説明用) */
+  function arcSummary(arc) {
+    if (!arc) return '';
+    return `${arc.form}${arc.story ? `「${arc.story}」` : ''}: ` +
+      arc.sections.map((x) => `${x.name}(${x.startBar}小節〜、緊張${x.tension}、${x.role}${x.ending ? `、${x.ending}` : ''})`).join(' → ') +
+      (arc.climaxBar ? ` / 頂点 ${arc.climaxBar}小節` : '') + (arc.turn ? ` / 転: ${arc.turn}` : '');
+  }
+
   /** 作曲家の技法の要望(ダイアログの「取り入れたい作曲家・技法」)に応じた指示 */
   function techniqueRule(style) {
     if (!style) return '- techniques: 特定の作曲家の技法を意識して使ったら書く(composer・work・technique・use)。無ければ空の配列';
@@ -309,6 +478,7 @@
             { value: 'drone', label: 'テクスチャ・ドローン(長い音+CCの変化)' },
           ],
         },
+        ...narrativeFields({}),
         { name: 'bars', label: '小節数', value: '8' },
         { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
         ...gaugeFields(null),
@@ -319,6 +489,7 @@
     const bars = Math.round(clampNum(values.bars, 1, 32, 8));
     const style = String(values.style || '').trim().slice(0, 120);
     const gauges = readGauges(values);
+    const narrative = readNarrative(values, []);
     if (values.kind === 'sketch') {
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので、それ以外のソウルを渡す
       const nonStage = members.filter((s) => s.category !== 'stage');
@@ -338,6 +509,7 @@
         hint: values.hint,
         style,
         gauges,
+        narrative,
       });
       return;
     }
@@ -359,6 +531,8 @@ ${FREEDOM_RULES}
 - markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクションの名前(例: 「間:余白」「緊張:上昇」)
 - tempoChanges は、テンポを途中で変える意図がある時だけ
 - name は「〜.mid」の形の短いファイル名、description は40字以内の説明
+- 時間の設計: 全体を同じ調子で並べず、型に沿って区間ごとに密度・音域・強弱を変える。頂点を1か所決めてそこへ向かい、転(破)で予想を裏切り、終わり方を決める。markers には区間の名前(例: 「起:霧」「転:汽笛」)を入れる
+${narrativeRule(narrative)}
 ${gaugeRule(gauges)}
 ${techniqueRule(style)}
 ${ORIGINALITY_RULE}
@@ -430,6 +604,9 @@ ${WRITEUP_RULES}`;
     const linkNote = links
       ? `\n\nASTRでつないだもの: ${links.names.join('・')}${linkSouls.length ? `(ソウル: ${linkSouls.map((s) => s.name).join('・')}の知識も渡します)` : ''}。これを取り入れてブラッシュアップします。コメントは空でもかまいません。`
       : '\n\nMIDIカードにASTRでソウルやパラメータのカードをつないでおくと、その知識も取り入れてブラッシュアップします。';
+    // 改善の系譜の外からASTRでつないだMIDI(パートを差し替えられる。コード+旋律のカードのみ)
+    const sources = isSketch && links ? links.midis : [];
+    const prevArc = isSketch ? m.sketch.arc : null;
     const values = await showFormDialog({
       title: `「${card.name}」を作り直す`,
       message: `どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを${melodic ? '2回。主旋律の反芻を含みます' : '1回'}呼びます)。` +
@@ -437,6 +614,7 @@ ${WRITEUP_RULES}`;
       submitLabel: '作り直す',
       fields: [
         { name: 'comment', label: 'コメント', type: 'textarea', required: false, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' },
+        ...narrativeFields({ form: prevArc ? prevArc.form : '', story: (links && links.texts.join(' / ')) || (prevArc ? prevArc.story : ''), sources }),
         { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
         ...gaugeFields(gaugesOf(m)),
       ],
@@ -444,18 +622,19 @@ ${WRITEUP_RULES}`;
     if (!values) return;
     const comment = String(values.comment || '').trim();
     const gauges = readGauges(values);
+    const narrative = readNarrative(values, sources);
     const style = String(values.style || '').trim().slice(0, 120);
     if (!comment && !style && !links) {
       setStatus('コメントか「取り入れたい作曲家・技法」を書くか、ASTRでカードをつないでから作り直してください', { important: true });
       return;
     }
     const material = window.LyraSoulMaterial || (() => '');
-    const linkText = links
+    const linkText = links && (links.lines.length || linkSouls.length)
       ? `\nASTRでこのMIDIにつないだカード(今回のブラッシュアップで取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n') || '- (ソウルのカードのみ)'}\n` +
         (linkSouls.length ? `\nつないだソウルと手持ちの知識:\n${linkSouls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, links.focusParamIds, { excludeReferences: melodic })}`).join('\n\n')}\n` : '') +
         `\nつないだカード・ソウルの特徴を、コメントと矛盾しない範囲で取り入れる。${isSketch ? 'signature には取り入れた特徴を1〜2個足してよい(合計5個まで)。' : ''}\n`
       : '';
-    const editedText = m.edited
+    const editedText = m.edited || m.fixedFrom
       ? `\nユーザーは前回の版を編集画面で手で直している。手で直した実際の音(拍・音名・長さ)は次のとおりで、前回の${isSketch ? '設計図(旋律は直した旋律に合わせてある)' : 'MIDI'}より優先して尊重する。コード・ベースの音が直されていれば、その響きをコードネームに反映する:\n${editedNotesText(m)}\n`
       : '';
     const ens = getEnsemble(stage.id);
@@ -475,6 +654,7 @@ ${JSON.stringify(sketchForPrompt(m.sketch))}
 
 ${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bars}小節`, style)}
 ${gaugeRule(gauges)}(ゲージは前回の断片より優先する)
+${narrativeRule(narrative)}(型・物語が前回の arc と違えば、今回の指定に合わせて arc を書き直す)
 - description は、前回から何を変えたかを40字以内で
 ${WRITEUP_RULES}(今回の版に合わせて書き直す)`
       : `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
@@ -487,6 +667,8 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
 - コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)
 ${FREEDOM_RULES}
 ${gaugeRule(gauges)}(ゲージは前回のMIDIより優先する)
+- 時間の設計: 全体を同じ調子で並べず、型に沿って区間ごとに密度・音域・強弱を変える。頂点を1か所決めてそこへ向かい、転(破)で予想を裏切り、終わり方を決める
+${narrativeRule(narrative)}
 ${techniqueRule(style)}
 - notes は最大${MAX_NOTES}個。キースイッチ用のノートは入れない
 - cc の label は「CC74 → 何のつまみに割り当てる想定か」の形を保つ
@@ -500,7 +682,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       const purpose = raw.concept || raw.description || comment;
       let midi;
       if (isSketch) {
-        midi = renderSketch(await ruminateSketch({ ...sanitizeSketch(raw), gauges }, purpose));
+        const sk = alignToSource({ ...sanitizeSketch(raw), gauges }, narrative);
+        midi = applyFixedParts(renderSketch(fixedParts(narrative).has('melody') ? sk : await ruminateSketch(sk, purpose)), narrative);
       } else {
         midi = sanitizeMidi(raw);
         if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
@@ -555,6 +738,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
   const SKETCH_SCHEMA = {
     type: 'OBJECT',
     properties: {
+      arc: ARC_SCHEMA,
       name: { type: 'STRING' },
       description: { type: 'STRING' },
       concept: { type: 'STRING' },
@@ -613,7 +797,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       meters: METERS_SCHEMA,
       techniques: TECHNIQUES_SCHEMA,
     },
-    required: ['name', 'tempo', 'beatsPerBar', 'key', 'signature', 'chords', 'melody', 'comping', 'voicing', 'bass'],
+    required: ['arc', 'name', 'tempo', 'beatsPerBar', 'key', 'signature', 'chords', 'melody', 'comping', 'voicing', 'bass'],
   };
 
   const COMPINGS = ['sustain', 'stabs', 'offbeat', 'pulse', 'arpeggio', 'broken'];
@@ -801,8 +985,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     return a.reduce((sum, x) => sum + near(x, b), 0) + b.reduce((sum, y) => sum + near(y, a), 0) * 0.5;
   }
 
-  function chooseVoicing(chord, type, prev) {
-    const center = type === 'power' ? 50 : 62;
+  function chooseVoicing(chord, type, prev, centerOverride) {
+    const center = centerOverride || (type === 'power' ? 50 : 62);
     const shape = voicingShape(chord, type);
     const mean = (arr) => arr.reduce((sum, x) => sum + x, 0) / arr.length;
     let best = null;
@@ -819,6 +1003,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
 
   /** 伴奏の型 → コードの区間 [s, e) の中で鳴らす位置と長さ(拍)。小節の頭を基準にした型 */
   function compOnsets(type, s, e, bars) {
+    if (type === 'none') return []; // そのセクションは伴奏を抜く
     if (type === 'sustain') return [{ t: s, d: e - s }];
     const list = [];
     const push = (t, d) => {
@@ -899,6 +1084,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       chords,
       melody,
       counter,
+      arc: sanitizeArc(raw.arc),
       techniques: sanitizeTechniques(raw.techniques),
       markers: (raw.markers || []).slice(0, 32).map((x) => ({ beat: clampNum(x.beat, 0, limit, 0), label: String(x.label || '').slice(0, 40) })),
     };
@@ -913,6 +1099,17 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     const onBar = (t) => bars.some((b) => Math.abs(b.start - t) < EPS);
     const keyChord = parseChord(String(sk.key || '').split('|')[0]);
     const mean = (arr) => arr.reduce((sum, x) => sum + x, 0) / arr.length;
+    // 時間の設計図のセクション(開始の拍つき)。セクションごとに伴奏の型・積み方・ベース・和音の高さを切り替える
+    const sectionBars = barList(sk, end + 256);
+    const sections = ((sk.arc && sk.arc.sections) || []).map((x) => {
+      const bar = sectionBars.find((b) => b.bar === x.startBar);
+      return { ...x, start: bar ? bar.start : Infinity };
+    }).filter((x) => x.start < Infinity);
+    const sectionAt = (beat) => {
+      let hit = null;
+      sections.forEach((x) => { if (x.start <= beat + EPS) hit = x; });
+      return hit;
+    };
     let prev = null;
     const prevUpper = [];
     sk.chords.forEach((c) => {
@@ -921,7 +1118,12 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       const chord = layers[0];
       const s = c.start;
       const e = c.start + c.duration;
-      const lower = chooseVoicing(chord, sk.voicing, prev);
+      const sec = sectionAt(s);
+      const comping = (sec && sec.comping) || sk.comping;
+      const voicingType = (sec && sec.voicing) || sk.voicing;
+      const bassType = (sec && sec.bass) || sk.bass;
+      const center = sec && sec.register !== 'mid' ? REGISTER_CENTER[sec.register] : null;
+      const lower = chooseVoicing(chord, voicingType, prev, center);
       prev = lower;
       // ポリコード: 上のコードは密集で、下のコードより上(平均で5度〜1オクターブ半上)に積む
       let voicing = lower;
@@ -933,34 +1135,34 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         prevUpper[i] = up;
         voicing = [...voicing, ...up];
       });
-      const onsets = compOnsets(sk.comping, s, e, bars);
-      if (sk.comping === 'arpeggio' || sk.comping === 'broken') {
+      const onsets = compOnsets(comping, s, e, bars);
+      if (comping === 'arpeggio' || comping === 'broken') {
         const n = voicing.length;
         const idx = [...voicing.keys()];
-        const seq = sk.comping === 'arpeggio' ? [...idx, ...idx.slice().reverse().slice(1, -1)] : [0, n - 1, Math.floor(n / 2), n - 1];
+        const seq = comping === 'arpeggio' ? [...idx, ...idx.slice().reverse().slice(1, -1)] : [0, n - 1, Math.floor(n / 2), n - 1];
         onsets.forEach((o, k) => notes.push({ part: 'chords', pitch: voicing[seq[k % seq.length]], start: o.t, duration: o.d * 0.95, velocity: onBar(o.t) ? 78 : 68 }));
       } else {
         onsets.forEach((o) => voicing.forEach((pitch) => notes.push({
           part: 'chords',
           pitch,
           start: o.t,
-          duration: sk.comping === 'sustain' ? o.d : o.d * 0.95,
-          velocity: sk.comping === 'sustain' ? 62 : onBar(o.t) ? 76 : 66,
+          duration: comping === 'sustain' ? o.d : o.d * 0.95,
+          velocity: comping === 'sustain' ? 62 : onBar(o.t) ? 76 : 66,
         })));
       }
 
-      if (sk.bass === 'none') return;
-      const pc = sk.bass === 'pedal' && keyChord ? keyChord.root : chord.bass;
+      if (bassType === 'none') return;
+      const pc = bassType === 'pedal' && keyChord ? keyChord.root : chord.bass;
       let low = 36 + pc;
       if (low > 43) low -= 12; // G1〜F#2
       const hits = [];
-      if (sk.bass === 'octave') {
+      if (bassType === 'octave') {
         for (let t = s, k = 0; t < e - EPS; t += 0.5, k++) hits.push({ t, p: k % 2 ? low + 12 : low });
       } else {
         hits.push({ t: s, p: low });
         bars.filter((b) => b.start >= s - EPS && b.start < e - EPS).forEach(({ start: bar, len }) => {
           if (bar > s + EPS) hits.push({ t: bar, p: low });
-          if (sk.bass === 'root-fifth') {
+          if (bassType === 'root-fifth') {
             const mid = bar + (Number.isInteger(len) && len % 2 === 0 ? len / 2 : Math.ceil(len / 2 - EPS));
             if (mid < bar + len - EPS && mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: low + 7 > 50 ? low - 5 : low + 7 });
           }
@@ -969,7 +1171,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       }
       hits.forEach((h, i) => {
         const next = i + 1 < hits.length ? hits[i + 1].t : e;
-        const d = sk.bass === 'octave' ? 0.45 : (next - h.t) * 0.95;
+        const d = bassType === 'octave' ? 0.45 : (next - h.t) * 0.95;
         notes.push({ part: 'bass', pitch: h.p, start: h.t, duration: Math.max(0.1, d), velocity: onBar(h.t) ? 88 : 80 });
       });
     });
@@ -988,6 +1190,14 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     }
     applyDub(notes, bars, sk);
     applyEmotion(notes, sk.gauges);
+    // 緊張度で強弱を動かす(感情のゲージが大きいほど大きく。0なら動かさない)
+    if (sections.length) {
+      const strength = (sk.gauges && Number.isFinite(sk.gauges.emotion) ? sk.gauges.emotion : 50) / 50;
+      notes.forEach((n) => {
+        const sec = sectionAt(n.start);
+        if (sec) n.velocity = Math.round(Math.min(127, Math.max(20, n.velocity * (1 + (sec.tension - 5) * 0.05 * strength))));
+      });
+    }
     trimOverlaps(notes);
     notes.sort((a, b) => a.start - b.start);
     return {
@@ -1066,10 +1276,10 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     required: ['melody', 'check', 'changes'],
   };
 
-  async function ruminateMelody({ notes, chords, key, scale, meters, techniques, gauges, purpose }) {
+  async function ruminateMelody({ notes, chords, key, scale, meters, techniques, gauges, arc, purpose }) {
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。下の主旋律の案を、一度立ち止まって見直し(反芻し)、仕上げてください。
 ${purpose ? `この断片の狙い: ${purpose}\n` : ''}${key ? `キー: ${key}${scale ? ` ${scale}` : ''} / ` : ''}拍子: ${meters}(位置は曲頭からの通しの拍)
-${techniques && techniques.length ? `使っている作曲技法(保つ): ${techniques.map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''} — ${t.use}`).join(' / ')}\n` : ''}${gauges ? `ユーザーが決めたゲージ(書き換えても必ず守る):\n${GAUGES.map((g) => `- ${g.text(gauges[g.name])}`).join('\n')}\n` : ''}
+${techniques && techniques.length ? `使っている作曲技法(保つ): ${techniques.map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''} — ${t.use}`).join(' / ')}\n` : ''}${arc ? `時間の設計図: ${arcSummary(arc)}\n` : ''}${gauges ? `ユーザーが決めたゲージ(書き換えても必ず守る):\n${GAUGES.map((g) => `- ${g.text(gauges[g.name])}`).join('\n')}\n` : ''}
 ${chords && chords.length ? `コード進行(変えない。数字は拍): ${chords.map((c) => `${c.symbol}(${c.start}〜${c.start + c.duration})`).join(' ')}\n` : ''}
 主旋律の案(note は音名+オクターブ、C4が中央のド。start・duration は拍):
 ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })))}
@@ -1078,11 +1288,12 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
 1. 既存の有名な曲の旋律やフック(サビ・リフ・テーマ)に似ていないかを、音程の並び(上下の向きと音程の幅)とリズムの両方で点検する。特に最初の動機と、繰り返される音型を重点的に見る
 2. 似ている、または似ている可能性がある所は、音程の向き・跳躍の幅・リズム・休符の位置を変えて、別の旋律にする。似ていなければ大きく変えなくてよい
 3. 音楽として保つこと: 最初の動機の展開(繰り返し・移高・リズムの変形)、休符、長さ・音域・音数は案と同程度(おおむねC4〜C6)。拍子の変化・ポリコード・旋法など案の大胆さや、上の作曲技法は無難に戻さない。調性的な断片なら、強拍はそのときのコードの構成音かテンションにし、最後はコードの構成音で終える
-4. start にはハネを付けない(アプリが付ける)
+4. 物語として聞こえるかを点検し、足りなければ直す: 設計図の頂点の小節に向かって進み、そこで最も高い音か最も強い音に達するか / 最初の動機が形を変えて戻ってくるか / 転(破)の区間で予想を裏切っているか / 各区間の終わり方と、最後の終わり方が設計図どおりか / 休符で息継ぎしているか / ただ音を並べただけに聞こえないか
+5. start にはハネを付けない(アプリが付ける)
 
 出力:
 - melody: 仕上げた主旋律(案と同じ形式)
-- check: 点検の結論を40字以内で。曲名・アーティスト名は書かない(例: 「目立った類似は見当たらない」「冒頭の音型が定型的だったので変形」)
+- check: 類似と物語の点検の結論を40字以内で。曲名・アーティスト名は書かない(例: 「目立った類似は見当たらない」「冒頭の音型が定型的だったので変形」)
 - changes: 何をどう変えたかを80字以内で。変えていなければ「変更なし」`;
     const raw = await askGeminiJson({ prompt, responseSchema: RUMINATE_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '旋律の反芻' });
     return {
@@ -1094,7 +1305,7 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
   /** 設計図の旋律を反芻させ、置き換えた設計図を返す */
   async function ruminateSketch(sk, purpose) {
     setStatus('主旋律を反芻しています…(Geminiの2回目)', { busy: true });
-    const r = await ruminateMelody({ notes: sk.melody, chords: sk.chords, key: sk.key, scale: sk.scale, meters: meterLabel(sk), techniques: sk.techniques, gauges: sk.gauges, purpose });
+    const r = await ruminateMelody({ notes: sk.melody, chords: sk.chords, key: sk.key, scale: sk.scale, meters: meterLabel(sk), techniques: sk.techniques, gauges: sk.gauges, arc: sk.arc, purpose });
     const melody = sanitizeMelody(r.melody, 256);
     if (!melody.length) throw new Error('主旋律の反芻で音が1つも返ってきませんでした');
     const next = { ...sk, melody, rumination: r.rumination };
@@ -1114,7 +1325,7 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
   function sketchForPrompt(sk) {
     return {
       tempo: sk.tempo, beatsPerBar: sk.beatsPerBar, meters: metersOf(sk), key: sk.key, scale: sk.scale, swing: sk.swing,
-      comping: sk.comping, voicing: sk.voicing, bass: sk.bass, signature: sk.signature, techniques: sk.techniques || [], chords: sk.chords,
+      arc: sk.arc || null, comping: sk.comping, voicing: sk.voicing, bass: sk.bass, signature: sk.signature, techniques: sk.techniques || [], chords: sk.chords,
       melody: sk.melody.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })),
       counter: (sk.counter || []).map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })),
       markers: sk.markers,
@@ -1123,11 +1334,16 @@ ${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.sta
 
   function sketchRules(barsText, style) {
     return `出力の約束:
+- まず arc(時間の設計図)を書き、音はそれに従って書く:
+  - form: 型(序破急・起承転結・AABA・ABA・一続きの物語など)。story: 時間とともに変化する光景・物語を80字以内で
+  - sections: セクションごとに name(例: 序、起、A)、startBar(始まる小節、1始まり)、bars(小節数)、scene(その区間の情景・出来事を30字以内)、tension(緊張度0〜10)、register(low/mid/high。和音の高さ)、comping・voicing・bass(その区間の伴奏。区間ごとに変えてよい。comping none で伴奏を抜く)、role(提示・繰り返し・変化・頂点・解決・余韻など)、ending(その区間の終わり方: 解決・半終止・宙づり・急停止・フェードなど)
+  - climaxBar: 頂点の小節。turn: 「転」「破」で予想を裏切る仕掛け(転調・急な休止・リズムの崩れ・音域の跳ね上がりなど)を40字以内で
+- 音は arc に従う: 全区間を同じ調子で並べない。旋律には目的地を持たせ、climaxBar で最も高い音か最も強い音に達する。最初の動機は形を変えて戻ってくる。turn の区間で本当に予想を裏切る。最後は最後の区間の ending どおりに終える。息継ぎ(休符)でフレーズを区切る
 - 長さは${barsText}
 ${FREEDOM_RULES}
 - key は主音(例: D、F#)、scale は旋法・音階の名前(例: ドリアン、八音音階、全音音階)
 - chords: symbol はコードネーム(例: Fmaj7、Em9、Bb/C、C#m7b5、Gsus4、Dm7(11))。「C|F#」のように「|」で区切ると、2つ(最大3つ)のコードを同時に重ねたポリコードになる(左が下、右が上に積まれる。「/」は分数コード=ベース音の指定で別物)。start・duration は拍単位(0始まり)。隙間なく並べる
-- comping(伴奏の型): sustain(伸ばす)/ stabs(短く刻む)/ offbeat(裏拍)/ pulse(8分で刻む)/ arpeggio(分散和音)/ broken(アルベルティ風)のどれか1つ
+- comping・voicing・bass(トップレベル)は、セクションで指定しなかった時の既定。comping(伴奏の型): sustain(伸ばす)/ stabs(短く刻む)/ offbeat(裏拍)/ pulse(8分で刻む)/ arpeggio(分散和音)/ broken(アルベルティ風)のどれか1つ
 - voicing(和音の積み方): close(密集)/ open(開離)/ shell(3度と7度だけ)/ cluster(2度でぶつける)/ quartal(4度堆積)/ power(ルートと5度)のどれか1つ
 - bass: root(ルートを伸ばす)/ root-fifth(ルートと5度)/ octave(8分のオクターブ)/ pedal(主音を持続)/ none のどれか1つ
 - swing: 0(まっすぐ)〜1(3連のハネ)。melody の start にはハネを付けずに書く(アプリが付ける)
@@ -1154,12 +1370,14 @@ ${ORIGINALITY_RULE}`;
 
   /** 美学などのソウルから、コード+旋律+ベースの断片を作る(小節数と注文をたずねてから) */
   async function createSketch(opts) {
+    const sources = opts.midiSources || [];
     const values = await showFormDialog({
       title: 'コード+旋律で鳴らす',
       message: `${opts.souls.map((s) => s.name).join('・')}らしさが一聴で分かる、コード進行+旋律+ベースの断片を作ります。` +
-        `Geminiを2回呼びます(設計図と、主旋律の反芻)。${referenceNote(opts.souls)}`,
+        `Geminiを2回呼びます(時間の設計図と音、主旋律の反芻)。つないだMIDIの旋律をそのまま使う時は1回です。${referenceNote(opts.souls)}`,
       submitLabel: '作る',
       fields: [
+        ...narrativeFields({ story: opts.storyDefault, sources }),
         { name: 'bars', label: '小節数', value: '8' },
         { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
         ...gaugeFields(null),
@@ -1167,10 +1385,10 @@ ${ORIGINALITY_RULE}`;
       ],
     });
     if (!values) return;
-    await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint, style: String(values.style || '').trim().slice(0, 120), gauges: readGauges(values) });
+    await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint, style: String(values.style || '').trim().slice(0, 120), gauges: readGauges(values), narrative: readNarrative(values, sources) });
   }
 
-  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint, style, gauges }) {
+  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint, style, gauges, narrative }) {
     const material = window.LyraSoulMaterial || (() => '');
     const focus = focusParamIds || new Set();
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
@@ -1187,12 +1405,15 @@ ${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 
 ${sketchRules(`${bars}小節`, style)}
 ${gaugeRule(gauges)}
+${narrativeRule(narrative)}
 - description は「どこがそのソウルらしいか」を40字以内で
 ${WRITEUP_RULES}`;
     setStatus('コードと旋律を作っています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
-      const midi = renderSketch(await ruminateSketch({ ...sanitizeSketch(raw), gauges: gauges || null }, raw.concept || raw.description));
+      const sk = alignToSource({ ...sanitizeSketch(raw), gauges: gauges || null }, narrative);
+      // 旋律をつないだMIDIから使う時は、ユーザーの旋律なので反芻しない(Geminiの呼び出しは1回)
+      const midi = applyFixedParts(renderSketch(fixedParts(narrative).has('melody') ? sk : await ruminateSketch(sk, raw.concept || raw.description)), narrative);
       if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
       let name = String(raw.name || 'lyra_sketch.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
       if (!/\.mid$/i.test(name)) name += '.mid';
@@ -1270,6 +1491,8 @@ ${WRITEUP_RULES}`;
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="ens-card-sub midi-concept">${escapeHtml(card.concept)}</div>` : '') +
       (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
+      (card.midi.sketch && card.midi.sketch.arc ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.midi.sketch.arc.form)}${card.midi.sketch.arc.climaxBar ? ` · 頂点 ${card.midi.sketch.arc.climaxBar}小節` : ''}</div>` : '') +
+      (card.midi.fixedFrom ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.midi.fixedFrom.map((x) => `「${x.name}」の${x.parts.map((p) => PART_LABELS[p]).join('・')}`).join('、'))}を使用</div>` : '') +
       (techniquesOf(card.midi).length ? `<div class="ens-card-sub midi-comment">技法: ${escapeHtml(techniquesOf(card.midi).map((t) => t.technique).join('・'))}</div>` : '') +
       (metersOf(card.midi).length > 1 ? `<div class="ens-card-sub midi-comment">拍子: ${escapeHtml(meterLabel(card.midi))}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
@@ -1299,6 +1522,7 @@ ${WRITEUP_RULES}`;
         (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
       (metersOf(m).length > 1 || metersOf(m)[0].den !== 4 ? `、拍子 ${meterLabel(m)}` : '') +
       (gaugesOf(m) ? `、ゲージ ${gaugeLabel(gaugesOf(m))}` : '') +
+      (m.sketch && m.sketch.arc ? `、時間の設計図 ${arcSummary(m.sketch.arc)}` : '') +
       (techniquesOf(m).length ? `、引用した技法 ${techniquesOf(m).map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''}`).join(' / ')}` : '') +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
       (m.cc.length ? `、CC ${m.cc.map((l) => l.label || `CC${l.controller}`).join(' / ')}` : '');
@@ -1307,6 +1531,16 @@ ${WRITEUP_RULES}`;
   /** 引用した作曲家の技法(コード+旋律は設計図の中、それ以外は midi 直下) */
   function techniquesOf(m) {
     return (m.sketch && m.sketch.techniques) || m.techniques || [];
+  }
+
+  function arcPanelHtml(arc) {
+    const rows = arc.sections.map((x) => `<div class="arc-row"><span class="arc-name">${escapeHtml(x.name)}</span>` +
+      `<span class="arc-bars">${x.startBar}小節〜</span>` +
+      `<span class="arc-tension" title="緊張度 ${x.tension}"><i style="width:${x.tension * 10}%"></i></span>` +
+      `<span class="arc-text">${escapeHtml([x.role, x.scene, x.comping ? `伴奏: ${SKETCH_LABELS[x.comping]}` : '', x.register !== 'mid' ? REGISTER_LABELS[x.register] : '', x.ending ? `→ ${x.ending}` : ''].filter(Boolean).join(' · '))}</span></div>`).join('');
+    return `<div class="panel-section"><div class="panel-label">時間の設計図 · ${escapeHtml(arc.form)}</div>` +
+      (arc.story ? `<div class="midi-writeup">${escapeHtml(arc.story)}</div>` : '') + rows +
+      `<div class="panel-source">${arc.climaxBar ? `頂点: ${arc.climaxBar}小節` : ''}${arc.turn ? `${arc.climaxBar ? ' · ' : ''}転: ${escapeHtml(arc.turn)}` : ''}</div></div>`;
   }
 
   function techniquesPanelHtml(m) {
@@ -1362,6 +1596,8 @@ ${WRITEUP_RULES}`;
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
       `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch ? 140 : 90, card.selection)}</div>` +
       (m.sketch ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${PART_LABELS[p]}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      (m.sketch && m.sketch.arc ? arcPanelHtml(m.sketch.arc) : '') +
+      (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.map((p) => PART_LABELS[p]).join('・'))}</div>`).join('')}</div>` : '') +
       techniquesPanelHtml(m) +
       (m.sketch ? sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
@@ -1936,25 +2172,28 @@ ${WRITEUP_RULES}`;
     const m = card.midi;
     m.notes = notes.slice(0, MAX_SKETCH_NOTES);
     m.edited = true;
+    if (m.sketch) syncSketchFromNotes(m);
+  }
+
+  /** 実際のノートの旋律・対旋律を、設計図(sketch.melody / counter)に書き戻す */
+  function syncSketchFromNotes(m) {
     const sk = m.sketch;
-    if (sk) {
-      // 設計図の旋律はハネを付ける前の位置で持つので、renderSketch() で付けたハネを外して戻す
-      const shift = sk.swing > 0.01 ? sk.swing / 6 : 0;
-      const unswing = (b) => (shift && Math.abs(b - Math.floor(b) - 0.5 - shift) < 1e-3 ? b - shift : b);
-      sk.melody = m.notes
-        .filter((n) => n.part === 'melody')
-        .map((n) => {
-          const start = unswing(n.start);
-          return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
-        });
-      sk.counter = m.notes
-        .filter((n) => n.part === 'counter')
-        .map((n) => {
-          const start = unswing(n.start);
-          return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
-        });
-      sk.bars = sketchBars(sk);
-    }
+    // 設計図の旋律はハネを付ける前の位置で持つので、renderSketch() で付けたハネを外して戻す
+    const shift = sk.swing > 0.01 ? sk.swing / 6 : 0;
+    const unswing = (b) => (shift && Math.abs(b - Math.floor(b) - 0.5 - shift) < 1e-3 ? b - shift : b);
+    sk.melody = m.notes
+      .filter((n) => n.part === 'melody')
+      .map((n) => {
+        const start = unswing(n.start);
+        return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
+      });
+    sk.counter = m.notes
+      .filter((n) => n.part === 'counter')
+      .map((n) => {
+        const start = unswing(n.start);
+        return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
+      });
+    sk.bars = sketchBars(sk);
   }
 
   /** 手で直した実際のノート(パートごと、同時に鳴る音は+でまとめる)。作り直しのプロンプト用 */

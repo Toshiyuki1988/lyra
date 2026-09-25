@@ -1556,3 +1556,11 @@ a.btn-secondary { display: block; }
 .range-editor .re-tools .btn-small { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 5px 10px; }
 .roll-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
 .midi-sel-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+
+/* ---------- MIDIの時間の設計図(js/midi.js の arcPanelHtml) ---------- */
+.arc-row { display: grid; grid-template-columns: 3.2em 4.6em 48px 1fr; align-items: center; gap: 6px; font-size: 11.5px; padding: 3px 0; border-bottom: 1px dotted var(--line); }
+.arc-name { font-weight: 600; color: var(--ink); }
+.arc-bars { color: var(--faint); font-size: 10.5px; }
+.arc-tension { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.arc-tension i { display: block; height: 100%; background: var(--accent); }
+.arc-text { color: var(--muted); line-height: 1.5; }
