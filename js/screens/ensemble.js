@@ -126,13 +126,16 @@
       // MIDIカードのEditは編集画面(js/midi.js の openMidiEditor)を開く(2026-09-25)
       const editable = card.type === 'text' || card.type === 'midi' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
-      const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') : '';
+      const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
+      // 美学・ジャンル・作曲家のソウルカードには上に「ビート」(そのソウルのジャンルを象徴するビートをすぐ作る)
+      const soulOwner = card.type === 'soul' ? getSoul(card.soulId) : null;
+      const soulTools = soulOwner && BEAT_CATEGORIES.includes(soulOwner.category) ? hexHtml('beat', 'ビート') : '';
       // 気づきカードには上に「感想」(Geminiなどの話し手に一言もらう)
       const noteTools = card.type === 'text' ? hexHtml('comment', '感想') : '';
       // 気づき⇔課題の入れ替え(左下)。アプリからの課題は理由・対象のパラメータを持つので入れ替えない
       const swap = card.type === 'text' || (card.type === 'task' && card.origin !== 'app')
         ? hexHtml('swap', card.type === 'text' ? '→課題' : '→気づき') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + swap;
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + soulTools + swap;
     },
 
     onHexAction(action, card, el) {
@@ -147,6 +150,7 @@
       else if (action === 'sketch') sketchFromTask(card);
       else if (action === 'comment') commentOnNote(card, el);
       else if (action === 'swap') swapNoteTask(card);
+      else if (action === 'beat') makeBeat(card, el);
     },
 
     onCardTap(card) {
@@ -421,6 +425,39 @@
     focusCardId = card.id;
     renderMembers();
     listen(comp);
+  }
+
+  /* ---- ビート(2026-09-25、js/midi.js の createBeat) ----
+   * ソウルカードの「ビート」: そのソウル1体から、つないだカードも添えてすぐ作る。
+   * 課題カードの「ビート」: その課題カードのまとまりに招集されたソウル(プラグイン以外)とカードから作る。ソウルが無くても、
+   * 課題の文(「ボサノヴァのビート」など)だけで作れる。できたビートはそのカードから線でつながる */
+  const BEAT_CATEGORIES = ['aesthetic', 'genre', 'composer'];
+
+  function makeBeat(card, el) {
+    if (!window.LyraMidi) return;
+    if (el) deactivateEditGuide(el);
+    let souls;
+    let cards;
+    if (card.type === 'soul') {
+      souls = [getSoul(card.soulId)].filter(Boolean);
+      cards = neighbors(card.id).filter((c) => c.type !== 'speech');
+    } else {
+      const comp = componentOf(card.id) || [card.id];
+      souls = recruitedSouls(comp).filter((s) => s.category !== 'plugin' && s.category !== 'stage');
+      cards = comp.map((id) => getCardById(id)).filter(Boolean);
+      focusCardId = card.id;
+      renderMembers();
+    }
+    window.LyraMidi.createBeat({
+      stage,
+      souls,
+      contextText: cards.map(cardLine).filter(Boolean).map((l) => `- ${l}`).join('\n'),
+      focusParamIds: new Set(cards.filter((c) => c.type === 'param').map((c) => c.paramId)),
+      memberIds: [stage.id, ...souls.map((s) => s.id)],
+      fromCardId: card.id,
+      x: (card.x || 0),
+      y: (card.y || 0) + (card.height || 120) + 60,
+    });
   }
 
   function sketchFromTask(card) {

@@ -50,13 +50,13 @@
   ];
 
   /** ダイアログのゲージ欄(prev があればその値から) */
-  function gaugeFields(prev) {
-    return GAUGES.map((g) => ({ name: g.name, label: g.label, type: 'range', min: 0, max: 100, step: 5, ends: g.ends, value: String(prev && Number.isFinite(prev[g.name]) ? prev[g.name] : g.value) }));
+  function gaugeFields(prev, names) {
+    return GAUGES.filter((g) => !names || names.includes(g.name)).map((g) => ({ name: g.name, label: g.label, type: 'range', min: 0, max: 100, step: 5, ends: g.ends, value: String(prev && Number.isFinite(prev[g.name]) ? prev[g.name] : g.value) }));
   }
 
-  function readGauges(values) {
+  function readGauges(values, names) {
     const out = {};
-    GAUGES.forEach((g) => { out[g.name] = Math.round(clampNum(values[g.name], 0, 100, g.value)); });
+    GAUGES.filter((g) => !names || names.includes(g.name)).forEach((g) => { out[g.name] = Math.round(clampNum(values[g.name], 0, 100, g.value)); });
     return out;
   }
 
@@ -66,10 +66,10 @@
 
   function gaugeRule(gauges) {
     if (!gauges) return '';
-    return `- ゲージ(ユーザーが決めた度合い。必ず守る):\n${GAUGES.map((g) => `  - ${g.text(gauges[g.name])}`).join('\n')}`;
+    return `- ゲージ(ユーザーが決めた度合い。必ず守る):\n${GAUGES.filter((g) => Number.isFinite(gauges[g.name])).map((g) => `  - ${g.text(gauges[g.name])}`).join('\n')}`;
   }
 
-  const gaugeLabel = (gauges) => GAUGES.map((g) => `${g.label.replace(/のあるなし$|度$/, '')} ${gauges[g.name]}`).join(' · ');
+  const gaugeLabel = (gauges) => GAUGES.filter((g) => Number.isFinite(gauges[g.name])).map((g) => `${g.label.replace(/のあるなし$|度$/, '')} ${gauges[g.name]}`).join(' · ');
 
   /** 感情のゲージ → 強弱の幅(0 に近いほど一定の強さに、100 に近いほど起伏を大きく)。パートごとに平均を保つ */
   function applyEmotion(notes, gauges) {
@@ -474,7 +474,7 @@
             { value: 'sketch', label: 'コード+旋律+ベース(おすすめ)' },
             { value: 'melody', label: '旋律だけ' },
             { value: 'chords', label: 'コード進行' },
-            { value: 'rhythm', label: 'リズム(GMドラム配置)' },
+            { value: 'rhythm', label: 'ビート(GMドラム。ジャンルを象徴するビート)' },
             { value: 'drone', label: 'テクスチャ・ドローン(長い音+CCの変化)' },
           ],
         },
@@ -490,6 +490,27 @@
     const style = String(values.style || '').trim().slice(0, 120);
     const gauges = readGauges(values);
     const narrative = readNarrative(values, []);
+    if (values.kind === 'rhythm') {
+      const nonStage = members.filter((s) => s.category !== 'stage' && s.category !== 'plugin');
+      await runBeat({
+        stage,
+        souls: nonStage,
+        contextText: [
+          ...(speech.voices || []).map((v) => `- ${v.text}`),
+          speech.chain ? `- コンセプト: ${speech.chain.concept} / 構造語彙: ${speech.chain.structure} / 操作: ${(speech.chain.operations || []).join(' / ')}` : '',
+        ].filter(Boolean).join('\n'),
+        memberIds: speech.memberIds || [],
+        speechId: speech.id,
+        fromCardId: speech.id,
+        x: (speech.x || 0) + 30,
+        y: (speech.y || 0) + (speech.height || 280) + 40,
+        bars,
+        hint: values.hint,
+        reference: '',
+        gauges: { grain: gauges.grain, dub: gauges.dub, emotion: gauges.emotion },
+      });
+      return;
+    }
     if (values.kind === 'sketch') {
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので、それ以外のソウルを渡す
       const nonStage = members.filter((s) => s.category !== 'stage');
@@ -610,6 +631,7 @@ ${WRITEUP_RULES}`;
     if (!stage) return;
     const m = card.midi;
     const isSketch = !!m.sketch;
+    const isBeat = !!m.beat;
     const melodic = isSketch || m.kind === 'melody';
     // 旋律を作る経路では、「鳴らす」と同じくアーティスト名・曲名などの項目を渡さない
     const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: melodic }) : null;
@@ -627,18 +649,23 @@ ${WRITEUP_RULES}`;
         (m.edited ? '手で編集した音も踏まえます。' : '') + linkNote,
       submitLabel: '作り直す',
       fields: [
-        { name: 'comment', label: 'コメント', type: 'textarea', required: false, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' },
-        ...narrativeFields({ form: prevArc ? prevArc.form : '', story: (links && links.texts.join(' / ')) || (prevArc ? prevArc.story : ''), sources }),
-        { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
-        ...gaugeFields(gaugesOf(m)),
+        { name: 'comment', label: 'コメント', type: 'textarea', required: false, placeholder: isBeat ? 'キックをもっと食わせて、4小節目はブレイクに など' : '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' },
+        ...(isBeat
+          ? [{ name: 'reference', label: '参照曲・アーティスト(任意)', value: m.beat.reference || '', placeholder: 'J Dilla風のよれたハット、Amen break的なブレイク など' }, ...gaugeFields(gaugesOf(m), BEAT_GAUGES)]
+          : [
+            ...narrativeFields({ form: prevArc ? prevArc.form : '', story: (links && links.texts.join(' / ')) || (prevArc ? prevArc.story : ''), sources }),
+            { name: 'style', label: '取り入れたい作曲家・技法(任意)', placeholder: 'ストラヴィンスキーのポリコードと変拍子、ドビュッシーの全音音階 など。旋律は引用せず技法だけを使います' },
+            ...gaugeFields(gaugesOf(m)),
+          ]),
       ],
     });
     if (!values) return;
     const comment = String(values.comment || '').trim();
-    const gauges = readGauges(values);
+    const gauges = readGauges(values, isBeat ? BEAT_GAUGES : null);
+    const reference = String(values.reference || '').trim().slice(0, 200);
     const narrative = readNarrative(values, sources);
     const style = String(values.style || '').trim().slice(0, 120);
-    if (!comment && !style && !links) {
+    if (!comment && !style && !links && !(isBeat && reference !== (m.beat.reference || ''))) {
       setStatus('コメントか「取り入れたい作曲家・技法」を書くか、ASTRでカードをつないでから作り直してください', { important: true });
       return;
     }
@@ -657,7 +684,20 @@ ${WRITEUP_RULES}`;
     for (let c = card; c && history.length < 4; c = c.revisionOf ? ens.cards.find((x) => x.id === c.revisionOf) : null) {
       if (c.comment) history.unshift(c.comment);
     }
-    const prompt = isSketch
+    const prompt = isBeat
+      ? `あなたは作曲支援アプリLYRAのリズム担当(ドラムプログラマー)です。前に作ったビートを、ユーザーのコメントに沿って作り直してください。
+${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || '(なし。つないだカード・参照を取り入れる)'}
+${reference ? `参照曲・アーティスト: ${reference}\n` : ''}${linkText}${editedText}
+前回のビートの設計図(JSON):
+${JSON.stringify(beatForPrompt(m))}
+
+コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)。ジャンル(genre)は、コメントで変えるよう言われない限り保つ。
+
+${beatRules(`コメントで指示が無ければ前回と同じ${m.beat.sections.reduce((sum, x) => sum + x.bars, 0)}小節`)}
+${gaugeRule(gauges)}(ゲージは前回のビートより優先する)
+- description は、前回から何を変えたかを40字以内で
+${WRITEUP_RULES}(今回の版に合わせて書き直す)`
+      : isSketch
       ? `あなたは作曲支援アプリLYRAの作曲担当です。前に作ったコード+旋律の断片を、ユーザーのコメントに沿って作り直してください。
 ${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || (style ? '(なし。下の作曲家・技法を取り入れる)' : '(なし。つないだカード・ソウルを取り入れる)')}
 ${linkText}${editedText}
@@ -692,10 +732,12 @@ ${ORIGINALITY_RULE}
 ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     setStatus('MIDIを作り直しています…', { busy: true });
     try {
-      const raw = await askGeminiJson({ prompt, responseSchema: isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'MIDIの作り直し' });
+      const raw = await askGeminiJson({ prompt, responseSchema: isBeat ? BEAT_SCHEMA : isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: isBeat ? 'ビートの作り直し' : 'MIDIの作り直し' });
       const purpose = raw.concept || raw.description || comment;
       let midi;
-      if (isSketch) {
+      if (isBeat) {
+        midi = renderBeat({ ...sanitizeBeat(raw), reference }, gauges);
+      } else if (isSketch) {
         const sk = alignToSource({ ...sanitizeSketch(raw), gauges }, narrative);
         midi = applyFixedParts(renderSketch(fixedParts(narrative).has('melody') ? sk : await ruminateSketch(sk, purpose)), narrative);
       } else {
@@ -713,6 +755,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         id: newId(),
         type: 'midi',
         name: `${baseName(card.name)}_v${version}.mid`,
+        voice: card.voice,
         description: String(raw.description || '').slice(0, 60),
         ...writeup(raw),
         comment: comment.slice(0, 200),
@@ -734,6 +777,275 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     } catch (err) {
       console.error(err);
       setStatus(`MIDIを作り直せませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /* ---------------- BEAT(ドラムビート) ----------------
+   * 2026-09-25追加(ユーザー要望「MIDI生成と別でBEAT生成も実装する。美学などからはそのままジャンルを象徴するビートを
+   * すぐ生成できるように」「ビート、リズムには著作権がないはずなので、参照楽曲からも大いに影響を受けていいはず」)。
+   *   - Geminiには設計図だけを出させる: ジャンル・テンポ・1拍の分割(steps)・ハネ・セクション(小節数と、楽器ごとの
+   *     1小節ぶんの文字列 X=アクセント x=普通 o=ゴースト .=休み、最後の小節の差し替え=フィル)・参照・仕掛け。
+   *     Liteモデルは音を1つずつ並べるより、この「リズム譜の文字列」の方が崩れにくい
+   *   - アプリが決まった手順でGMドラム(10ch)のノートに展開する(renderBeat)。ハネ・ヒューマナイズ(感情のゲージ)もここで
+   *   - 参照曲・アーティストのビートの型・ノリは大いに取り入れてよいとする(ドラムパターンはジャンルに共有された語法。
+   *     ただし1曲のドラムパートを頭から終わりまで写し取ることはさせない)。主旋律の縛り(ORIGINALITY_RULE)と反芻は無い
+   *     → Geminiの呼び出しは1回
+   *   - card.midi.kind = 'beat'、設計図は card.midi.beat。ノートの part は 'drums' */
+  const DRUM_MAP = {
+    kick: 36, snare: 38, rim: 37, clap: 39, hat: 42, pedalhat: 44, openhat: 46, crash: 49, ride: 51, bell: 53,
+    lowtom: 45, midtom: 47, hightom: 50, floortom: 41, tamb: 54, cowbell: 56, shaker: 70, conga: 63, congalow: 64,
+    bongo: 60, bongolow: 61, clave: 75, woodblock: 76, cabasa: 69, timbale: 65, agogo: 67, triangle: 81,
+  };
+  const DRUM_ALIASES = {
+    bassdrum: 'kick', bd: 'kick', kickdrum: 'kick', sd: 'snare', snaredrum: 'snare', sidestick: 'rim', rimshot: 'rim',
+    handclap: 'clap', hh: 'hat', hihat: 'hat', closedhat: 'hat', closedhihat: 'hat', chh: 'hat', ch: 'hat', ohh: 'openhat',
+    openhihat: 'openhat', oh: 'openhat', pedalhihat: 'pedalhat', crashcymbal: 'crash', ridecymbal: 'ride', ridebell: 'bell',
+    tom: 'midtom', tambourine: 'tamb', maracas: 'shaker', congahigh: 'conga', bongohigh: 'bongo', claves: 'clave',
+    timbales: 'timbale', tri: 'triangle',
+  };
+  const DRUM_NAMES_JA = {
+    kick: 'キック', snare: 'スネア', rim: 'リム', clap: 'クラップ', hat: 'ハット', pedalhat: 'ペダルハット', openhat: 'オープンハット',
+    crash: 'クラッシュ', ride: 'ライド', bell: 'ライドベル', lowtom: 'ロータム', midtom: 'ミッドタム', hightom: 'ハイタム',
+    floortom: 'フロアタム', tamb: 'タンバリン', cowbell: 'カウベル', shaker: 'シェイカー', conga: 'コンガ', congalow: 'コンガ(低)',
+    bongo: 'ボンゴ', bongolow: 'ボンゴ(低)', clave: 'クラベス', woodblock: 'ウッドブロック', cabasa: 'カバサ', timbale: 'ティンバレス',
+    agogo: 'アゴゴ', triangle: 'トライアングル',
+  };
+  const BEAT_GAUGES = ['grain', 'dub', 'emotion'];
+  const MAX_BEAT_BARS = 32;
+
+  const DRUM_ROWS_SCHEMA = {
+    type: 'ARRAY',
+    items: { type: 'OBJECT', properties: { inst: { type: 'STRING' }, steps: { type: 'STRING' } }, required: ['inst', 'steps'] },
+  };
+  const BEAT_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      genre: { type: 'STRING' },
+      name: { type: 'STRING' },
+      description: { type: 'STRING' },
+      concept: { type: 'STRING' },
+      commentary: { type: 'STRING' },
+      tempo: { type: 'NUMBER' },
+      beatsPerBar: { type: 'INTEGER' },
+      steps: { type: 'INTEGER' },
+      swing: { type: 'NUMBER' },
+      meters: METERS_SCHEMA,
+      references: {
+        type: 'ARRAY',
+        items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['title'] },
+      },
+      signature: {
+        type: 'ARRAY',
+        items: { type: 'OBJECT', properties: { trait: { type: 'STRING' }, device: { type: 'STRING' } }, required: ['trait', 'device'] },
+      },
+      sections: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { name: { type: 'STRING' }, bars: { type: 'INTEGER' }, pattern: DRUM_ROWS_SCHEMA, fill: DRUM_ROWS_SCHEMA },
+          required: ['name', 'bars', 'pattern'],
+        },
+      },
+    },
+    required: ['genre', 'name', 'tempo', 'beatsPerBar', 'steps', 'sections'],
+  };
+
+  function drumKey(inst) {
+    const k = String(inst || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (DRUM_MAP[k]) return k;
+    if (DRUM_ALIASES[k]) return DRUM_ALIASES[k];
+    return null;
+  }
+
+  function sanitizeDrumRows(rows) {
+    const out = [];
+    (rows || []).forEach((r) => {
+      const inst = drumKey(r.inst);
+      if (!inst || out.some((x) => x.inst === inst)) return;
+      const steps = String(r.steps || '').replace(/[|\s]/g, '').replace(/[O0]/g, 'o').replace(/[-_]/g, '.').replace(/[^Xxo.]/g, '.').slice(0, 96);
+      if (steps.replace(/\./g, '')) out.push({ inst, steps });
+    });
+    return out.slice(0, 16);
+  }
+
+  function sanitizeBeat(raw) {
+    const stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.steps))) ? Math.round(Number(raw.steps)) : 4;
+    const meters = sanitizeMeters(raw.meters, Math.round(clampNum(raw.beatsPerBar, 2, 12, 4)));
+    let total = 0;
+    const sections = (raw.sections || []).slice(0, 12).map((x) => {
+      const bars = Math.max(0, Math.min(Math.round(clampNum(x.bars, 1, 16, 1)), MAX_BEAT_BARS - total));
+      total += bars;
+      return { name: String(x.name || '').slice(0, 16), bars, pattern: sanitizeDrumRows(x.pattern), fill: sanitizeDrumRows(x.fill) };
+    }).filter((x) => x.bars > 0 && x.pattern.length);
+    return {
+      genre: String(raw.genre || '').slice(0, 40),
+      tempo: clampNum(raw.tempo, 40, 260, 100),
+      beatsPerBar: meterLen(meters[0]),
+      meters,
+      steps: stepsPerBeat,
+      swing: stepsPerBeat % 3 === 0 ? 0 : clampNum(raw.swing, 0, 1, 0),
+      references: (raw.references || []).slice(0, 3).map((r) => ({ title: String(r.title || '').slice(0, 60), note: String(r.note || '').slice(0, 60) })).filter((r) => r.title),
+      signature: (raw.signature || []).slice(0, 4).map((x) => ({ trait: String(x.trait || '').slice(0, 30), device: String(x.device || '').slice(0, 80) })).filter((x) => x.trait || x.device),
+      sections,
+    };
+  }
+
+  /** 設計図 → カードの midi(GMドラムのノート、part 'drums') */
+  function renderBeat(beat, gauges) {
+    const notes = [];
+    const bars = barList(beat, Infinity);
+    const stepLen = 1 / beat.steps;
+    const e = gauges && Number.isFinite(gauges.emotion) ? gauges.emotion / 100 : 0.5;
+    const DUR = { openhat: 0.45, crash: 1, ride: 0.5, bell: 0.4, triangle: 0.5 };
+    const markers = [];
+    let barIdx = 0;
+    beat.sections.forEach((sec) => {
+      for (let i = 0; i < sec.bars; i++) {
+        const b = bars[barIdx++];
+        if (!b) return;
+        if (i === 0) markers.push({ beat: b.start, label: sec.name });
+        const n = Math.max(1, Math.round(b.len * beat.steps));
+        const rows = new Map(sec.pattern.map((r) => [r.inst, r.steps]));
+        if (i === sec.bars - 1) sec.fill.forEach((r) => rows.set(r.inst, r.steps));
+        rows.forEach((str, inst) => {
+          // 1小節より短い行: 1拍の倍数の長さ(1拍・2拍の型など)なら繰り返し、それ以外(「X」だけのクラッシュ等)は残りを休みにする
+          const repeat = str.length < n && str.length >= beat.steps && str.length % beat.steps === 0;
+          for (let k = 0; k < n; k++) {
+            if (!repeat && k >= str.length) break;
+            const vel = { X: 118, x: 96, o: 56 }[str[k % str.length]];
+            if (!vel) continue;
+            let t = b.start + k * stepLen;
+            // ハネ: 偶数分割(8分・16分)の裏のステップを後ろへ(swing=1で3連の位置)
+            if (beat.swing > 0.01 && beat.steps % 2 === 0 && k % 2 === 1) t += (beat.swing * stepLen) / 3;
+            // ヒューマナイズ(感情のゲージ): 強弱と発音のわずかな揺れ。小節の頭は揺らさない
+            const jitter = k === 0 ? 0 : (Math.random() * 2 - 1) * e * 0.012;
+            notes.push({
+              part: 'drums',
+              pitch: DRUM_MAP[inst],
+              start: Math.max(0, t + jitter),
+              duration: DUR[inst] || Math.min(stepLen * 0.9, 0.2),
+              velocity: Math.round(Math.min(127, Math.max(20, vel + (Math.random() * 2 - 1) * (2 + e * 12)))),
+            });
+          }
+        });
+      }
+    });
+    applyEmotion(notes, gauges);
+    notes.sort((a, b) => a.start - b.start);
+    return {
+      tempo: beat.tempo,
+      beatsPerBar: beat.beatsPerBar,
+      meters: metersOf(beat),
+      notes: notes.slice(0, MAX_SKETCH_NOTES),
+      cc: [],
+      markers,
+      tempoChanges: [],
+      kind: 'beat',
+      beat,
+      gauges: gauges || null,
+    };
+  }
+
+  /** 作り直しの時にGeminiへ渡す設計図 */
+  function beatForPrompt(m) {
+    const b = m.beat;
+    return { genre: b.genre, tempo: m.tempo, beatsPerBar: b.beatsPerBar, meters: metersOf(m), steps: b.steps, swing: b.swing, references: b.references, signature: b.signature, sections: b.sections };
+  }
+
+  function beatRules(barsText) {
+    return `出力の約束:
+- genre: このビートのジャンル(サブジャンルまで。例: ブームバップ、UKガラージ、アフロビート、ボサノヴァ、ドラムンベース)
+- steps は1拍を何分割するか(4=16分、3=3連、2=8分、6=16分3連)。swing は0〜1で、steps の裏のステップ(steps=4なら16分の裏、steps=2なら8分の裏)を後ろへずらす量。8分のハネにしたい時は steps=2 にする。3連系なら0
+- 長さは${barsText}。sections は順に並べ、bars はその区間の小節数。区間の役割(イントロ・メイン・ブレイクなど)に合わせて変化をつける
+- pattern は楽器ごとの行 {inst, steps}。steps は1小節ぶんの文字列で1文字=1ステップ(4/4 で steps=4 なら16文字、3/4なら12文字)。X=アクセント、x=普通、o=弱い(ゴーストノート)、.=休み。見やすさのための | や空白は入れてよい(無視する)
+- fill は区間の最後の小節だけの差し替え(フィル・ブレイク・キメ)。そこに書いた楽器の行だけが差し替わる。要らなければ空の配列
+- inst は次の名前だけを使う: ${Object.keys(DRUM_MAP).join(', ')}
+- 拍子を途中で変える時は meters([{bar, num, den}]。bar は変わる小節の番号)。その小節の文字列は、その小節の長さのステップ数にする。変えなければ空の配列
+- references: 影響を受けた参照(ジャンルの代表的なビート・曲・アーティスト・有名なブレイク)を1〜3個、title と note(何を取り入れたか30字)
+- signature: trait にソウル側の特徴(15字以内)、device にそれを表すリズムの仕掛け(40字以内)。1〜3個
+- name は「〜_beat.mid」の形の短い英数字のファイル名、description は40字以内`;
+  }
+
+  function beatPanelHtml(b) {
+    const rowsHtml = (rows, cls) => rows.map((r) => `<div class="beat-row${cls ? ` ${cls}` : ''}"><span class="beat-inst">${escapeHtml(DRUM_NAMES_JA[r.inst] || r.inst)}</span><code>${escapeHtml(r.steps)}</code></div>`).join('');
+    return `<div class="panel-section"><div class="panel-label">ビート · ${escapeHtml(b.genre)}</div>` +
+      `<div class="panel-source">1拍${b.steps}分割${b.swing > 0.01 ? ` · ハネ${Math.round(b.swing * 100)}%` : ''}${b.reference ? ` · 参照の注文: ${escapeHtml(b.reference)}` : ''}</div>` +
+      (b.references.length ? `<div class="beat-refs">${b.references.map((r) => `<div class="panel-source">参照: ${escapeHtml(r.title)}${r.note ? ` — ${escapeHtml(r.note)}` : ''}</div>`).join('')}</div>` : '') +
+      (b.signature.length ? b.signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('') : '') +
+      b.sections.map((sec) => `<div class="beat-section"><div class="beat-section-name">${escapeHtml(sec.name)} ×${sec.bars}小節</div>` +
+        rowsHtml(sec.pattern) + (sec.fill.length ? `<div class="beat-fill-label">最後の小節(フィル)</div>${rowsHtml(sec.fill, 'beat-row--fill')}` : '') + `</div>`).join('') +
+      `</div>`;
+  }
+
+  /** 美学・ジャンル・作曲家のソウルなどから、そのジャンルを象徴するビートを作る(小節数・参照・注文をたずねてから) */
+  async function createBeat(opts) {
+    const names = (opts.souls || []).map((s) => s.name);
+    const values = await showFormDialog({
+      title: 'ビートを作る',
+      message: `${names.length ? `${names.join('・')}の` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。`,
+      submitLabel: '作る',
+      fields: [
+        { name: 'bars', label: '小節数', value: '4' },
+        { name: 'reference', label: '参照曲・アーティスト(任意)', placeholder: 'J Dilla風のよれたハット、Amen break的なブレイク、90年代のUKガラージ など' },
+        ...gaugeFields(null, BEAT_GAUGES),
+        { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: 'テンポ85くらい、4小節目はブレイク、パーカッション多め など' },
+      ],
+    });
+    if (!values) return;
+    await runBeat({
+      ...opts,
+      bars: Math.round(clampNum(values.bars, 1, MAX_BEAT_BARS, 4)),
+      reference: String(values.reference || '').trim().slice(0, 200),
+      hint: values.hint,
+      gauges: readGauges(values, BEAT_GAUGES),
+    });
+  }
+
+  async function runBeat({ stage, souls, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, reference, hint, gauges }) {
+    const material = window.LyraSoulMaterial || (() => '');
+    const focus = focusParamIds || new Set();
+    const prompt = `あなたは作曲支援アプリLYRAのリズム担当(ドラムプログラマー)です。ユーザーはCubase Pro 15とMax 9で作曲しています。
+${souls.length ? '次のソウルを、そのソウルに結びつくジャンルを一聴で象徴するドラムビートにしてください。' : 'ユーザーのカード・注文に合うジャンルを一聴で象徴するドラムビートを作ってください。'}
+
+${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls.length ? `ソウルと手持ちの知識:\n${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus)}`).join('\n\n')}\n` : ''}${reference ? `\n参照曲・アーティスト(ユーザーの指定): ${reference}\n` : ''}${hint ? `\nユーザーの注文: ${hint}\n` : ''}
+考え方:
+1. ソウル(やカード)に最も結びつくジャンルを1つ決め、genre に書く。美学など音楽以外のソウルは、その美学と結びつきの強い音楽ジャンルを選ぶ(知識に音楽やジャンルの記述があれば最優先)
+2. そのジャンルの定番のビート(キックとスネアの置き場所、ハットやシェイカーの刻み、ハネ、テンポ帯、よく使う楽器)を土台にし、一聴でそのジャンルと分かるようにする
+3. ソウルらしさの仕掛けを1〜3個加え、signature に書く(例: ゴーストノートの多さ、抜きの小節、パーカッションの色、よれ)
+4. 参照曲・アーティストのビートの型・ノリ・音数・楽器の選び方は、大いに取り入れてよい(ドラムパターンはジャンルに共有された語法)。ただし1曲のドラムパートを頭から終わりまで写し取ることはせず、区間の構成とフィルは自分で組む
+
+${beatRules(`${bars}小節`)}
+${gaugeRule(gauges)}(ビートでは、粒度=ハットや刻みの細かさと音数、つんのめり=キックやスネアの食い・裏の強調・拍の頭の抜き、感情=強弱の起伏)
+${WRITEUP_RULES}`;
+    setStatus('ビートを作っています…', { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: BEAT_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'ビート' });
+      const beat = { ...sanitizeBeat(raw), reference };
+      if (!beat.sections.length) throw new Error('リズムの行が1つも読めませんでした');
+      const midi = renderBeat(beat, gauges);
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
+      let name = String(raw.name || 'lyra_beat.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
+      if (!/\.mid$/i.test(name)) name += '.mid';
+      const card = {
+        id: newId(),
+        type: 'midi',
+        name,
+        description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
+        memberIds: memberIds || [],
+        speechId: speechId || null,
+        midi,
+        x: x || 0,
+        y: y || 0,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      placeMidiCard(stage, card, fromCardId);
+      setStatus(`「${name}」を作りました(${beat.genre}、${Math.round(midi.tempo)} BPM)。タップで試聴・書き出しができます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`ビートを作れませんでした: ${err.message}`, { important: true });
     }
   }
 
@@ -820,8 +1132,8 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     close: '密集', open: '開離', shell: '3度と7度', cluster: '2度でぶつける', quartal: '4度堆積', power: 'ルートと5度',
     'root-fifth': 'ルートと5度', root: 'ルート', octave: '8分のオクターブ', pedal: '主音の持続', none: 'なし',
   };
-  const PART_NAMES = { melody: 'Melody', counter: 'Counter', chords: 'Chords', bass: 'Bass' };
-  const PART_ORDER = ['melody', 'counter', 'chords', 'bass'];
+  const PART_NAMES = { melody: 'Melody', counter: 'Counter', chords: 'Chords', bass: 'Bass', drums: 'Drums' };
+  const PART_ORDER = ['melody', 'counter', 'chords', 'bass', 'drums'];
   const MAX_SKETCH_NOTES = 1500;
   const EPS = 1e-6;
 
@@ -1494,7 +1806,8 @@ ${WRITEUP_RULES}`;
     const members = (card.memberIds || []).map((id) => getSoul(id)).filter(Boolean);
     const owner = members.find((s) => !s.isDefaultStage && s.category !== 'stage') || members[0];
     el.innerHTML =
-      `<div class="midi-head"><span class="midi-icon">♪</span><span class="ens-card-kind ens-card-kind--accent">MIDI${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
+      `<div class="midi-head"><span class="midi-icon">${card.midi.kind === 'beat' ? '◉' : '♪'}</span><span class="ens-card-kind ens-card-kind--accent">${card.midi.kind === 'beat' ? 'BEAT' : 'MIDI'}${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
+      (card.midi.beat ? `<div class="ens-card-sub midi-chords">${escapeHtml(card.midi.beat.genre)} · ${Math.round(card.midi.tempo)} BPM${card.midi.beat.swing > 0.01 ? ` · ハネ${Math.round(card.midi.beat.swing * 100)}%` : ''}</div>` : '') +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
       (card.linkedNames && card.linkedNames.length ? `<div class="ens-card-sub midi-comment">+ ${escapeHtml(card.linkedNames.join('・'))}をつないで</div>` : '') +
@@ -1527,6 +1840,13 @@ ${WRITEUP_RULES}`;
 
   function describe(card) {
     const m = card.midi;
+    if (m.beat) {
+      const b = m.beat;
+      return `[BEAT] ${card.name}${card.description ? `(${card.description})` : ''}: ${b.genre}、テンポ${Math.round(m.tempo)}、1拍${b.steps}分割${b.swing > 0.01 ? `、ハネ${Math.round(b.swing * 100)}%` : ''}、拍子 ${meterLabel(m)}、構成 ${b.sections.map((x) => `${x.name}×${x.bars}`).join(' → ')}` +
+        (b.references.length ? `、参照 ${b.references.map((r) => r.title).join(' / ')}` : '') +
+        (b.signature.length ? `、仕掛け ${b.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') +
+        (card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : '');
+    }
     const sk = m.sketch;
     return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${card.midi.edited ? '(ユーザーが手で編集済み)' : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
       (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
@@ -1608,6 +1928,7 @@ ${WRITEUP_RULES}`;
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
       `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch ? 140 : 90, card.selection)}</div>` +
       (m.sketch ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${PART_LABELS[p]}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      (m.beat ? beatPanelHtml(m.beat) : '') +
       (m.sketch && m.sketch.arc ? arcPanelHtml(m.sketch.arc) : '') +
       (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.map((p) => PART_LABELS[p]).join('・'))}</div>`).join('')}</div>` : '') +
       techniquesPanelHtml(m) +
@@ -1672,7 +1993,7 @@ ${WRITEUP_RULES}`;
    * フォルダの選択(ハンドル)はIndexedDBに残す。APIが無いブラウザでは普通のダウンロード。
    * ドラッグ(DownloadURL)はデスクトップ・エクスプローラー向けに残す。コード+旋律は全トラックか、パート1つずつ。 */
 
-  const PART_LABELS = { melody: '旋律', counter: '対旋律', chords: 'コード', bass: 'ベース' };
+  const PART_LABELS = { melody: '旋律', counter: '対旋律', chords: 'コード', bass: 'ベース', drums: 'ドラム' };
 
   function partsOf(m) {
     return PART_ORDER.filter((part) => m.notes.some((n) => n.part === part));
@@ -2627,9 +2948,11 @@ ${WRITEUP_RULES}`;
       return events;
     };
     const parts = mode === 'merged' ? [] : partsOf(m).filter((part) => !mode || mode === 'split' || part === mode);
+    // ドラム(BEAT)はGMの約束どおり10ch(0始まりで9)に置く。ドラムだけのMIDIは1トラックにまとめても10ch
+    const allDrums = m.notes.length > 0 && m.notes.every((n) => n.part === 'drums');
     const tracks = parts.length
-      ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), ch, PART_NAMES[part], ch === 0))
-      : [noteTrack(m.notes, 0, mode === 'merged' ? midiFileName(card, null).replace(/\.mid$/i, '') : 'LYRA', true)];
+      ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), part === 'drums' ? 9 : ch, PART_NAMES[part], ch === 0))
+      : [noteTrack(m.notes, allDrums ? 9 : 0, mode === 'merged' ? midiFileName(card, null).replace(/\.mid$/i, '') : 'LYRA', true)];
     const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1 + tracks.length, (PPQ >> 8) & 255, PPQ & 255];
     return new Uint8Array([...header, ...trackChunk(conductor), ...tracks.flatMap((ev) => trackChunk(ev))]);
   }
@@ -2692,6 +3015,7 @@ ${WRITEUP_RULES}`;
   /** そのMIDIを鳴らすのに要る音を読み込む。1つでも読めなければ false(簡易シンセで鳴らす) */
   async function prepareVoice(voice, midi) {
     if (!voice.gm) return true;
+    if (midi.kind === 'beat' || (midi.notes.length && midi.notes.every((n) => n.part === 'drums'))) return true; // ドラムは合成音で鳴らす
     const pitches = [...new Set(midi.notes.map((n) => samplePitch(n.pitch)))];
     const load = (p) => {
       const key = `${voice.gm}/${p}`;
@@ -2762,8 +3086,10 @@ ${WRITEUP_RULES}`;
     const vol = lane(11) || lane(7);
     if (vol) vol.points.forEach((p) => out.gain.linearRampToValueAtTime(0.02 + (p.value / 127) * 0.3, startAt + toSec(p.beat)));
 
-    const isDrum = m.notes.length > 0 && m.notes.every((n) => !n.part && n.pitch >= 35 && n.pitch <= 81) && m.notes.some((n) => [36, 38, 42].includes(n.pitch)) && m.notes.every((n) => n.duration <= 1);
+    const isDrum = m.kind === 'beat' || (m.notes.length > 0 && m.notes.every((n) => n.part === 'drums')) ||
+      (m.notes.length > 0 && m.notes.every((n) => !n.part && n.pitch >= 35 && n.pitch <= 81) && m.notes.some((n) => [36, 38, 42].includes(n.pitch)) && m.notes.every((n) => n.duration <= 1));
     let noise = null;
+    const getNoise = () => noise || (noise = makeNoiseBuffer(ctx));
     const nodes = [];
     m.notes.forEach((n) => {
       const t0 = startAt + toSec(n.start);
@@ -2773,34 +3099,8 @@ ${WRITEUP_RULES}`;
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, t0);
       if (isDrum) {
-        const isKick = n.pitch <= 36;
-        if (isKick) {
-          const osc = ctx.createOscillator();
-          osc.frequency.setValueAtTime(120, t0);
-          osc.frequency.exponentialRampToValueAtTime(45, t0 + 0.12);
-          osc.connect(env);
-          osc.start(t0);
-          osc.stop(t0 + 0.3);
-          nodes.push(osc);
-          env.gain.linearRampToValueAtTime(amp * 1.4, t0 + 0.005);
-          env.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
-        } else {
-          if (!noise) noise = makeNoiseBuffer(ctx);
-          const src = ctx.createBufferSource();
-          src.buffer = noise;
-          const hp = ctx.createBiquadFilter();
-          hp.type = 'highpass';
-          hp.frequency.value = n.pitch >= 42 ? 7000 : 1500;
-          src.connect(hp);
-          hp.connect(env);
-          src.start(t0);
-          src.stop(t0 + 0.25);
-          nodes.push(src);
-          const len = n.pitch >= 42 ? 0.06 : 0.18;
-          env.gain.linearRampToValueAtTime(amp, t0 + 0.003);
-          env.gain.exponentialRampToValueAtTime(0.001, t0 + len);
-        }
-        env.connect(out); // 打楽器はローパスを通さない
+        // 打楽器はローパスを通さない。GMの音番号ごとに簡単な合成音で鳴らし分ける(drumHit)
+        nodes.push(...drumHit(ctx, n.pitch, t0, (n.velocity / 127) * 0.5, out, getNoise));
         return;
       }
       const sample = voice ? cachedSample(voice, n.pitch) : null;
@@ -2848,6 +3148,96 @@ ${WRITEUP_RULES}`;
         out.disconnect();
       },
     };
+  }
+
+  /**
+   * GMドラムの音番号 → 簡単な合成音(2026-09-25、BEAT生成に合わせて、キック/それ以外のノイズの2種から鳴らし分けを増やした)。
+   * 音色の再現ではなく、どの楽器がどこで鳴っているかを聞き分けるためのもの。
+   */
+  function drumHit(ctx, p, t0, amp, dest, getNoise) {
+    const nodes = [];
+    const env = (peak, attack, decay) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t0 + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+      g.connect(dest);
+      return g;
+    };
+    const tone = (type, f1, f2, sweep, g, dur) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f1, t0);
+      if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + sweep);
+      o.connect(g);
+      o.start(t0);
+      o.stop(t0 + dur);
+      nodes.push(o);
+    };
+    const hiss = (type, freq, q, g, dur) => {
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise();
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      src.connect(f);
+      f.connect(g);
+      src.start(t0);
+      src.stop(t0 + dur);
+      nodes.push(src);
+    };
+    const TOMS = { 41: 90, 43: 105, 45: 125, 47: 150, 48: 180, 50: 215 };
+    const HAND = { 60: 430, 61: 330, 62: 360, 63: 300, 64: 210 };
+    if (p <= 36) {
+      tone('sine', 140, 42, 0.13, env(amp * 1.7, 0.004, 0.32), 0.4); // キック
+    } else if (p === 38 || p === 40) {
+      tone('triangle', 200, 150, 0.05, env(amp * 0.5, 0.002, 0.1), 0.2); // スネア
+      hiss('highpass', 1800, 0.7, env(amp * 0.9, 0.002, 0.17), 0.25);
+    } else if (p === 37) {
+      tone('square', 1700, 0, 0, env(amp * 0.22, 0.001, 0.03), 0.05); // リム
+      hiss('bandpass', 3000, 4, env(amp * 0.45, 0.001, 0.03), 0.05);
+    } else if (p === 39) {
+      hiss('bandpass', 1200, 1.4, env(amp * 1.1, 0.002, 0.16), 0.22); // クラップ
+    } else if (p === 42 || p === 44) {
+      hiss('highpass', 7500, 0.7, env(amp * 0.45, 0.001, p === 44 ? 0.04 : 0.05), 0.08); // クローズ/ペダルハット
+    } else if (p === 46) {
+      hiss('highpass', 7000, 0.7, env(amp * 0.45, 0.002, 0.34), 0.4); // オープンハット
+    } else if (p === 49 || p === 57 || p === 52 || p === 55) {
+      hiss('highpass', 5000, 0.5, env(amp * 0.45, 0.003, 1.3), 1.4); // クラッシュ系
+    } else if (p === 51 || p === 59) {
+      hiss('bandpass', 6500, 1, env(amp * 0.3, 0.002, 0.55), 0.6); // ライド
+      tone('square', 3100, 0, 0, env(amp * 0.05, 0.002, 0.4), 0.45);
+    } else if (p === 53) {
+      tone('sine', 2400, 0, 0, env(amp * 0.35, 0.001, 0.5), 0.55); // ライドベル
+      tone('sine', 3620, 0, 0, env(amp * 0.2, 0.001, 0.4), 0.45);
+    } else if (TOMS[p]) {
+      tone('sine', TOMS[p] * 1.5, TOMS[p], 0.1, env(amp * 1.2, 0.003, 0.35), 0.45); // タム
+    } else if (p === 54) {
+      hiss('bandpass', 9000, 2, env(amp * 0.5, 0.002, 0.12), 0.15); // タンバリン
+    } else if (p === 56) {
+      const g = env(amp * 0.25, 0.001, 0.25); // カウベル
+      tone('square', 545, 0, 0, g, 0.3);
+      tone('square', 815, 0, 0, g, 0.3);
+    } else if (p === 69 || p === 70) {
+      hiss('highpass', 6000, 0.7, env(amp * 0.35, 0.01, 0.07), 0.1); // シェイカー・カバサ
+    } else if (HAND[p]) {
+      tone('sine', HAND[p] * 1.2, HAND[p], 0.04, env(amp * 0.8, 0.002, 0.2), 0.25); // コンガ・ボンゴ
+    } else if (p === 65 || p === 66) {
+      tone('triangle', p === 65 ? 420 : 330, 0, 0, env(amp * 0.5, 0.002, 0.2), 0.25); // ティンバレス
+      hiss('bandpass', 2500, 1, env(amp * 0.3, 0.002, 0.1), 0.15);
+    } else if (p === 67 || p === 68) {
+      tone('sine', p === 67 ? 900 : 680, 0, 0, env(amp * 0.4, 0.001, 0.2), 0.25); // アゴゴ
+    } else if (p === 75) {
+      tone('sine', 2500, 0, 0, env(amp * 0.5, 0.001, 0.05), 0.08); // クラベス
+    } else if (p === 76 || p === 77) {
+      tone('sine', p === 76 ? 1000 : 800, 0, 0, env(amp * 0.5, 0.001, 0.06), 0.09); // ウッドブロック
+    } else if (p === 80 || p === 81) {
+      tone('sine', 4200, 0, 0, env(amp * 0.25, 0.001, p === 81 ? 0.8 : 0.15), 0.9); // トライアングル
+    } else {
+      hiss('highpass', 3000, 0.7, env(amp * 0.4, 0.002, 0.08), 0.12);
+    }
+    return nodes;
   }
 
   function makeNoiseBuffer(ctx) {
@@ -2972,5 +3362,5 @@ ${WRITEUP_RULES}`;
 
   const isPlaying = (cardId) => Boolean(playing && playing.cardId === cardId);
 
-  window.LyraMidi = { openMidiEditor, createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, selectionLabel, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  window.LyraMidi = { openMidiEditor, createFromSpeech, createSketch, createBeat, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, selectionLabel, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();

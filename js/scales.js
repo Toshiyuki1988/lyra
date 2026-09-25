@@ -180,6 +180,7 @@
     return notes
       .map((n) => {
         if (opts.parts && !opts.parts.has(n.part || '')) return n;
+        if (n.part === 'drums') return n; // ドラム(GMの音番号=楽器)は音階に合わせない
         const pitch = opts.method === 'degree' && src
           ? degreePitch(n.pitch, opts.srcRoot, src.intervals, opts.root, tgt.intervals)
           : snapPitch(n.pitch, opts.root, tgt.intervals);
