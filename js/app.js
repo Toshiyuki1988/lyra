@@ -379,6 +379,21 @@ function readingFields(category) {
   return READING_FIELDS[category] || READING_FIELDS.plugin;
 }
 
+/**
+ * アーティスト名・曲名・作品名など、参照作品の列挙とみられる項目か。
+ * 2026-09-25: 「鳴らす」(コード+旋律)の時だけGeminiに渡さない(名前が目の前にあると、その人の作風や曲に寄せる方向へ
+ * 引っぱられうるため。ユーザー判断)。知識そのもの(ソウル画面・アンサンブルの発言)には残す。
+ * 項目名・モジュール名は広めに、説明文は「代表的なアーティスト」「〜はバンドである」のような言い方だけを見る。
+ */
+const REFERENCE_NAME_PATTERN = /アーティスト|ミュージシャン|バンド|歌手|シンガー|プロデューサー|楽曲|曲名|代表曲|代表作|作品例|アルバム|レーベル|プレイリスト|参考曲|参照曲|artist|musician|band|singer|producer|song|track|album|label|playlist/i;
+const REFERENCE_TEXT_PATTERN = /(代表|著名|有名|主要|先駆)的?な?(アーティスト|ミュージシャン|バンド|歌手|プロデューサー|作品|曲|アルバム)|(アーティスト|ミュージシャン|バンド|歌手|プロデューサー|ユニット)(名|の一人|のひとり|である|です|として知られ)/;
+
+function isReferenceParam(soul, p) {
+  const m = soul.modules.find((x) => x.id === p.moduleId);
+  if (REFERENCE_NAME_PATTERN.test(`${m ? `${m.location} ${m.name}` : ''} ${p.name}`)) return true;
+  return p.readings.some((r) => REFERENCE_TEXT_PATTERN.test(r.effect || ''));
+}
+
 /** 解体の進行度 = 確認済みパラメータ / 全パラメータ(ハンドオフ6節の「量」) */
 function soulProgress(soul) {
   const total = soul.params.length;

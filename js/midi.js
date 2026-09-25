@@ -19,7 +19,9 @@
   /* 2026-09-25: 「コンセプトや解説までMIDIカードに書いてほしい」「盗作になる危険は?」を受けて追加。
    * 旋律はGeminiが書いた音をほぼそのまま使うため、既存曲の引用・模倣をしないようプロンプトで縛る
    * (既存曲との照合手段は無い)。解説にも曲名・アーティスト名を出させない。 */
-  const ORIGINALITY_RULE = '- 既存の曲の旋律・リフ・特徴的なフレーズを引用・模倣しない。特定の曲やアーティストに寄せず、らしさはジャンル・美学に共通する語法(和声・旋法・リズム・音域・伴奏の型)だけで出す';
+  // 2026-09-25改訂: 主旋律は既存曲に似せない(さらに ruminateMelody() で反芻させる)。コード進行・リズムの型・音色の傾向は
+  // ジャンルに共有された語法なので、よく知られた定番進行も使ってよい(ユーザー判断「全体的にいい塩梅に」)
+  const ORIGINALITY_RULE = '- 主旋律は、既存の曲の旋律・リフ・特徴的なフレーズを引用・模倣しない。特定の曲やアーティストに寄せない(知識やカードに人名・曲名が出てきても、その人・曲の旋律に似せない)。一方、コード進行・リズムの型・伴奏の型・音色の傾向は、そのジャンル・美学の定番(よく知られた進行も含む)を積極的に使ってよい';
   const WRITEUP_RULES = `- concept は、この断片のコンセプト(情景・狙い)を60字以内で
 - commentary は解説。コード・旋律・リズムの仕掛けがそれぞれ何を表しているか、Cubaseで肉付けする時(音色・アレンジ)のヒントを200字以内で。特定の曲名・アーティスト名は出さない`;
   const writeup = (raw) => ({ concept: String(raw.concept || '').slice(0, 100), commentary: String(raw.commentary || '').slice(0, 400) });
@@ -197,8 +199,10 @@ ${WRITEUP_RULES}`;
     setStatus('MIDIを作っています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: MIDI_SCHEMA, maxOutputTokens: 8192 });
-      const midi = sanitizeMidi(raw);
+      let midi = sanitizeMidi(raw);
       if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
+      midi.kind = values.kind;
+      if (values.kind === 'melody') midi = await ruminateMidi(midi, raw.concept || raw.description);
       let name = String(raw.name || 'lyra.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
       if (!/\.mid$/i.test(name)) name += '.mid';
       const card = {
@@ -245,7 +249,7 @@ ${WRITEUP_RULES}`;
     if (!stage) return;
     const values = await showFormDialog({
       title: `「${card.name}」を作り直す`,
-      message: 'どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを1回呼びます)。',
+      message: `どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを${card.midi.sketch || card.midi.kind === 'melody' ? '2回。主旋律の反芻を含みます' : '1回'}呼びます)。`,
       submitLabel: '作り直す',
       fields: [{ name: 'comment', label: 'コメント', type: 'textarea', required: true, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' }],
     });
@@ -287,7 +291,17 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     setStatus('MIDIを作り直しています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'MIDIの作り直し' });
-      const midi = isSketch ? renderSketch(sanitizeSketch(raw)) : sanitizeMidi(raw);
+      const purpose = raw.concept || raw.description || values.comment;
+      let midi;
+      if (isSketch) {
+        midi = renderSketch(await ruminateSketch(sanitizeSketch(raw), purpose));
+      } else {
+        midi = sanitizeMidi(raw);
+        if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
+        midi.kind = m.kind || null;
+        // 旋律だけのMIDIは作り直しでも反芻する(種類が記録されていない古いカードは対象外)
+        if (m.kind === 'melody') midi = await ruminateMidi(midi, purpose);
+      }
       if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
       const version = (card.version || 1) + 1;
       const next = {
@@ -584,20 +598,10 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     return list.sort((x, y) => x.t - y.t);
   }
 
-  function sanitizeSketch(raw) {
-    const beatsPerBar = Math.round(clampNum(raw.beatsPerBar, 2, 7, 4));
-    const limit = 32 * beatsPerBar;
+  /** Geminiが音名で書いた旋律 → [{pitch,start,duration,velocity}](音域はC3〜C7に折り返す) */
+  function sanitizeMelody(list, limit) {
     const grid = (v) => Math.round(v * 12) / 12; // 16分と3連の両方が乗る細かさ
-    const chords = (raw.chords || [])
-      .map((c) => ({
-        symbol: normalizeAccidentals(c.symbol).slice(0, 16),
-        start: grid(clampNum(c.start, 0, limit, 0)),
-        duration: grid(clampNum(c.duration, 0.25, limit, beatsPerBar)),
-      }))
-      .filter((c) => c.symbol && c.start < limit)
-      .sort((a, b) => a.start - b.start)
-      .slice(0, 64);
-    const melody = (raw.melody || [])
+    return (list || [])
       .map((n) => {
         let pitch = noteNameToMidi(n.note);
         if (pitch === null) return null;
@@ -613,13 +617,33 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
       .filter((n) => n && n.start < limit)
       .sort((a, b) => a.start - b.start)
       .slice(0, 256);
+  }
+
+  function sketchBars(chords, melody, beatsPerBar) {
     let end = 0;
     chords.forEach((c) => { end = Math.max(end, c.start + c.duration); });
     melody.forEach((n) => { end = Math.max(end, n.start + n.duration); });
+    return Math.max(1, Math.ceil(end / beatsPerBar - EPS));
+  }
+
+  function sanitizeSketch(raw) {
+    const beatsPerBar = Math.round(clampNum(raw.beatsPerBar, 2, 7, 4));
+    const limit = 32 * beatsPerBar;
+    const grid = (v) => Math.round(v * 12) / 12; // 16分と3連の両方が乗る細かさ
+    const chords = (raw.chords || [])
+      .map((c) => ({
+        symbol: normalizeAccidentals(c.symbol).slice(0, 16),
+        start: grid(clampNum(c.start, 0, limit, 0)),
+        duration: grid(clampNum(c.duration, 0.25, limit, beatsPerBar)),
+      }))
+      .filter((c) => c.symbol && c.start < limit)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 64);
+    const melody = sanitizeMelody(raw.melody, limit);
     return {
       tempo: clampNum(raw.tempo, 40, 220, 96),
       beatsPerBar,
-      bars: Math.max(1, Math.ceil(end / beatsPerBar - EPS)),
+      bars: sketchBars(chords, melody, beatsPerBar),
       key: normalizeAccidentals(raw.key).slice(0, 6),
       scale: String(raw.scale || '').slice(0, 20),
       swing: clampNum(raw.swing, 0, 1, 0),
@@ -714,6 +738,66 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     };
   }
 
+  /* ---- 主旋律の反芻 ----
+   * 2026-09-25追加(ユーザー要望「生成する主旋律は必ず、Geminiが一度反芻したものに」)。
+   * 1回目で作った旋律を、もう1回だけGeminiに見直させる。既存の有名な旋律・フックに似ていないかを音程の並びと
+   * リズムの両方で点検させ、似ている(可能性がある)所は別物に書き換えさせる。コード進行は変えさせない
+   * (進行はジャンルに共有された語法なので、定番進行はそのままでよい、という判断)。
+   * 主旋律を作るすべての経路(鳴らす・発言の「MIDIにする」の旋律・それらの作り直し)で通す。反芻に失敗したら、
+   * 反芻していない旋律でカードを作らずエラーにする。点検の記録は sketch.rumination / midi.rumination に残す。 */
+
+  const RUMINATE_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      melody: SKETCH_SCHEMA.properties.melody,
+      check: { type: 'STRING' },
+      changes: { type: 'STRING' },
+    },
+    required: ['melody', 'check', 'changes'],
+  };
+
+  async function ruminateMelody({ notes, chords, key, scale, beatsPerBar, purpose }) {
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。下の主旋律の案を、一度立ち止まって見直し(反芻し)、仕上げてください。
+${purpose ? `この断片の狙い: ${purpose}\n` : ''}${key ? `キー: ${key}${scale ? ` ${scale}` : ''} / ` : ''}1小節 ${beatsPerBar}拍
+${chords && chords.length ? `コード進行(変えない。数字は拍): ${chords.map((c) => `${c.symbol}(${c.start}〜${c.start + c.duration})`).join(' ')}\n` : ''}
+主旋律の案(note は音名+オクターブ、C4が中央のド。start・duration は拍):
+${JSON.stringify(notes.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })))}
+
+見直すこと:
+1. 既存の有名な曲の旋律やフック(サビ・リフ・テーマ)に似ていないかを、音程の並び(上下の向きと音程の幅)とリズムの両方で点検する。特に最初の動機と、繰り返される音型を重点的に見る
+2. 似ている、または似ている可能性がある所は、音程の向き・跳躍の幅・リズム・休符の位置を変えて、別の旋律にする。似ていなければ大きく変えなくてよい
+3. 音楽として保つこと: 強拍はそのときのコードの構成音かテンション、最初の動機の展開(繰り返し・移高・リズムの変形)、休符、最後はコードの構成音で終える。長さ・音域・音数は案と同程度(おおむねC4〜C6)
+4. start にはハネを付けない(アプリが付ける)
+
+出力:
+- melody: 仕上げた主旋律(案と同じ形式)
+- check: 点検の結論を40字以内で。曲名・アーティスト名は書かない(例: 「目立った類似は見当たらない」「冒頭の音型が定型的だったので変形」)
+- changes: 何をどう変えたかを80字以内で。変えていなければ「変更なし」`;
+    const raw = await askGeminiJson({ prompt, responseSchema: RUMINATE_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '旋律の反芻' });
+    return {
+      melody: raw.melody,
+      rumination: { check: String(raw.check || '').slice(0, 60), changes: String(raw.changes || '').slice(0, 120) },
+    };
+  }
+
+  /** 設計図の旋律を反芻させ、置き換えた設計図を返す */
+  async function ruminateSketch(sk, purpose) {
+    setStatus('主旋律を反芻しています…(Geminiの2回目)', { busy: true });
+    const r = await ruminateMelody({ notes: sk.melody, chords: sk.chords, key: sk.key, scale: sk.scale, beatsPerBar: sk.beatsPerBar, purpose });
+    const melody = sanitizeMelody(r.melody, 32 * sk.beatsPerBar);
+    if (!melody.length) throw new Error('主旋律の反芻で音が1つも返ってきませんでした');
+    return { ...sk, melody, bars: sketchBars(sk.chords, melody, sk.beatsPerBar), rumination: r.rumination };
+  }
+
+  /** 「旋律だけ」のMIDI(音番号の形)を反芻させる */
+  async function ruminateMidi(midi, purpose) {
+    setStatus('主旋律を反芻しています…(Geminiの2回目)', { busy: true });
+    const r = await ruminateMelody({ notes: midi.notes, chords: null, beatsPerBar: midi.beatsPerBar, purpose });
+    const notes = sanitizeMelody(r.melody, 512);
+    if (!notes.length) throw new Error('主旋律の反芻で音が1つも返ってきませんでした');
+    return { ...midi, notes, rumination: r.rumination };
+  }
+
   /** 作り直しの時にGeminiへ渡す設計図(旋律は音名に戻す) */
   function sketchForPrompt(sk) {
     return {
@@ -746,11 +830,18 @@ ${ORIGINALITY_RULE}`;
     return `「${name}」を作りました${unreadable ? `(読めなかったコード${unreadable}個は鳴らしていません)` : ''}`;
   }
 
+  /** 「鳴らす」でGeminiに渡さないアーティスト名・曲名などの項目の数 */
+  function referenceNote(souls) {
+    const n = souls.reduce((sum, s) => sum + s.params.filter((p) => isReferenceParam(s, p)).length, 0);
+    return n ? `アーティスト名・曲名などの項目(${n}件)は渡しません。` : '';
+  }
+
   /** 美学などのソウルから、コード+旋律+ベースの断片を作る(小節数と注文をたずねてから) */
   async function createSketch(opts) {
     const values = await showFormDialog({
       title: 'コード+旋律で鳴らす',
-      message: `${opts.souls.map((s) => s.name).join('・')}らしさが一聴で分かる、コード進行+旋律+ベースの断片を作ります(Geminiを1回呼びます)。`,
+      message: `${opts.souls.map((s) => s.name).join('・')}らしさが一聴で分かる、コード進行+旋律+ベースの断片を作ります。` +
+        `Geminiを2回呼びます(設計図と、主旋律の反芻)。${referenceNote(opts.souls)}`,
       submitLabel: '作る',
       fields: [
         { name: 'bars', label: '小節数', value: '8' },
@@ -766,10 +857,10 @@ ${ORIGINALITY_RULE}`;
     const focus = focusParamIds || new Set();
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
 次のソウル(美学・ジャンルなど)を、コード進行+旋律(+ベース)の短い断片にしてください。
-目標は「聴いた瞬間に、そのソウルらしいと分かること」。無難で平凡な断片(ありがちな I-V-vi-IV、音階を上下するだけの旋律など)は失敗とみなします。
+目標は「聴いた瞬間に、そのソウルらしいと分かること」。無難で平凡な断片(そのソウルと無関係なありがちな進行、音階を上下するだけの旋律など)は失敗とみなします。コード進行は、そのソウルを象徴する定番進行なら、よく知られたものでも使ってかまいません。
 
 ${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}ソウルと手持ちの知識:
-${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus)}`).join('\n\n')}
+${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus, { excludeReferences: true })}`).join('\n\n')}
 ${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 考え方:
 1. 手持ちの知識から、そのソウルを最も象徴する特徴を3〜4個選ぶ。音楽についての記述があれば最優先。無ければ、色・質感・時代・場所・感情などの特徴を音楽に翻訳してよい(一般的な音楽理論の知識は使ってよい)
@@ -782,7 +873,7 @@ ${WRITEUP_RULES}`;
     setStatus('コードと旋律を作っています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
-      const midi = renderSketch(sanitizeSketch(raw));
+      const midi = renderSketch(await ruminateSketch(sanitizeSketch(raw), raw.concept || raw.description));
       if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
       let name = String(raw.name || 'lyra_sketch.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
       if (!/\.mid$/i.test(name)) name += '.mid';
@@ -881,6 +972,11 @@ ${WRITEUP_RULES}`;
       (m.cc.length ? `、CC ${m.cc.map((l) => l.label || `CC${l.controller}`).join(' / ')}` : '');
   }
 
+  /** 主旋律の反芻の記録(コード+旋律は設計図の中、旋律だけのMIDIは midi 直下) */
+  function rumination(m) {
+    return (m.sketch && m.sketch.rumination) || m.rumination || null;
+  }
+
   function sketchPanelHtml(sk) {
     const signature = sk.signature.length
       ? sk.signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')
@@ -915,6 +1011,8 @@ ${WRITEUP_RULES}`;
       (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
       (card.commentary ? `<div class="panel-section"><div class="panel-label">解説</div><div class="midi-writeup">${escapeHtml(card.commentary)}</div></div>` : '') +
       dragOutHtml(card) +
+      (rumination(m) ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rumination(m).check)}` +
+        `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
       `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}">${pianoRollSvg(m, 300, m.sketch ? 140 : 90)}</div>` +
       (m.sketch ? `<div class="roll-legend"><span class="roll-legend-melody">旋律</span><span class="roll-legend-chords">コード</span><span class="roll-legend-bass">ベース</span>(.midでは別トラック)</div>` + sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +

@@ -1512,3 +1512,4 @@ a.btn-secondary { display: block; }
 .modal .soul-picker-item:hover, .modal .soul-picker-item:focus-visible { border-color: var(--accent); background: #fdf6e8; color: var(--ink); outline: none; }
 .soul-picker-item svg { flex: none; }
 .soul-picker-count { margin-left: auto; font-size: 11px; color: var(--faint); }
+.midi-rumination { font-size: 11px; color: var(--muted); margin-top: 2px; }

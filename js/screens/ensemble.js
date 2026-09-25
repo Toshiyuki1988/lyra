@@ -423,7 +423,13 @@
       return;
     }
     const souls = recruitedSouls(compIds);
-    const cards = compIds.map((id) => getCardById(id)).filter(Boolean);
+    // アーティスト名・曲名などのパラメータカードは、つないであっても「鳴らす」には渡さない
+    const cards = compIds.map((id) => getCardById(id)).filter((c) => {
+      if (!c) return false;
+      if (c.type !== 'param') return true;
+      const { owner, p } = findParam(c);
+      return !(owner && p && isReferenceParam(owner, p));
+    });
     // 発言カードはまとまりの右上に出るので、MIDIカードはまとまりの下に置く(重ならないように)
     const placed = compIds.map((id) => getCardById(id)).filter(Boolean);
     const pos = placed.length
@@ -483,7 +489,7 @@
    * 2026-09-25: 以前は「他」を先頭40件に切っていたため、Serum2(229件)では後ろのモジュールが
    * ソウルから見えなかった。全件でも1〜2万トークン程度で、無料枠でも問題なく送れる。
    */
-  function soulMaterial(soul, focusParamIds) {
+  function soulMaterial(soul, focusParamIds, opts = {}) {
     const vocab = (soul.vocabulary || []).map((v) => `${v.term}=${v.meaning}`).join('; ');
     const cut = (text, max) => {
       const t = String(text || '').trim();
@@ -504,9 +510,10 @@
         (r.intent ? ` / ${f.intent}: ${cut(r.intent, intentMax)}` : '') +
         (p.notes.length ? ` / 気づき: ${cut(p.notes[p.notes.length - 1].text, 60)}` : '');
     };
+    // opts.excludeReferences: 「鳴らす」ではアーティスト名・曲名などの項目を渡さない(js/app.js の isReferenceParam)
     const groups = soul.modules
       .map((m) => {
-        const params = soul.params.filter((p) => p.moduleId === m.id);
+        const params = soul.params.filter((p) => p.moduleId === m.id && !(opts.excludeReferences && isReferenceParam(soul, p)));
         return params.length ? `   [${modulePath(m)}]\n${params.map(line).join('\n')}` : '';
       })
       .filter(Boolean);
