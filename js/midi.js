@@ -963,11 +963,16 @@ ${WRITEUP_RULES}`;
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
-  /* ---------------- Cubaseへドラッグで持ち出す ----------------
+  /* ---------------- Cubaseへ持ち込む(フォルダへ保存+ドラッグ) ----------------
    * 2026-09-25追加(ユーザー要望「小窓からドラッグ&ドロップでCubaseに移したい」)。
-   * Chrome/Edgeの DownloadURL ドラッグ(dragstartで 'DownloadURL' に「MIME:ファイル名:URL」を入れると、
-   * ドロップ先にファイルとして渡る)を使う。**Cubaseへ直接ドロップできるかは実機未確認**。入らない時は
-   * デスクトップ・エクスプローラーへ一度ドロップしてから持ち込む。コード+旋律は全トラックか、パート1つずつ。 */
+   * 最初はChrome/Edgeの DownloadURL ドラッグ(dragstartで 'DownloadURL' に「MIME:ファイル名:URL」)だけにしたが、
+   * 実機でCubaseのインストゥルメントトラックへ落とすと禁止マーク(丸に斜線)が出て入らなかった。Windowsでは
+   * 実体のファイルではなく「落とされてから中身を渡す仮のファイル」として渡るため、ファイルのパスを求める
+   * Cubaseは受け取れないとみている(エクスプローラー・デスクトップは受け取れる想定。未確認)。
+   * そこでチップの**クリック**で、一度選んだフォルダへ .mid を直接保存する(File System Access API)。
+   * そのフォルダをCubaseのMediaBay(かエクスプローラー)で開いておき、そこからトラックへドラッグする。
+   * フォルダの選択(ハンドル)はIndexedDBに残す。APIが無いブラウザでは普通のダウンロード。
+   * ドラッグ(DownloadURL)はデスクトップ・エクスプローラー向けに残す。コード+旋律は全トラックか、パート1つずつ。 */
 
   const PART_LABELS = { melody: '旋律', chords: 'コード', bass: 'ベース' };
 
@@ -982,20 +987,133 @@ ${WRITEUP_RULES}`;
 
   function dragChipsHtml(card) {
     const parts = partsOf(card.midi);
-    const chip = (part, label) => `<span class="midi-drag" draggable="true" data-drag-part="${part}" title="Cubaseのプロジェクトへドラッグ&ドロップ">⇲ ${escapeHtml(label)}</span>`;
+    const chip = (part, label) => `<span class="midi-drag" draggable="true" role="button" tabindex="0" data-drag-part="${part}" title="クリックで書き出し先フォルダへ保存(ドラッグならデスクトップ・エクスプローラーへ)">⇩ ${escapeHtml(label)}</span>`;
     return `<div class="midi-drags">${chip('', parts.length > 1 ? '全トラック' : 'MIDI')}${parts.length > 1 ? parts.map((p) => chip(p, PART_LABELS[p])).join('') : ''}</div>`;
   }
 
   function dragOutHtml(card) {
-    return `<div class="panel-section"><div class="panel-label">Cubaseへドラッグ</div>${dragChipsHtml(card)}` +
-      `<div class="midi-drag-hint">つまんでCubaseのプロジェクトへ落とします。直接入らない時は、デスクトップへ一度落としてから持ち込んでください</div></div>`;
+    return `<div class="panel-section"><div class="panel-label">Cubaseへ持ち込む</div>${dragChipsHtml(card)}` +
+      `<div class="midi-drag-hint">クリックで書き出し先フォルダへ保存します(初回だけフォルダを選びます)。そのフォルダをCubaseのMediaBayかエクスプローラーで開いて、トラックへドラッグしてください</div></div>`;
   }
 
-  /** root の中のドラッグ用チップに dragstart を付ける(小窓の文書でも使えるよう、要素単位で付ける) */
+  /* ---- 書き出し先フォルダ(ハンドルをIndexedDBに保存) ---- */
+
+  const HANDLE_DB = 'lyra-local';
+  const HANDLE_STORE = 'handles';
+  const EXPORT_KEY = 'midiExportDir';
+
+  function handleDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(HANDLE_DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(HANDLE_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function handleGet(key) {
+    const db = await handleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(HANDLE_STORE).objectStore(HANDLE_STORE).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function handleSet(key, value) {
+    const db = await handleDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(HANDLE_STORE, 'readwrite');
+      tx.objectStore(HANDLE_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  let exportDir = null;
+
+  /** 書き出し先フォルダ。pick=true か未設定なら選ばせる。権限が切れていればたずね直す(クリックの中から呼ぶ) */
+  async function getExportDir(pick) {
+    if (!exportDir) {
+      try {
+        exportDir = await handleGet(EXPORT_KEY);
+      } catch (err) {
+        debugLog(`書き出し先フォルダを読み出せなかった: ${err.message}`);
+      }
+    }
+    if (exportDir && !pick) {
+      const opts = { mode: 'readwrite' };
+      if ((await exportDir.queryPermission(opts)) === 'granted' || (await exportDir.requestPermission(opts)) === 'granted') return exportDir;
+    }
+    exportDir = await window.showDirectoryPicker({ id: 'lyra-midi-export', mode: 'readwrite', startIn: 'music' });
+    await handleSet(EXPORT_KEY, exportDir).catch((err) => debugLog(`書き出し先フォルダを覚えられなかった: ${err.message}`));
+    refreshMini();
+    return exportDir;
+  }
+
+  /** 同じ名前のファイルがあれば「名前 (2).mid」のようにずらす(ローカルでも既存のファイルを上書きしない) */
+  async function freeName(dir, filename) {
+    const stem = filename.replace(/\.mid$/i, '');
+    for (let i = 1; i < 100; i++) {
+      const name = i === 1 ? filename : `${stem} (${i}).mid`;
+      try {
+        await dir.getFileHandle(name);
+      } catch (err) {
+        if (err.name === 'NotFoundError') return name;
+        throw err;
+      }
+    }
+    return `${stem}_${Date.now()}.mid`;
+  }
+
+  async function saveToFolder(card, part) {
+    const blob = new Blob([buildSmf(card, part)], { type: 'audio/midi' });
+    const filename = midiFileName(card, part);
+    if (!window.showDirectoryPicker) {
+      downloadBlob(blob, filename);
+      notify(`${filename}をダウンロードしました(このブラウザはフォルダへの直接保存に対応していません)`);
+      return;
+    }
+    try {
+      const dir = await getExportDir(false);
+      const name = await freeName(dir, filename);
+      const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await writable.write(blob);
+      await writable.close();
+      notify(`「${dir.name}」に${name}を保存しました。MediaBayかエクスプローラーからトラックへドラッグできます`);
+    } catch (err) {
+      if (err.name === 'AbortError') return; // フォルダ選びをやめた
+      console.error(err);
+      notify(`保存できませんでした: ${err.message}`, true);
+    }
+  }
+
+  function notify(text, important) {
+    setStatus(text, important ? { important: true } : undefined);
+    if (window.LyraMini) window.LyraMini.flash(text);
+  }
+
+  async function exportDirName() {
+    try {
+      const dir = exportDir || (await handleGet(EXPORT_KEY));
+      return dir ? dir.name : '';
+    } catch (err) {
+      return '';
+    }
+  }
+
+  /** root の中のチップに、クリック(フォルダへ保存)とドラッグ(DownloadURL)を付ける。小窓の文書でも使えるよう要素単位で付ける */
   function bindDragOut(root, card) {
     root.querySelectorAll('[data-drag-part]').forEach((el) => {
+      const part = el.dataset.dragPart || null;
+      el.addEventListener('click', () => saveToFolder(card, part));
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          saveToFolder(card, part);
+        }
+      });
       el.addEventListener('dragstart', (event) => {
-        const part = el.dataset.dragPart || null;
         const url = URL.createObjectURL(new Blob([buildSmf(card, part)], { type: 'audio/midi' }));
         const filename = midiFileName(card, part);
         event.dataTransfer.effectAllowed = 'copy';
@@ -1294,5 +1412,5 @@ ${WRITEUP_RULES}`;
 
   const isPlaying = (cardId) => Boolean(playing && playing.cardId === cardId);
 
-  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();
