@@ -389,7 +389,7 @@ function soulOrbSvg(soul, size, opts = {}) {
 
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === 'soul' && parts[1]) return { screen: 'soul', soulId: parts[1], moduleId: parts[2] || null };
+  if (parts[0] === 'soul' && parts[1]) return { screen: 'soul', soulId: parts[1], moduleId: parts[2] || null, paramId: parts[3] || null };
   if (parts[0] === 'ensemble') return { screen: 'ensemble', stageId: parts[1] || null };
   return { screen: 'home' };
 }

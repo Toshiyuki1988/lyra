@@ -46,8 +46,14 @@
         type: 'ARRAY',
         items: {
           type: 'OBJECT',
-          properties: { param: { type: 'STRING' }, value: { type: 'STRING' }, intent: { type: 'STRING' } },
-          required: ['param', 'value'],
+          properties: {
+            soul: { type: 'STRING' },
+            module: { type: 'STRING' },
+            param: { type: 'STRING' },
+            value: { type: 'STRING' },
+            intent: { type: 'STRING' },
+          },
+          required: ['soul', 'param', 'value'],
         },
       },
     },
@@ -486,7 +492,7 @@ ${soulBlocks}
 3. STAGE は「この部屋(${stage.name})で鳴らす前提」での助言をする
 4. voices の speaker には上の角括弧の記号(${[...speakers.map((s) => s.key), 'STAGE', THEORY_ID].join(', ')})だけを使う。1人1回、各${VOICE_MAX - 30}字以内。互いの発言に反応してよい。全員が話す必要はない
 5. chain は「楽曲コンセプト・文脈(concept) → 星図の構造語彙(structure: 密度・明度・動き・空間・緊張・滲み・間・揺らぎ などで) → 具体的な音色・操作(operations)」の3段階
-6. recipe は、MIDIで表せない離散選択式のパラメータやマクロの設定を「param: value」と一言の intent で。参加ソウルの手持ちにあるパラメータ名だけを使う。無ければ空の配列
+6. recipe は、MIDIで表せない離散選択式のパラメータやマクロの設定を value と一言の intent で。soul にはそのパラメータを持つソウルの記号(S1 など)、module には手持ちの知識の [ ] 内のモジュール名、param にはその下のパラメータ名を、どちらも一字一句そのまま書く。手持ちの知識に載っていない名前(フィルターの種類名など)を param にしない。選択肢の値は value に書く(例: param「FILTER TYPE」value「LPF」)。無ければ空の配列
 7. 資料の文章を長く引用しない。自分の言葉で短く`;
     return { prompt, speakers };
   }
@@ -512,7 +518,7 @@ ${soulBlocks}
         type: 'speech',
         voices: (result.voices || []).map((v) => ({ speaker: idOf(v.speaker), text: String(v.text || '').slice(0, VOICE_MAX) })),
         chain: result.chain || null,
-        recipe: (result.recipe || []).slice(0, 12),
+        recipe: (result.recipe || []).slice(0, 12).map((r) => resolveRecipeItem(r, idOf(r.soul), souls)),
         memberIds: [targetStage.id, ...souls.map((s) => s.id)],
         triggerCardIds: compIds.slice(),
         feedback: null,
@@ -562,28 +568,100 @@ ${soulBlocks}
 
   /* ---------------- 発言カードの操作 ---------------- */
 
-  function recipeText(card) {
-    return (card.recipe || []).map((r) => `${r.param}: ${r.value}${r.intent ? ` — ${r.intent}` : ''}`).join('\n');
+  /* ---- パラメータレシピ ----
+   * 2026-09-25: 「UNISON: 4」「LPF: 3kHz」だけではプラグインのどこの何か分かりにくい、という実機の指摘を受け、
+   * Geminiにソウル・モジュール・パラメータ名を解体した時の表記どおりに出させ、アプリ側で実際のパラメータと
+   * 突き合わせる(一致したものはソウル画面の該当パラメータへ飛べる。一致しないものはそう明示する)。 */
+
+  function normalizeKey(text) {
+    return String(text || '').toLowerCase().replace(/[\s_\-・/]/g, '');
   }
 
-  async function showRecipe(card) {
-    const text = recipeText(card);
-    const choice = await showChoiceDialog({
-      title: 'パラメータレシピ',
-      message: text,
-      options: [
-        { label: '閉じる', value: 'close', secondary: true },
-        { label: 'コピー', value: 'copy' },
-      ],
+  /** レシピの1行を実際のパラメータと突き合わせる。soulIdが分からなければ招集された全ソウルから探す */
+  function resolveRecipeItem(item, soulId, candidates) {
+    const souls = candidates.filter((s) => !soulId || s.id === soulId);
+    const pool = souls.length ? souls : candidates;
+    const key = normalizeKey(item.param);
+    const moduleKey = normalizeKey(item.module);
+    let hit = null;
+    for (const s of pool) {
+      const matches = s.params.filter((p) => normalizeKey(p.name) === key);
+      if (!matches.length) continue;
+      const inModule = matches.find((p) => {
+        const m = s.modules.find((x) => x.id === p.moduleId);
+        return m && normalizeKey(m.name) === moduleKey;
+      });
+      hit = { soul: s, param: inModule || matches[0] };
+      break;
+    }
+    const hitModule = hit ? hit.soul.modules.find((m) => m.id === hit.param.moduleId) : null;
+    return {
+      param: String(item.param || ''),
+      value: String(item.value || ''),
+      intent: String(item.intent || ''),
+      moduleName: hitModule ? hitModule.name : String(item.module || ''),
+      soulId: hit ? hit.soul.id : soulId && soulId !== THEORY_ID ? soulId : null,
+      paramId: hit ? hit.param.id : null,
+    };
+  }
+
+  /** 古い発言カード(ソウル・モジュールを持たないレシピ)は、表示の時に招集メンバーから探し直す */
+  function recipeItems(card) {
+    const members = (card.memberIds || []).map((id) => getSoul(id)).filter(Boolean);
+    return (card.recipe || []).map((r) => (r.paramId || r.moduleName ? r : resolveRecipeItem(r, r.soulId || null, members)));
+  }
+
+  function recipeLine(r) {
+    const s = r.soulId ? getSoul(r.soulId) : null;
+    const where = [s ? s.name : '', r.moduleName].filter(Boolean).join(' / ');
+    return `${where ? `${where} / ` : ''}${r.param}: ${r.value}${r.intent ? ` — ${r.intent}` : ''}${r.paramId ? '' : '(手持ちのパラメータと一致せず)'}`;
+  }
+
+  function showRecipe(card) {
+    const items = recipeItems(card);
+    // ソウル → モジュールの順にまとめて表示する
+    const groups = [];
+    items.forEach((r) => {
+      const key = `${r.soulId || ''}|${r.moduleName || ''}`;
+      let g = groups.find((x) => x.key === key);
+      if (!g) {
+        g = { key, soul: r.soulId ? getSoul(r.soulId) : null, moduleName: r.moduleName, items: [] };
+        groups.push(g);
+      }
+      g.items.push(r);
     });
-    if (choice === 'copy') {
+    const body = groups
+      .map((g) => `<div class="recipe-group">` +
+        `<div class="recipe-where">${g.soul ? soulOrbSvg(g.soul, 16) : ''}<span>${escapeHtml(g.soul ? g.soul.name : '(ソウル不明)')}</span>` +
+        `${g.moduleName ? `<span class="recipe-sep">›</span><span>${escapeHtml(g.moduleName)}</span>` : ''}</div>` +
+        g.items.map((r) => {
+          const inner = `<div class="recipe-row-main"><span class="recipe-param">${escapeHtml(r.param)}</span>` +
+            `<span class="recipe-value">${escapeHtml(r.value)}</span></div>` +
+            (r.intent ? `<div class="recipe-intent">${escapeHtml(r.intent)}</div>` : '') +
+            (r.paramId ? '' : `<div class="recipe-miss">手持ちのパラメータ名と一致しませんでした(資料での表記と違う名前の可能性があります)</div>`);
+          const p = r.paramId && g.soul ? g.soul.params.find((x) => x.id === r.paramId) : null;
+          return p
+            ? `<a class="recipe-row recipe-row--link" href="#/soul/${encodeURIComponent(g.soul.id)}/${encodeURIComponent(p.moduleId)}/${encodeURIComponent(p.id)}" title="ソウル画面でこのパラメータを開く">${inner}</a>`
+            : `<div class="recipe-row">${inner}</div>`;
+        }).join('') +
+        `</div>`)
+      .join('');
+    const panel = openSidePanel(
+      `<div class="panel-head"><div class="panel-title-wrap"><div class="panel-title">パラメータレシピ</div>` +
+      `<div class="panel-sub">MIDIで表せない設定の一覧。行をタップすると、そのパラメータをソウル画面で開きます</div></div>` +
+      `<button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
+      body +
+      `<div class="panel-actions"><button type="button" class="btn-primary" data-action="copy">テキストでコピー</button></div>`
+    );
+    panel.querySelector('.panel-close').addEventListener('click', closeSidePanel);
+    panel.querySelector('[data-action="copy"]').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(items.map(recipeLine).join('\n'));
         setStatus('レシピをコピーしました');
       } catch (err) {
         setStatus('コピーできませんでした(ブラウザが許可していません)', { important: true });
       }
-    }
+    });
   }
 
   function makeMidiFromSpeech(card) {

@@ -31,6 +31,7 @@
   let module = null;
   let selectedParamId = null;
   let panelMode = 'module'; // 'param' | 'module' | 'sources'
+  let openParamOnEnter = null;
 
   const screen = {
     fitMaxScale: 1.1,
@@ -49,6 +50,10 @@
       }
       selectedParamId = null;
       panelMode = 'module';
+      // #/soul/<id>/<moduleId>/<paramId>(アンサンブルのパラメータレシピなどから)で来たら、そのパラメータを選んで開く
+      openParamOnEnter = route.paramId && soul.params.some((p) => p.id === route.paramId && module && p.moduleId === module.id)
+        ? route.paramId
+        : null;
       scope = {
         cards: module ? [module, ...soul.params.filter((p) => p.moduleId === module.id)] : [],
         connections: soul.connections,
@@ -110,6 +115,19 @@
 
     afterRender() {
       layoutUnpinned();
+      if (openParamOnEnter) {
+        const paramId = openParamOnEnter;
+        openParamOnEnter = null;
+        selectParam(paramId);
+        // 画面を開いた直後の俯瞰ズーム(アニメーション0.35秒)が終わってから、そのパラメータへ寄る
+        setTimeout(() => {
+          const el = cardElById(paramId);
+          if (!el) return;
+          const c = getCardCenterFromEl(el);
+          animateViewportTo(c.x, c.y);
+          el.classList.add('star-card--found');
+        }, 500);
+      }
     },
 
     onCardTap(card) {

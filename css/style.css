@@ -1428,3 +1428,33 @@ a.btn-secondary { display: block; }
 }
 .modal .modal-check[hidden] { display: none; }
 .modal .modal-check input { width: auto; margin: 3px 0 0; display: inline-block; }
+
+/* ---------- パラメータレシピ(右パネル) ---------- */
+
+.recipe-group { margin-bottom: 16px; }
+.recipe-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.recipe-where svg { flex: none; }
+.recipe-sep { color: #cfc6b3; }
+.recipe-row {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+}
+.recipe-row--link:hover { border-color: var(--accent-line); background: var(--accent-bg); }
+.recipe-row-main { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.recipe-param { font-size: 12px; color: var(--ink); font-weight: 500; }
+.recipe-value { font-size: 12px; color: var(--accent-deep); font-family: var(--mono); text-align: right; }
+.recipe-intent { font-size: 11px; color: #6d6455; line-height: 1.6; margin-top: 2px; }
+.recipe-miss { font-size: 10px; color: var(--rust); margin-top: 3px; line-height: 1.5; }
