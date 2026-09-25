@@ -339,6 +339,45 @@ function categoryLabel(categoryId) {
   return c ? c.label : categoryId;
 }
 
+/**
+ * パラメータの説明(reading)の2つの欄 effect / intent を、ソウルの区分ごとに何と呼び、解体で何を書かせるか。
+ * 2026-09-25: 全区分を「音響的効果・音楽的意図」で抽出していたため、美学(Aesthetics Wikiなど)の視覚的な特徴まで
+ * 音の言葉に寄せて書かれていた(ユーザー指摘)。データの欄はそのままに、見出しと抽出の指示だけを区分で変える。
+ * 美学は「美学的特徴」(音に言い換えず、視覚・質感などをそのまま)と「音への翻案」(音楽にするなら)の2本立て。
+ */
+const READING_FIELDS = {
+  plugin: {
+    effect: '音響的効果', effectHint: 'どう音が変わるか', effectPrompt: '音響的効果。どう音が変わるか',
+    intent: '音楽的意図', intentHint: 'どんな時に使うか', intentPrompt: '音楽的意図。作曲でどんな時に使うか',
+  },
+  instrument: {
+    effect: '音響的効果', effectHint: 'その奏法・特性で音がどう変わるか', effectPrompt: '音響的効果。その奏法・特性で音がどう変わるか',
+    intent: '音楽的意図', intentHint: 'どんな時に使うか', intentPrompt: '音楽的意図。作曲・アレンジでどんな時に使うか',
+  },
+  genre: {
+    effect: '特徴', effectHint: 'そのジャンルらしさを作る要素', effectPrompt: '特徴。資料が述べているそのジャンルらしさの要素(音・リズム・和声・編成に限らず、文化・時代・服装・映像なども資料にあればそのまま)',
+    intent: '作曲での使いどころ', intentHint: '作曲でどう活かすか', intentPrompt: '作曲での使いどころ。この特徴を自分の曲にどう取り入れるか',
+  },
+  composer: {
+    effect: '特徴(作風・技法)', effectHint: 'その作曲家らしさを作る要素', effectPrompt: '特徴。その作曲家の作風・技法・考え方として資料が述べていること',
+    intent: '作曲での活かし方', intentHint: '自分の曲にどう取り入れるか', intentPrompt: '作曲での活かし方。この特徴を自分の曲にどう取り入れるか',
+  },
+  stage: {
+    effect: '特徴(空間・響き)', effectHint: 'その場の空間・響き・聴かれ方', effectPrompt: '特徴。その場の空間・響き・聴かれ方として資料が述べていること',
+    intent: '作曲・音作りへの影響', intentHint: 'その場で鳴らす前提で何を変えるか', intentPrompt: '作曲・音作りへの影響。この場で鳴らす前提で何を変えるか',
+  },
+  aesthetic: {
+    effect: '美学的特徴', effectHint: '視覚・色・質感・モチーフ・雰囲気など、特徴そのもの',
+    effectPrompt: '美学的特徴。資料が述べている特徴そのもの(視覚・色・質感・モチーフ・雰囲気・時代・文化など)を、音や音楽に言い換えずにそのまま書く',
+    intent: '音への翻案', intentHint: 'この特徴を音楽にするなら',
+    intentPrompt: '音への翻案。この特徴を音楽・音作りに置き換えるなら何か(和声・リズム・音色・質感など)。資料に音楽の記述が無く推測で置き換えた時は文末に「(推測)」と付ける',
+  },
+};
+
+function readingFields(category) {
+  return READING_FIELDS[category] || READING_FIELDS.plugin;
+}
+
 /** 解体の進行度 = 確認済みパラメータ / 全パラメータ(ハンドオフ6節の「量」) */
 function soulProgress(soul) {
   const total = soul.params.length;

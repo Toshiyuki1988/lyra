@@ -425,7 +425,8 @@
         const { owner, p } = findParam(card);
         if (!p) return null;
         const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
-        return `[パラメータ · ${owner.name} / ${p.name}] 効果: ${r.effect || '(未記入)'} 意図: ${r.intent || '(未記入)'}` +
+        const f = readingFields(owner.category);
+        return `[パラメータ · ${owner.name} / ${p.name}] ${f.effect}: ${r.effect || '(未記入)'} ${f.intent}: ${r.intent || '(未記入)'}` +
           (p.analog ? ` 奏法対応の仮説: ${p.analog}` : '') + (p.verified ? '(確認済み)' : '(未確認)');
       }
       case 'source': {
@@ -460,17 +461,19 @@
       const t = String(text || '').trim();
       return t.length > max ? `${t.slice(0, max)}…` : t;
     };
+    const f = readingFields(soul.category);
+    const intentMax = soul.category === 'aesthetic' ? 80 : 40; // 美学の「音への翻案」は作曲への橋渡しなので長めに
     const line = (p) => {
       const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
       const head = `     - ${p.verified ? '✓' : ''}${p.name}${p.range ? ` [${p.range}]` : ''}`;
       if (focusParamIds.has(p.id)) {
         return `${head}: ${r.effect || '(説明なし)'}` +
-          (r.intent ? ` 意図: ${r.intent}` : '') +
+          (r.intent ? ` ${f.intent}: ${r.intent}` : '') +
           (p.analog ? ` 奏法対応: ${p.analog}` : '') +
           (p.notes.length ? ` 気づき: ${p.notes.slice(-3).map((n) => n.text).join(' / ')}` : '');
       }
       return `${head}: ${cut(r.effect, 80) || '(説明なし)'}` +
-        (r.intent ? ` / 意図: ${cut(r.intent, 40)}` : '') +
+        (r.intent ? ` / ${f.intent}: ${cut(r.intent, intentMax)}` : '') +
         (p.notes.length ? ` / 気づき: ${cut(p.notes[p.notes.length - 1].text, 60)}` : '');
     };
     const groups = soul.modules
@@ -481,7 +484,7 @@
       .filter(Boolean);
     const notes = soul.notes.slice(-5).map((n) => `   - ${n.text}`).join('\n');
     return (vocab ? `  共通語彙: ${vocab}\n` : '') +
-      `  手持ちの知識(✓は実機で確認済み、それ以外は資料から抽出しただけの未確認):\n${groups.join('\n') || '   (まだ解体した知識がない)'}` +
+      `  手持ちの知識(各項目は「名前: ${f.effect} / ${f.intent}」。✓は実機で確認済み、それ以外は資料から抽出しただけの未確認):\n${groups.join('\n') || '   (まだ解体した知識がない)'}` +
       (notes ? `\n  このソウルへの気づき:\n${notes}` : '');
   }
   window.LyraSoulMaterial = soulMaterial; // js/midi.js のコード+旋律でも同じ形で知識を渡す
@@ -960,8 +963,8 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       html = head(escapeHtml(p.name), `${escapeHtml(owner.name)} · ${escapeHtml(m ? modulePath(m) : '')}${p.range ? ` · ${escapeHtml(p.range)}` : ''}`) +
         p.readings.map((r) => `<div class="panel-section">` +
           (p.readings.length > 1 ? `<div class="reading-source">${escapeHtml(sourceTitle(owner, r))}</div>` : '') +
-          `<div class="panel-label">音響的効果</div><div class="panel-readonly">${escapeHtml(r.effect || '(未記入)')}</div>` +
-          `<div class="panel-label">音楽的意図</div><div class="panel-readonly">${escapeHtml(r.intent || '(未記入)')}</div></div>`).join('') +
+          `<div class="panel-label">${escapeHtml(readingFields(owner.category).effect)}</div><div class="panel-readonly">${escapeHtml(r.effect || '(未記入)')}</div>` +
+          `<div class="panel-label">${escapeHtml(readingFields(owner.category).intent)}</div><div class="panel-readonly">${escapeHtml(r.intent || '(未記入)')}</div></div>`).join('') +
         (p.analog ? `<div class="analog-box"><div class="panel-label panel-label--accent">実楽器の奏法対応</div><div class="panel-readonly">${escapeHtml(p.analog)}</div></div>` : '');
     } else if (card.type === 'source') {
       const owner = getSoul(card.soulId);

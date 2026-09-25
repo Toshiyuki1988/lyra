@@ -7,7 +7,8 @@
 //
 // 解体の流れ(Liteモデルの精度低下を補うため、1回に詰め込まず複数回に分ける。CLAUDE.md参照):
 //   1. 構造把握: 資料全体から「モジュール(機能グループ/章)とパラメータ名の一覧」だけを出させる
-//   2. 詳細抽出: モジュールごと(多ければ20件ずつ)に、範囲・音響的効果・音楽的意図・記載ページを出させる
+//   2. 詳細抽出: モジュールごと(多ければ20件ずつ)に、範囲・効果(effect)・意図(intent)・記載ページを出させる。
+//      effect/intentの意味はソウルの区分で変わる(js/app.jsのREADING_FIELDS。美学なら「美学的特徴」と「音への翻案」)
 //   3. 共通語彙の変換表: ソウルにまだ無ければ、星図の構造語彙(密度・明度・動き…)への変換表を作る
 //      (ハンドオフ5節「新しいソウルは必ず共通語彙に翻訳できなければならない」)
 // どの段階もresponseSchemaで形を固定する。抽出結果は「未確認(点線)」として入り、人が確認済みにする。
@@ -764,6 +765,7 @@ ${content.pageCount ? `- pdfStart・pdfEndには、同じ範囲をPDFファイ�
 
   function detailPrompt(soul, src, m, content, excerpt) {
     const w = unitWords(soul);
+    const f = readingFields(soul.category); // 区分ごとの欄の意味(js/app.js。美学は視覚的な特徴をそのまま残す)
     return `あなたは音楽制作の資料を読み解いて体系化するアシスタントです。
 ${subjectLine(soul)}
 資料: ${src.title}${excerpt ? `(添付はこの資料のPDF ${excerpt.start}〜${excerpt.end}ページ目の抜粋)` : ''}
@@ -775,8 +777,8 @@ ${m.params.map((p) => `- ${p}`).join('\n')}
 各項目:
 - name: 上の一覧と同じ名前
 - range: 値の範囲や選択肢(例: "0–100%"、"Sine / Saw / Square")。無ければ空
-- effect: 音響的効果。どう音が変わるか。${EFFECT_MAX - 40}字以内、資料の文章を写さず自分の言葉で要約する
-- intent: 音楽的意図。作曲でどんな時に使うか。${INTENT_MAX - 40}字以内。資料から直接読み取れない推測なら文末に「(推測)」と付ける
+- effect: ${f.effectPrompt}。${EFFECT_MAX - 40}字以内、資料の文章を写さず自分の言葉で要約する
+- intent: ${f.intentPrompt}。${INTENT_MAX - 40}字以内。資料から直接読み取れない推測なら文末に「(推測)」と付ける
 - page: 記載ページ(例: "p.34")。分からなければ空
 
 資料に書かれていない機能や数値をでっち上げないこと。${contentBlock(content)}`;

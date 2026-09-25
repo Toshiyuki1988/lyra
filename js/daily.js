@@ -53,7 +53,7 @@
     const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
     const prompt = `作曲支援アプリLYRAの「今日の課題」を書きます。ユーザーはCubaseとMax 9で作曲しています。
 今日試してほしいもの: ${soul.name} の「${p.name}」
-説明: ${r.effect || '(まだ説明がない)'} / 意図: ${r.intent || '(未記入)'}
+${readingFields(soul.category).effect}: ${r.effect || '(まだ説明がない)'} / ${readingFields(soul.category).intent}: ${r.intent || '(未記入)'}
 ユーザーが育てている他のソウル: ${context || '(なし)'}
 
 「なぜ今日これを試すのか」を、ユーザーのジャンル・楽器の文脈に絡めて、日本語60字以内の1文で書いてください。前置きや引用符は不要です。`;

@@ -550,14 +550,16 @@
     }
     const m = soul.modules.find((x) => x.id === p.moduleId);
     const multi = p.readings.length > 1;
+    const f = readingFields(soul.category);
+    const isPlugin = soul.category === 'plugin';
     const readingsHtml = p.readings
       .map((r) => {
         const head = multi ? `<div class="reading-source">${escapeHtml(sourceLabel(r.sourceId, r.page))}</div>` : '';
         return `<div class="reading${multi ? ' reading--multi' : ''}" data-reading="${r.id}">${head}` +
-          `<div class="panel-label">音響的効果</div>` +
-          `<textarea class="panel-text autosize" spellcheck="false" data-reading-field="effect" rows="1" placeholder="どう音が変わるか">${escapeHtml(r.effect || '')}</textarea>` +
-          `<div class="panel-label">音楽的意図</div>` +
-          `<textarea class="panel-text autosize" spellcheck="false" data-reading-field="intent" rows="1" placeholder="どんな時に使うか">${escapeHtml(r.intent || '')}</textarea>` +
+          `<div class="panel-label">${escapeHtml(f.effect)}</div>` +
+          `<textarea class="panel-text autosize" spellcheck="false" data-reading-field="effect" rows="1" placeholder="${escapeHtml(f.effectHint)}">${escapeHtml(r.effect || '')}</textarea>` +
+          `<div class="panel-label">${escapeHtml(f.intent)}</div>` +
+          `<textarea class="panel-text autosize" spellcheck="false" data-reading-field="intent" rows="1" placeholder="${escapeHtml(f.intentHint)}">${escapeHtml(r.intent || '')}</textarea>` +
           `</div>`;
       })
       .join('');
@@ -588,10 +590,13 @@
       `</div><span class="panel-state-dot${p.verified ? ' panel-state-dot--verified' : ''}" title="${p.verified ? '確認済み' : '未確認'}"></span>` +
       `<button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       readingsHtml +
-      `<div class="analog-box"><div class="panel-label panel-label--accent">実楽器の奏法対応</div>` +
-      `<textarea class="panel-text autosize" spellcheck="false" data-param-field="analog" rows="1" placeholder="近い奏法・楽器の挙動の仮説">${escapeHtml(p.analog || '')}</textarea></div>` +
+      // 実楽器の奏法対応はプラグインのための欄(美学などでは、既に書いてある時だけ出す)
+      (isPlugin || p.analog
+        ? `<div class="analog-box"><div class="panel-label panel-label--accent">実楽器の奏法対応</div>` +
+          `<textarea class="panel-text autosize" spellcheck="false" data-param-field="analog" rows="1" placeholder="近い奏法・楽器の挙動の仮説">${escapeHtml(p.analog || '')}</textarea></div>`
+        : '') +
       `<div class="panel-section"><div class="panel-label">出典</div>${sourcesHtml}</div>` +
-      `<div class="panel-section"><div class="panel-label">UI上の位置</div>` +
+      `<div class="panel-section"><div class="panel-label">${isPlugin ? 'UI上の位置' : '配置'}</div>` +
       `<div class="panel-pin"><span class="pin-dot${p.pinned ? ' pin-dot--pinned' : ''}"></span>` +
       `${p.pinned ? `${escapeHtml(m ? m.name : '')}ページ${m && m.screenshot ? '・スクショ' : ''}に手動でピン留め済み` : 'まだピン留めしていません(長押しでつかんで動かす)'}</div></div>` +
       `<div class="panel-section"><div class="panel-label">つながり</div><div class="link-list">${linksHtml}</div>` +
