@@ -376,8 +376,41 @@
     wrap.innerHTML =
       `<div class="ens-members-label">招集中 · つながった${comp.length}枚のカード</div>` +
       `<div class="ens-member-list">${people.join('')}</div>` +
-      `<button type="button" class="btn-primary ens-listen" ${listening ? 'disabled' : ''}>${listening ? 'アンサンブルが話し合っています…' : 'アンサンブルを聴く'}</button>`;
+      `<button type="button" class="btn-primary ens-listen" ${listening ? 'disabled' : ''}>${listening ? 'アンサンブルが話し合っています…' : 'アンサンブルを聴く'}</button>` +
+      (sketchSouls(souls).length ? `<button type="button" class="btn-secondary ens-sketch">コード+旋律で鳴らす</button>` : '');
     wrap.querySelector('.ens-listen').addEventListener('click', () => listen(comp));
+    const sketchBtn = wrap.querySelector('.ens-sketch');
+    if (sketchBtn) sketchBtn.addEventListener('click', () => makeSketch(comp));
+  }
+
+  /* ---- コード+旋律で鳴らす ----
+   * 2026-09-25: 「美学からつないだだけで、その美学を一聴で表すコード+メロディが出てくるように」という要望で追加。
+   * 美学・ジャンル・作曲家のソウルが招集されている時だけボタンを出す。アンサンブルの発言を経ずに、
+   * つないだカードとソウルの知識から直接 js/midi.js の createSketch を呼ぶ。Gemini呼び出しは無料枠保護の
+   * 決まり(明示操作のみ)に合わせ、線をつないだだけでは呼ばない。 */
+
+  function sketchSouls(souls) {
+    return souls.filter((s) => ['aesthetic', 'genre', 'composer'].includes(s.category));
+  }
+
+  function makeSketch(compIds) {
+    if (!window.LyraMidi) {
+      setStatus('MIDIの機能を読み込めていません');
+      return;
+    }
+    const souls = recruitedSouls(compIds);
+    const cards = compIds.map((id) => getCardById(id)).filter(Boolean);
+    const pos = speechPosition(compIds);
+    window.LyraMidi.createSketch({
+      stage,
+      // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので渡さない
+      souls: souls.filter((s) => s.category !== 'plugin' && s.category !== 'stage'),
+      contextText: cards.map(cardLine).filter(Boolean).map((l) => `- ${l}`).join('\n'),
+      focusParamIds: new Set(cards.filter((c) => c.type === 'param').map((c) => c.paramId)),
+      memberIds: [stage.id, ...souls.map((s) => s.id)],
+      x: pos.x,
+      y: pos.y + 40,
+    });
   }
 
   /* ---------------- アンサンブルを聴く ---------------- */
@@ -451,6 +484,7 @@
       `  手持ちの知識(✓は実機で確認済み、それ以外は資料から抽出しただけの未確認):\n${groups.join('\n') || '   (まだ解体した知識がない)'}` +
       (notes ? `\n  このソウルへの気づき:\n${notes}` : '');
   }
+  window.LyraSoulMaterial = soulMaterial; // js/midi.js のコード+旋律でも同じ形で知識を渡す
 
   function previousSpeech(compIds) {
     const set = new Set(compIds);

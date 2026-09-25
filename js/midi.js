@@ -9,7 +9,8 @@
 // カードのデータ: { type: 'midi', name, description, memberIds, speechId,
 //   midi: { tempo, beatsPerBar, notes: [{pitch, start, duration, velocity}],
 //           cc: [{controller, label, points: [{beat, value}]}], markers: [{beat, label}],
-//           tempoChanges: [{beat, bpm}] } }  start/duration/beatは拍(4分音符=1)単位
+//           tempoChanges: [{beat, bpm}], sketch? } }  start/duration/beatは拍(4分音符=1)単位
+//   コード+旋律の断片では notes に part('melody'/'chords'/'bass')が付き、sketch に設計図が入る
 
 (function () {
   const PPQ = 480;
@@ -129,9 +130,10 @@
           name: 'kind',
           label: '何を作るか',
           type: 'select',
-          value: 'melody',
+          value: 'sketch',
           options: [
-            { value: 'melody', label: '旋律' },
+            { value: 'sketch', label: 'コード+旋律+ベース(おすすめ)' },
+            { value: 'melody', label: '旋律だけ' },
             { value: 'chords', label: 'コード進行' },
             { value: 'rhythm', label: 'リズム(GMドラム配置)' },
             { value: 'drone', label: 'テクスチャ・ドローン(長い音+CCの変化)' },
@@ -143,6 +145,26 @@
     });
     if (!values) return;
     const bars = Math.round(clampNum(values.bars, 1, 32, 8));
+    if (values.kind === 'sketch') {
+      // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので、それ以外のソウルを渡す
+      const nonStage = members.filter((s) => s.category !== 'stage');
+      const souls = nonStage.filter((s) => s.category !== 'plugin');
+      await runSketch({
+        stage,
+        souls: souls.length ? souls : nonStage.length ? nonStage : members,
+        contextText: [
+          ...(speech.voices || []).map((v) => `- ${v.text}`),
+          speech.chain ? `- コンセプト: ${speech.chain.concept} / 構造語彙: ${speech.chain.structure} / 操作: ${(speech.chain.operations || []).join(' / ')}` : '',
+        ].filter(Boolean).join('\n'),
+        memberIds: speech.memberIds || [],
+        speechId: speech.id,
+        x: (speech.x || 0) + 30,
+        y: (speech.y || 0) + (speech.height || 280) + 40,
+        bars: Math.max(2, bars),
+        hint: values.hint,
+      });
+      return;
+    }
     const kindText = { melody: '単旋律の旋律', chords: 'コード進行(和音のボイシング)', rhythm: 'リズムパターン(GM配置のドラムノート: 36キック、38スネア、42ハット等)', drone: '長く伸ばす音とCCによるゆっくりした変化を主にしたテクスチャ・ドローン' }[values.kind];
     const prompt = `あなたは作曲支援アプリLYRAです。次のアンサンブルの提案を、Cubaseに持ち込めるMIDIの断片にしてください。
 
@@ -221,7 +243,19 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
       if (c.comment) history.unshift(c.comment);
     }
     const m = card.midi;
-    const prompt = `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
+    const isSketch = !!m.sketch;
+    const prompt = isSketch
+      ? `あなたは作曲支援アプリLYRAの作曲担当です。前に作ったコード+旋律の断片を、ユーザーのコメントに沿って作り直してください。
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
+
+前回の設計図(JSON):
+${JSON.stringify(sketchForPrompt(m.sketch))}
+
+コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)。signature(ソウルらしさの仕掛け)は、コメントで否定されない限り保つ。
+
+${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bars}小節`)}
+- description は、前回から何を変えたかを40字以内で`
+      : `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
 ${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
 
 前回のMIDI(JSON。start・duration・beat は拍単位):
@@ -235,8 +269,8 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
 - description は、前回から何を変えたかを40字以内で`;
     setStatus('MIDIを作り直しています…', { busy: true });
     try {
-      const raw = await askGeminiJson({ prompt, responseSchema: MIDI_SCHEMA, maxOutputTokens: 8192, label: 'MIDIの作り直し' });
-      const midi = sanitizeMidi(raw);
+      const raw = await askGeminiJson({ prompt, responseSchema: isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'MIDIの作り直し' });
+      const midi = isSketch ? renderSketch(sanitizeSketch(raw)) : sanitizeMidi(raw);
       if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
       const version = (card.version || 1) + 1;
       const next = {
@@ -259,10 +293,496 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
       };
       addCardToEnsemble(stage, next);
       connectEnsembleCards(stage, card.id, next.id);
-      setStatus(`「${next.name}」を作りました`);
+      setStatus(isSketch ? sketchStatus(midi, next.name) : `「${next.name}」を作りました`);
     } catch (err) {
       console.error(err);
       setStatus(`MIDIを作り直せませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /* ---------------- コード+旋律(スケッチ) ----------------
+   * 2026-09-25追加(ユーザー要望「生成したMIDIが面白くない。美学からつないだだけで、その美学を一聴で表す
+   * コード+メロディが出てくる構造にできないか」)。
+   * 旋律を「MIDIの音番号の羅列」で出させると、Liteモデルでは和声も声部のつながりも平凡になりやすい。そこで
+   * Geminiには記号の設計図(キー・コードネーム・伴奏の型・和音の積み方・ベースの型・ハネ・音名で書いた旋律)と、
+   * 「ソウルのどの特徴を、どんな音楽の仕掛けで表すか」(signature)だけを出させ、実際のノートへの展開
+   * (和音の積み方・声部進行・伴奏のリズム・ベース・ハネ)はアプリ側で決まった手順で行う。
+   * 設計図は card.midi.sketch に残し、作り直しも設計図のレベルでやり取りする。
+   * ノートには part('melody' / 'chords' / 'bass')が付き、SMFでは別トラックになる。 */
+
+  const SKETCH_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      name: { type: 'STRING' },
+      description: { type: 'STRING' },
+      tempo: { type: 'NUMBER' },
+      beatsPerBar: { type: 'INTEGER' },
+      key: { type: 'STRING' },
+      scale: { type: 'STRING' },
+      swing: { type: 'NUMBER' },
+      comping: { type: 'STRING' },
+      voicing: { type: 'STRING' },
+      bass: { type: 'STRING' },
+      signature: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { trait: { type: 'STRING' }, device: { type: 'STRING' } },
+          required: ['trait', 'device'],
+        },
+      },
+      chords: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { symbol: { type: 'STRING' }, start: { type: 'NUMBER' }, duration: { type: 'NUMBER' } },
+          required: ['symbol', 'start', 'duration'],
+        },
+      },
+      melody: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            note: { type: 'STRING' },
+            start: { type: 'NUMBER' },
+            duration: { type: 'NUMBER' },
+            velocity: { type: 'INTEGER' },
+          },
+          required: ['note', 'start', 'duration'],
+        },
+      },
+      markers: MIDI_SCHEMA.properties.markers,
+    },
+    required: ['name', 'tempo', 'beatsPerBar', 'key', 'signature', 'chords', 'melody', 'comping', 'voicing', 'bass'],
+  };
+
+  const COMPINGS = ['sustain', 'stabs', 'offbeat', 'pulse', 'arpeggio', 'broken'];
+  const VOICINGS = ['close', 'open', 'shell', 'cluster', 'quartal', 'power'];
+  const BASSES = ['root-fifth', 'root', 'octave', 'pedal', 'none']; // root-fifth を root より先に照合する
+  const SKETCH_LABELS = {
+    sustain: '伸ばす', stabs: '短く刻む', offbeat: '裏拍', pulse: '8分で刻む', arpeggio: '分散和音', broken: 'アルベルティ風',
+    close: '密集', open: '開離', shell: '3度と7度', cluster: '2度でぶつける', quartal: '4度堆積', power: 'ルートと5度',
+    'root-fifth': 'ルートと5度', root: 'ルート', octave: '8分のオクターブ', pedal: '主音の持続', none: 'なし',
+  };
+  const PART_NAMES = { melody: 'Melody', chords: 'Chords', bass: 'Bass' };
+  const MAX_SKETCH_NOTES = 1500;
+  const EPS = 1e-6;
+
+  const pickWord = (value, list, fallback) => {
+    const v = String(value || '').toLowerCase();
+    return list.find((w) => v.includes(w)) || fallback;
+  };
+  const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const accidental = (ch) => (ch === '#' ? 1 : ch === 'b' ? -1 : 0);
+  const normalizeAccidentals = (s) => String(s || '').replace(/[♯＃]/g, '#').replace(/♭/g, 'b').trim();
+
+  /** 「F#4」→ 66(C4=60)。数字だけならそのまま音番号とみなす。読めなければ null */
+  function noteNameToMidi(name) {
+    const m = /^([A-Ga-g])([#b]*)(-?\d)$/.exec(normalizeAccidentals(name).replace(/\s/g, ''));
+    if (!m) {
+      const n = Number(name);
+      return Number.isFinite(n) && String(name).trim() !== '' ? Math.round(n) : null;
+    }
+    let pc = PC[m[1].toUpperCase()];
+    for (const a of m[2]) pc += accidental(a);
+    return (Number(m[3]) + 1) * 12 + pc;
+  }
+
+  function midiToNoteName(p) {
+    const names = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+    return `${names[p % 12]}${Math.floor(p / 12) - 1}`;
+  }
+
+  /**
+   * コードネーム → { root, bass(0〜11), tones(ルートからの半音。9th以上は12より上), third, fifth, seventh }。
+   * 読めなければ null。Cmaj7 / CM7 / C△7 / Cm7b5 / Cø / Cdim7 / C7(b9) / Csus4 / C6/9 / Cadd9 / Bb/C / C5 など。
+   */
+  function parseChord(symbol) {
+    const s = normalizeAccidentals(symbol).replace(/[\s()（）,]/g, '');
+    const m = /^([A-G])([#b]?)(.*)$/.exec(s);
+    if (!m) return null;
+    const root = (PC[m[1]] + accidental(m[2]) + 12) % 12;
+    let q = m[3];
+    let bass = root;
+    const slash = /\/([A-G])([#b]?)$/.exec(q);
+    if (slash) {
+      bass = (PC[slash[1]] + accidental(slash[2]) + 12) % 12;
+      q = q.slice(0, slash.index);
+    }
+    if (q === '5') return { root, bass, tones: [0, 7], third: null, fifth: 7, seventh: null };
+    q = q.replace(/[Δ△]/g, 'maj').replace(/ø/g, 'm7b5').replace(/°/g, 'dim').replace(/^min/, 'm').replace(/^-/, 'm').replace(/^\+/, 'aug');
+    let third = 4;
+    let fifth = 7;
+    let seventh = null;
+    const tensions = [];
+    const addExt = (n) => {
+      tensions.push(14);
+      if (n === '11') tensions.push(17);
+      if (n === '13') tensions.push(21);
+    };
+    if (/^m(?!aj)/.test(q)) {
+      third = 3;
+      q = q.slice(1);
+    } else if (/^dim/.test(q)) {
+      third = 3;
+      fifth = 6;
+      q = q.slice(3);
+      if (/^7/.test(q)) {
+        seventh = 9;
+        q = q.slice(1);
+      }
+    } else if (/^aug/.test(q)) {
+      fifth = 8;
+      q = q.slice(3);
+    }
+    const maj = /^(maj|Maj|MA|M)(7|9|11|13)?/.exec(q);
+    if (maj) {
+      seventh = maj[2] ? 11 : null;
+      if (maj[2] && maj[2] !== '7') addExt(maj[2]);
+      q = q.slice(maj[0].length);
+    } else {
+      const num = /^(6\/9|69|6|7|9|11|13)/.exec(q);
+      if (num) {
+        q = q.slice(num[0].length);
+        if (num[1].startsWith('6')) {
+          tensions.push(9);
+          if (num[1] !== '6') tensions.push(14);
+        } else {
+          if (seventh === null) seventh = 10;
+          if (num[1] !== '7') addExt(num[1]);
+        }
+      }
+    }
+    if (/sus2/.test(q)) third = 2;
+    else if (/sus/.test(q)) third = 5;
+    q = q.replace(/sus[24]?/, '');
+    const alt = /(add)?([#b]?)(13|11|9|5)/g;
+    let a;
+    while ((a = alt.exec(q))) {
+      if (a[3] === '5') fifth = 7 + accidental(a[2]);
+      else tensions.push({ 9: 14, 11: 17, 13: 21 }[a[3]] + accidental(a[2]));
+    }
+    const tones = [0, third, fifth];
+    if (seventh !== null) tones.push(seventh);
+    tensions.forEach((t) => {
+      if (!tones.some((x) => x % 12 === t % 12)) tones.push(t);
+    });
+    return { root, bass, tones, third, fifth, seventh };
+  }
+
+  /** 和音の型ごとの「積み方」。rotate: 転回形を候補にする / drop2: 上から2番目を1オクターブ下げる */
+  function voicingShape(chord, type) {
+    const pcs = [...new Set(chord.tones.map((t) => t % 12))];
+    const third = chord.third === null ? 7 : chord.third;
+    switch (type) {
+      case 'power':
+        return { stack: [0, 7, 12], rotate: false };
+      case 'shell':
+        return { stack: [third, chord.seventh !== null ? chord.seventh : chord.fifth, ...chord.tones.filter((t) => t > 12).slice(0, 1)], rotate: true };
+      case 'quartal':
+        return { stack: third === 3 ? [0, 5, 10, 15] : [4, 9, 14, 19], rotate: false };
+      case 'cluster':
+        return { stack: pcs.includes(2) ? pcs : [...pcs, 2], rotate: true };
+      default: {
+        let use = pcs;
+        if (use.length > 4 && chord.fifth === 7) use = use.filter((p) => p !== 7); // 完全5度から省く
+        if (use.length > 4) use = use.filter((p) => p !== 0); // それでも多ければルートはベースに任せる
+        return { stack: use.slice(0, 5), rotate: true, drop2: type === 'open' };
+      }
+    }
+  }
+
+  function voicingCandidates(chord, shape, center) {
+    const bases = [];
+    if (shape.rotate) {
+      const sorted = [...new Set(shape.stack.map((p) => p % 12))].sort((x, y) => x - y);
+      for (let r = 0; r < sorted.length; r++) {
+        const rel = [];
+        [...sorted.slice(r), ...sorted.slice(0, r)].forEach((p) => {
+          let v = p;
+          while (rel.length && v <= rel[rel.length - 1]) v += 12;
+          rel.push(v);
+        });
+        bases.push(rel);
+      }
+    } else {
+      bases.push(shape.stack.slice());
+    }
+    const out = [];
+    bases.forEach((rel) => {
+      let v = rel;
+      if (shape.drop2 && v.length >= 4) {
+        const i = v.length - 2;
+        v = [v[i] - 12, ...v.slice(0, i), v[v.length - 1]].sort((x, y) => x - y);
+      }
+      for (let oct = 1; oct <= 7; oct++) {
+        const notes = v.map((x) => chord.root + x + oct * 12);
+        if (notes[0] >= center - 14 && notes[notes.length - 1] <= center + 17) out.push(notes);
+      }
+    });
+    return out;
+  }
+
+  /** 声部進行の近さ(小さいほど前の和音から滑らかにつながる) */
+  function leadCost(a, b) {
+    const near = (x, arr) => Math.min(...arr.map((y) => Math.abs(x - y)));
+    return a.reduce((sum, x) => sum + near(x, b), 0) + b.reduce((sum, y) => sum + near(y, a), 0) * 0.5;
+  }
+
+  function chooseVoicing(chord, type, prev) {
+    const center = type === 'power' ? 50 : 62;
+    const shape = voicingShape(chord, type);
+    const mean = (arr) => arr.reduce((sum, x) => sum + x, 0) / arr.length;
+    let best = null;
+    let bestCost = Infinity;
+    voicingCandidates(chord, shape, center).forEach((c) => {
+      const cost = (prev ? leadCost(c, prev) : 0) + Math.abs(mean(c) - center) * 0.6;
+      if (cost < bestCost) {
+        best = c;
+        bestCost = cost;
+      }
+    });
+    return best || shape.stack.map((x) => chord.root + x + 48);
+  }
+
+  /** 伴奏の型 → コードの区間 [s, e) の中で鳴らす位置と長さ(拍)。小節の頭を基準にした型 */
+  function compOnsets(type, s, e, bpb) {
+    if (type === 'sustain') return [{ t: s, d: e - s }];
+    const list = [];
+    const push = (t, d) => {
+      if (t >= s - EPS && t < e - EPS && !list.some((x) => Math.abs(x.t - t) < EPS)) list.push({ t, d: Math.min(d, e - t) });
+    };
+    for (let bar = Math.floor(s / bpb) * bpb; bar < e; bar += bpb) {
+      if (type === 'stabs') (bpb >= 4 ? [0, 1.5, 3] : [0, 1.5]).forEach((o) => push(bar + o, 0.4));
+      else if (type === 'offbeat') for (let b = 0; b < bpb; b++) push(bar + b + 0.5, 0.4);
+      else for (let b = 0; b < bpb * 2; b++) push(bar + b / 2, type === 'pulse' ? 0.42 : 0.5);
+    }
+    // コードが変わる瞬間は必ず鳴らす(裏拍の型は、鳴らす所が無い時だけ)
+    if ((type !== 'offbeat' || !list.length) && !list.some((x) => Math.abs(x.t - s) < EPS)) list.push({ t: s, d: Math.min(0.5, e - s) });
+    return list.sort((x, y) => x.t - y.t);
+  }
+
+  function sanitizeSketch(raw) {
+    const beatsPerBar = Math.round(clampNum(raw.beatsPerBar, 2, 7, 4));
+    const limit = 32 * beatsPerBar;
+    const grid = (v) => Math.round(v * 12) / 12; // 16分と3連の両方が乗る細かさ
+    const chords = (raw.chords || [])
+      .map((c) => ({
+        symbol: normalizeAccidentals(c.symbol).slice(0, 16),
+        start: grid(clampNum(c.start, 0, limit, 0)),
+        duration: grid(clampNum(c.duration, 0.25, limit, beatsPerBar)),
+      }))
+      .filter((c) => c.symbol && c.start < limit)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 64);
+    const melody = (raw.melody || [])
+      .map((n) => {
+        let pitch = noteNameToMidi(n.note);
+        if (pitch === null) return null;
+        while (pitch < 48) pitch += 12;
+        while (pitch > 96) pitch -= 12;
+        return {
+          pitch,
+          start: grid(clampNum(n.start, 0, limit, 0)),
+          duration: grid(clampNum(n.duration, 1 / 12, 16, 1)),
+          velocity: Math.round(clampNum(n.velocity, 30, 127, 92)),
+        };
+      })
+      .filter((n) => n && n.start < limit)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 256);
+    let end = 0;
+    chords.forEach((c) => { end = Math.max(end, c.start + c.duration); });
+    melody.forEach((n) => { end = Math.max(end, n.start + n.duration); });
+    return {
+      tempo: clampNum(raw.tempo, 40, 220, 96),
+      beatsPerBar,
+      bars: Math.max(1, Math.ceil(end / beatsPerBar - EPS)),
+      key: normalizeAccidentals(raw.key).slice(0, 6),
+      scale: String(raw.scale || '').slice(0, 20),
+      swing: clampNum(raw.swing, 0, 1, 0),
+      comping: pickWord(raw.comping, COMPINGS, 'sustain'),
+      voicing: pickWord(raw.voicing, VOICINGS, 'close'),
+      bass: pickWord(raw.bass, BASSES, 'root'),
+      signature: (raw.signature || [])
+        .slice(0, 5)
+        .map((x) => ({ trait: String(x.trait || '').slice(0, 30), device: String(x.device || '').slice(0, 80) }))
+        .filter((x) => x.trait || x.device),
+      chords,
+      melody,
+      markers: (raw.markers || []).slice(0, 32).map((x) => ({ beat: clampNum(x.beat, 0, limit, 0), label: String(x.label || '').slice(0, 40) })),
+    };
+  }
+
+  /** 設計図 → カードの midi(ノートに part 付き) */
+  function renderSketch(sk) {
+    const notes = [];
+    const bpb = sk.beatsPerBar;
+    const onBar = (t) => Math.abs(t / bpb - Math.round(t / bpb)) < EPS;
+    const keyChord = parseChord(sk.key);
+    let prev = null;
+    sk.chords.forEach((c) => {
+      const chord = parseChord(c.symbol);
+      if (!chord) return;
+      const s = c.start;
+      const e = c.start + c.duration;
+      const voicing = chooseVoicing(chord, sk.voicing, prev);
+      prev = voicing;
+      const onsets = compOnsets(sk.comping, s, e, bpb);
+      if (sk.comping === 'arpeggio' || sk.comping === 'broken') {
+        const n = voicing.length;
+        const idx = [...voicing.keys()];
+        const seq = sk.comping === 'arpeggio' ? [...idx, ...idx.slice().reverse().slice(1, -1)] : [0, n - 1, Math.floor(n / 2), n - 1];
+        onsets.forEach((o, k) => notes.push({ part: 'chords', pitch: voicing[seq[k % seq.length]], start: o.t, duration: o.d * 0.95, velocity: onBar(o.t) ? 78 : 68 }));
+      } else {
+        onsets.forEach((o) => voicing.forEach((pitch) => notes.push({
+          part: 'chords',
+          pitch,
+          start: o.t,
+          duration: sk.comping === 'sustain' ? o.d : o.d * 0.95,
+          velocity: sk.comping === 'sustain' ? 62 : onBar(o.t) ? 76 : 66,
+        })));
+      }
+
+      if (sk.bass === 'none') return;
+      const pc = sk.bass === 'pedal' && keyChord ? keyChord.root : chord.bass;
+      let low = 36 + pc;
+      if (low > 43) low -= 12; // G1〜F#2
+      const hits = [];
+      if (sk.bass === 'octave') {
+        for (let t = s, k = 0; t < e - EPS; t += 0.5, k++) hits.push({ t, p: k % 2 ? low + 12 : low });
+      } else {
+        hits.push({ t: s, p: low });
+        for (let bar = Math.ceil(s / bpb - EPS) * bpb; bar < e - EPS; bar += bpb) {
+          if (bar > s + EPS) hits.push({ t: bar, p: low });
+          if (sk.bass === 'root-fifth') {
+            const mid = bar + (bpb % 2 === 0 ? bpb / 2 : 2);
+            if (mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: low + 7 > 50 ? low - 5 : low + 7 });
+          }
+        }
+        hits.sort((x, y) => x.t - y.t);
+      }
+      hits.forEach((h, i) => {
+        const next = i + 1 < hits.length ? hits[i + 1].t : e;
+        const d = sk.bass === 'octave' ? 0.45 : (next - h.t) * 0.95;
+        notes.push({ part: 'bass', pitch: h.p, start: h.t, duration: Math.max(0.1, d), velocity: onBar(h.t) ? 88 : 80 });
+      });
+    });
+    sk.melody.forEach((n) => notes.push({ part: 'melody', ...n }));
+
+    // ハネ: 8分の裏(拍の.5)を後ろへずらす。swing=1で3連の3つ目の位置
+    if (sk.swing > 0.01) {
+      const shift = sk.swing / 6;
+      const sw = (b) => (Math.abs(b - Math.floor(b) - 0.5) < EPS ? b + shift : b);
+      notes.forEach((n) => {
+        const start = sw(n.start);
+        n.duration = Math.max(0.05, sw(n.start + n.duration) - start);
+        n.start = start;
+      });
+    }
+    notes.sort((a, b) => a.start - b.start);
+    return {
+      tempo: sk.tempo,
+      beatsPerBar: bpb,
+      notes: notes.slice(0, MAX_SKETCH_NOTES),
+      cc: [],
+      markers: sk.markers,
+      tempoChanges: [],
+      sketch: sk,
+    };
+  }
+
+  /** 作り直しの時にGeminiへ渡す設計図(旋律は音名に戻す) */
+  function sketchForPrompt(sk) {
+    return {
+      tempo: sk.tempo, beatsPerBar: sk.beatsPerBar, key: sk.key, scale: sk.scale, swing: sk.swing,
+      comping: sk.comping, voicing: sk.voicing, bass: sk.bass, signature: sk.signature, chords: sk.chords,
+      melody: sk.melody.map((n) => ({ note: midiToNoteName(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity })),
+      markers: sk.markers,
+    };
+  }
+
+  function sketchRules(barsText) {
+    return `出力の約束:
+- 長さは${barsText}。beatsPerBar は1小節の拍数(4分音符=1拍)
+- key は主音(例: D、F#)、scale は旋法・音階の名前(例: ドリアン)
+- chords: symbol はコードネーム(例: Fmaj7、Em9、Bb/C、C#m7b5、Gsus4、Dm7(11))。start・duration は拍単位(0始まり)。隙間なく並べる
+- comping(伴奏の型): sustain(伸ばす)/ stabs(短く刻む)/ offbeat(裏拍)/ pulse(8分で刻む)/ arpeggio(分散和音)/ broken(アルベルティ風)のどれか1つ
+- voicing(和音の積み方): close(密集)/ open(開離)/ shell(3度と7度だけ)/ cluster(2度でぶつける)/ quartal(4度堆積)/ power(ルートと5度)のどれか1つ
+- bass: root(ルートを伸ばす)/ root-fifth(ルートと5度)/ octave(8分のオクターブ)/ pedal(主音を持続)/ none のどれか1つ
+- swing: 0(まっすぐ)〜1(3連のハネ)。melody の start にはハネを付けずに書く(アプリが付ける)
+- melody: note は音名+オクターブ(C4が中央のド。例: E5、F#4、Bb4)で、おおむねC4〜C6。最初の1〜2小節で印象に残る動機を作り、それを繰り返し・移高・リズムの変形で展開する。休符(音の無い拍)も作る。強拍の音はそのときのコードの構成音かテンションにし、最後はコードの構成音で終える。1小節あたり2〜8音くらい
+- signature: trait にソウル側の特徴(15字以内)、device にそれを表す音楽の仕掛け(40字以内)。3〜4個
+- markers は、構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名(無ければ空の配列)
+- name は「〜.mid」の形の短い英数字のファイル名
+- 資料の文章を引用しない`;
+  }
+
+  function sketchStatus(midi, name) {
+    const unreadable = midi.sketch.chords.filter((c) => !parseChord(c.symbol)).length;
+    return `「${name}」を作りました${unreadable ? `(読めなかったコード${unreadable}個は鳴らしていません)` : ''}`;
+  }
+
+  /** 美学などのソウルから、コード+旋律+ベースの断片を作る(小節数と注文をたずねてから) */
+  async function createSketch(opts) {
+    const values = await showFormDialog({
+      title: 'コード+旋律で鳴らす',
+      message: `${opts.souls.map((s) => s.name).join('・')}らしさが一聴で分かる、コード進行+旋律+ベースの断片を作ります(Geminiを1回呼びます)。`,
+      submitLabel: '作る',
+      fields: [
+        { name: 'bars', label: '小節数', value: '8' },
+        { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: 'テンポはゆっくり、最後は解決させない など' },
+      ],
+    });
+    if (!values) return;
+    await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint });
+  }
+
+  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint }) {
+    const material = window.LyraSoulMaterial || (() => '');
+    const focus = focusParamIds || new Set();
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
+次のソウル(美学・ジャンルなど)を、コード進行+旋律(+ベース)の短い断片にしてください。
+目標は「聴いた瞬間に、そのソウルらしいと分かること」。無難で平凡な断片(ありがちな I-V-vi-IV、音階を上下するだけの旋律など)は失敗とみなします。
+
+${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}ソウルと手持ちの知識:
+${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus)}`).join('\n\n')}
+${hint ? `\nユーザーの注文: ${hint}\n` : ''}
+考え方:
+1. 手持ちの知識から、そのソウルを最も象徴する特徴を3〜4個選ぶ。音楽についての記述があれば最優先。無ければ、色・質感・時代・場所・感情などの特徴を音楽に翻訳してよい(一般的な音楽理論の知識は使ってよい)
+2. それぞれの特徴を、耳ですぐ分かる音楽の仕掛けにする。例: 和声の色(maj7・9thの多用、sus、借用和音、クロマチック・メディアント、ペダル上の和音)、旋法(ドリアン、リディアン、フリジアン、五音音階など)、リズムの感じ(ハネ、シンコペーション、ハーフタイム)、テンポ、伴奏の型、旋律の輪郭(跳躍・反復・装飾)
+3. 選んだ仕掛けを、コード・旋律・伴奏の型のどこかで必ず全部使う
+
+${sketchRules(`${bars}小節`)}
+- description は「どこがそのソウルらしいか」を40字以内で`;
+    setStatus('コードと旋律を作っています…', { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
+      const midi = renderSketch(sanitizeSketch(raw));
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
+      let name = String(raw.name || 'lyra_sketch.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
+      if (!/\.mid$/i.test(name)) name += '.mid';
+      const card = {
+        id: newId(),
+        type: 'midi',
+        name,
+        description: String(raw.description || '').slice(0, 60),
+        memberIds: memberIds || [],
+        speechId: speechId || null,
+        midi,
+        x: x || 0,
+        y: y || 0,
+        width: null,
+        height: null,
+        tilt: Math.round((Math.random() * 4 - 2) * 10) / 10,
+        createdAt: new Date().toISOString(),
+      };
+      addCardToEnsemble(stage, card);
+      setStatus(`${sketchStatus(midi, name)}。タップで試聴・書き出しができます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`コードと旋律を作れませんでした: ${err.message}`, { important: true });
     }
   }
 
@@ -282,7 +802,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
         const x = (n.start / beats) * width;
         const w = Math.max(1.5, (n.duration / beats) * width - 0.5);
         const y = height - (n.pitch - lo + 1) * rowH;
-        return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1.5, rowH - 0.5).toFixed(1)}" rx="1"/>`;
+        return `<rect${n.part ? ` class="roll-${n.part}"` : ''} x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1.5, rowH - 0.5).toFixed(1)}" rx="1"/>`;
       })
       .join('');
     const bars = [];
@@ -305,6 +825,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
+      (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
       `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
       `<button type="button" class="btn-small" data-midi="revise">作り直す</button></div>`;
@@ -318,11 +839,38 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
     });
   }
 
+  /** 「Fmaj7 → Em9 → …」(同じコードが続く所は1つにまとめる) */
+  function chordLine(sk, max) {
+    const symbols = sk.chords.map((c) => c.symbol).filter((s, i, arr) => i === 0 || s !== arr[i - 1]);
+    return symbols.slice(0, max).join(' → ') + (symbols.length > max ? ' …' : '');
+  }
+
   function describe(card) {
     const m = card.midi;
+    const sk = m.sketch;
     return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
+      (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
+        (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
       (m.cc.length ? `、CC ${m.cc.map((l) => l.label || `CC${l.controller}`).join(' / ')}` : '');
+  }
+
+  function sketchPanelHtml(sk) {
+    const signature = sk.signature.length
+      ? sk.signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')
+      : '<div class="panel-empty">なし</div>';
+    const chords = sk.chords
+      .map((c) => `<span class="sketch-chord" title="${(c.start / sk.beatsPerBar + 1).toFixed(2)}小節目から${c.duration}拍">${escapeHtml(c.symbol)}${parseChord(c.symbol) ? '' : '(読めず)'}</span>`)
+      .join('');
+    const plan = [
+      `${sk.key}${sk.scale ? ` ${sk.scale}` : ''}`,
+      `伴奏: ${SKETCH_LABELS[sk.comping]}`,
+      `和音: ${SKETCH_LABELS[sk.voicing]}`,
+      `ベース: ${SKETCH_LABELS[sk.bass]}`,
+      sk.swing > 0.01 ? `ハネ: ${Math.round(sk.swing * 100)}%` : 'ハネなし',
+    ].map(escapeHtml).join(' · ');
+    return `<div class="panel-section"><div class="panel-label">ソウルらしさの仕掛け</div>${signature}</div>` +
+      `<div class="panel-section"><div class="panel-label">設計図</div><div class="panel-source">${plan}</div><div class="sketch-chords">${chords}</div></div>`;
   }
 
   function panelHtml(card) {
@@ -338,9 +886,10 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
       `<div class="panel-sub">MIDI · テンポ ${Math.round(m.tempo)} · ${m.beatsPerBar}/4 · ${Math.ceil(totalBeats(m) / m.beatsPerBar)}小節 · ${m.notes.length}音</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
-      `<div class="panel-roll">${pianoRollSvg(m, 300, 90)}</div>` +
+      `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}">${pianoRollSvg(m, 300, m.sketch ? 140 : 90)}</div>` +
+      (m.sketch ? `<div class="roll-legend"><span class="roll-legend-melody">旋律</span><span class="roll-legend-chords">コード</span><span class="roll-legend-bass">ベース</span>(.midでは別トラック)</div>` + sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
-      `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>` +
+      (m.sketch && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
       (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${(t.beat / m.beatsPerBar + 1).toFixed(1)}小節目 → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
@@ -423,7 +972,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
 
   /**
    * format 1: トラック0=テンポ・拍子・マーカー(Cubaseのテンポトラック・マーカートラックに入る)、
-   * トラック1=ノートとCC(チャンネル1)。
+   * トラック1以降=ノートとCC。コード+旋律の断片は Melody(ch1)/ Chords(ch2)/ Bass(ch3)の別トラック。
    */
   function buildSmf(card) {
     const m = card.midi;
@@ -435,17 +984,26 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
       ...m.tempoChanges.map((x) => ({ tick: t(x.beat), order: 3, bytes: tempoBytes(x.bpm) })),
       ...m.markers.map((x) => ({ tick: t(x.beat), order: 4, bytes: metaEvent(0x06, textBytes(x.label)) })),
     ];
-    const notes = [{ tick: 0, order: 0, bytes: metaEvent(0x03, textBytes('LYRA')) }];
-    m.notes.forEach((n) => {
-      // 同じtickでは note off を note on より先に並べる(同じ音の連打が切れないように)
-      notes.push({ tick: t(n.start), order: 2, bytes: [0x90, n.pitch, n.velocity] });
-      notes.push({ tick: t(n.start + n.duration), order: 1, bytes: [0x80, n.pitch, 0] });
-    });
-    m.cc.forEach((lane) => {
-      lane.points.forEach((p) => notes.push({ tick: t(p.beat), order: 3, bytes: [0xb0, lane.controller, p.value] }));
-    });
-    const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 2, (PPQ >> 8) & 255, PPQ & 255];
-    return new Uint8Array([...header, ...trackChunk(conductor), ...trackChunk(notes)]);
+    const noteTrack = (list, ch, trackName, withCc) => {
+      const events = [{ tick: 0, order: 0, bytes: metaEvent(0x03, textBytes(trackName)) }];
+      list.forEach((n) => {
+        // 同じtickでは note off を note on より先に並べる(同じ音の連打が切れないように)
+        events.push({ tick: t(n.start), order: 2, bytes: [0x90 | ch, n.pitch, n.velocity] });
+        events.push({ tick: t(n.start + n.duration), order: 1, bytes: [0x80 | ch, n.pitch, 0] });
+      });
+      if (withCc) {
+        m.cc.forEach((lane) => {
+          lane.points.forEach((p) => events.push({ tick: t(p.beat), order: 3, bytes: [0xb0 | ch, lane.controller, p.value] }));
+        });
+      }
+      return events;
+    };
+    const parts = ['melody', 'chords', 'bass'].filter((part) => m.notes.some((n) => n.part === part));
+    const tracks = parts.length
+      ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), ch, PART_NAMES[part], ch === 0))
+      : [noteTrack(m.notes, 0, 'LYRA', true)];
+    const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1 + tracks.length, (PPQ >> 8) & 255, PPQ & 255];
+    return new Uint8Array([...header, ...trackChunk(conductor), ...tracks.flatMap((ev) => trackChunk(ev))]);
   }
 
   /* ---------------- 簡易シンセ(試聴・WAV書き出し共通) ---------------- */
@@ -470,6 +1028,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
   }
 
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
+  const PART_GAIN = { melody: 0.5, chords: 0.32, bass: 1.1 };
 
   /**
    * ctx(AudioContext / OfflineAudioContext)にカードの音を予約する。音色の再現ではなく構造確認用:
@@ -495,13 +1054,14 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
     const vol = lane(11) || lane(7);
     if (vol) vol.points.forEach((p) => out.gain.linearRampToValueAtTime(0.02 + (p.value / 127) * 0.3, startAt + toSec(p.beat)));
 
-    const isDrum = m.notes.length > 0 && m.notes.every((n) => n.pitch >= 35 && n.pitch <= 81) && m.notes.some((n) => [36, 38, 42].includes(n.pitch)) && m.notes.every((n) => n.duration <= 1);
+    const isDrum = m.notes.length > 0 && m.notes.every((n) => !n.part && n.pitch >= 35 && n.pitch <= 81) && m.notes.some((n) => [36, 38, 42].includes(n.pitch)) && m.notes.every((n) => n.duration <= 1);
     let noise = null;
     const nodes = [];
     m.notes.forEach((n) => {
       const t0 = startAt + toSec(n.start);
       const t1 = startAt + toSec(n.start + n.duration);
-      const amp = (n.velocity / 127) * 0.5;
+      // コード+旋律の断片は、旋律を前に出し(のこぎり波)、和音は数が多いぶん小さく鳴らす
+      const amp = (n.velocity / 127) * 0.5 * (PART_GAIN[n.part] || 1);
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, t0);
       if (isDrum) {
@@ -536,7 +1096,7 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
         return;
       }
       const osc = ctx.createOscillator();
-      osc.type = 'triangle';
+      osc.type = n.part === 'melody' ? 'sawtooth' : 'triangle';
       osc.frequency.value = midiToFreq(n.pitch);
       osc.connect(env);
       env.connect(filter);
@@ -650,5 +1210,5 @@ ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, 
     }
   }
 
-  window.LyraMidi = { createFromSpeech, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  window.LyraMidi = { createFromSpeech, createSketch, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();
