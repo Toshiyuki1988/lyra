@@ -86,7 +86,6 @@
       scope = { cards: ens.cards, connections: ens.connections };
       focusCardId = null;
       setCrumbs([{ label: `アンサンブル in ${stage.name}` }]);
-      els.ensembleNavBtn.classList.add('nav-link--active');
       els.viewport.style.setProperty('--stage-ambience', hexToRgba(stage.color, 0.07));
       els.viewport.classList.add('canvas-viewport--ambience');
       buildOverlay();
@@ -101,7 +100,6 @@
     },
 
     leave() {
-      els.ensembleNavBtn.classList.remove('nav-link--active');
       els.viewport.removeEventListener('dragover', onDragOver);
       els.viewport.removeEventListener('drop', onDrop);
       if (window.LyraMidi) window.LyraMidi.stopAll();
@@ -890,7 +888,22 @@ ${soulBlocks}
     if (currentRoute && currentRoute.screen === 'ensemble' && cardElById(card.id)) rerenderCard(card);
   }
 
+  /** アプリ側から2枚のカードを線でつなぐ(MIDIの改善版を元のカードにつなぐ時など) */
+  function connectEnsembleCards(targetStage, cardIdA, cardIdB) {
+    const ens = getEnsemble(targetStage.id);
+    const connection = { id: newId(), cardIdA, cardIdB, auto: true };
+    ens.connections.push(connection);
+    scheduleAutoSave();
+    if (stage === targetStage && currentRoute && currentRoute.screen === 'ensemble') {
+      redrawAsterismLines();
+      flashConnectedLine(connection.id);
+      focusCardId = cardIdB;
+      renderMembers();
+    }
+  }
+
   window.addCardToEnsemble = addCardToEnsemble;
+  window.connectEnsembleCards = connectEnsembleCards;
   window.refreshEnsembleCard = refreshEnsembleCard;
   LYRA.screens.ensemble = screen;
 })();

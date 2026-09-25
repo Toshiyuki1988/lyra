@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260925g">
+<link rel="stylesheet" href="css/style.css?v=20260925h">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
@@ -58,10 +58,8 @@
     </a>
     <nav id="crumbs" class="crumbs"></nav>
     <span id="status" class="status"></span>
-    <div class="ensemble-nav">
-      <button id="ensemble-nav-btn" class="nav-link" disabled>アンサンブル <span class="nav-caret">▾</span></button>
-      <div id="ensemble-menu" class="ensemble-menu" hidden></div>
-    </div>
+    <!-- アンサンブルの舞台タブ(舞台のソウルが増えるたびに増える。js/app.jsのrenderEnsembleTabs()) -->
+    <nav id="ensemble-tabs" class="ensemble-tabs" aria-label="アンサンブル"></nav>
     <div class="toolbar-actions">
       <button id="sign-in-btn" hidden>Googleでサインイン</button>
       <button id="sign-out-btn" class="secondary" hidden>サインアウト</button>
@@ -124,13 +122,13 @@
   <script src="js/gemini.js?v=20260925d"></script>
   <script src="js/sound.js?v=20260924a"></script>
   <script src="js/canvas.js?v=20260925a"></script>
-  <script src="js/app.js?v=20260925g"></script>
+  <script src="js/app.js?v=20260925h"></script>
   <script src="js/decompose.js?v=20260925g"></script>
-  <script src="js/midi.js?v=20260925b"></script>
+  <script src="js/midi.js?v=20260925h"></script>
   <script src="js/audio.js?v=20260925b"></script>
   <script src="js/daily.js?v=20260925b"></script>
-  <script src="js/screens/home.js?v=20260925b"></script>
+  <script src="js/screens/home.js?v=20260925h"></script>
   <script src="js/screens/soul.js?v=20260925g"></script>
-  <script src="js/screens/ensemble.js?v=20260925g"></script>
+  <script src="js/screens/ensemble.js?v=20260925h"></script>
 </body>
 </html>

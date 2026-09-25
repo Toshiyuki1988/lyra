@@ -136,55 +136,55 @@ a.crumb:hover { color: var(--accent-ink); }
   flex: 0 1 auto;
 }
 
-/* アンサンブルのプルダウン(舞台のソウルが増えるたびに「アンサンブル in 〇〇」が増える) */
-.ensemble-nav { position: relative; flex: none; }
-.toolbar .nav-link {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: var(--muted);
-  font-size: 14px;
-  padding: 4px 2px;
-}
-.toolbar .nav-link:hover,
-.toolbar .nav-link--open { color: var(--accent-ink); }
-.toolbar .nav-link--active { color: var(--accent-ink); border-bottom-color: var(--accent-ink); }
-.toolbar .nav-link:disabled { opacity: 0.4; }
-.nav-caret { font-size: 10px; margin-left: 2px; }
-.ensemble-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 10px);
-  min-width: 260px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(60, 50, 20, 0.14);
-  padding: 6px;
-  z-index: 80;
-}
-.ensemble-menu[hidden] { display: none; }
-.ensemble-menu-item {
-  white-space: nowrap;
+/* アンサンブルの舞台タブ(舞台のソウルが増えるたびに増える。入りきらない時は横スクロール) */
+.ensemble-tabs {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 7px;
-  color: var(--ink);
-  font-size: 13px;
-  text-decoration: none;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  max-width: 55%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 1 auto;
 }
-.ensemble-menu-item:hover { background: var(--surface-2); }
-.ensemble-menu-item--active { background: var(--accent-bg); color: var(--accent-deep); }
-.ensemble-menu-item svg { flex: none; }
-.ensemble-menu-hint { font-size: 10px; color: var(--faint); padding: 6px 10px 4px; line-height: 1.5; }
+.ensemble-tabs::-webkit-scrollbar { display: none; }
+.ensemble-tabs:empty { display: none; }
+.ensemble-tabs-label {
+  flex: none;
+  align-self: center;
+  font-size: 11px;
+  color: var(--faint);
+  margin-right: 6px;
+  letter-spacing: 0.04em;
+}
+.ensemble-tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 4px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.ensemble-tab:hover { color: var(--accent-ink); }
+.ensemble-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stage-color);
+  opacity: 0.55;
+}
+.ensemble-tab--active { color: var(--accent-ink); border-bottom-color: var(--accent-ink); }
+.ensemble-tab--active .ensemble-tab-dot { opacity: 1; }
 
 @media (max-width: 640px) {
   .toolbar { padding: 10px 12px; gap: 6px 10px; flex-wrap: wrap; }
   .crumbs { order: 10; flex-basis: 100%; }
   .status { order: 11; flex-basis: 100%; margin-left: 0; }
+  .ensemble-tabs { order: 12; flex-basis: 100%; max-width: none; }
 }
 
 /* 時間のかかる処理(Drive同期・Gemini呼び出し)の進行を、ヘッダー下端の細い線で示す */
@@ -472,7 +472,7 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card-handle[data-edge="w"] { top: 50%; left: 0; cursor: ew-resize; }
 
 /* 編集ガイドのヘックスバッジ(ヘックスメニュー)。
-   左辺=Edit、右辺=Delete、中央=ASTR。新しいアクションを足す時は、既存のヘックスと
+   左辺=Edit、右辺=Delete、下=ASTR。新しいアクションを足す時は、既存のヘックスと
    重ならない位置(上下左右の空き)を選び、実機でカード矩形の外側にあるか確認すること。 */
 .star-card-hex {
   position: absolute;
@@ -497,11 +497,13 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card-hex--edit   { left: 0; top: 50%; transform: translate(-115%, -50%); }
 .star-card-hex--delete { left: 100%; top: 50%; transform: translate(15%, -50%); }
 .star-card-hex--astr {
+  /* 2026-09-25: 以前はカードの中央に重ねていたが、テキストカードの編集中に文字を隠して邪魔、という
+     実機の指摘を受け、カードの下の外側へ移した(Edit=左、Delete=右、ASTR=下) */
   left: 50%;
-  top: 50%;
+  top: 100%;
   width: 56px;
   height: 56px;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 10px);
   letter-spacing: 0.04em;
 }
 
@@ -1488,3 +1490,6 @@ a.btn-secondary { display: block; }
   outline: none;
 }
 .panel-inline-input:focus { border-bottom-color: var(--accent-line); }
+
+/* MIDIの改善版カード: どのコメントを受けて作り直したか */
+.midi-comment { color: var(--muted); font-size: 10px; }

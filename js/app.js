@@ -72,8 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsCancelBtn = document.getElementById('settings-cancel-btn');
   els.settingsDaily = document.getElementById('settings-daily');
   els.settingsDailyRow = document.getElementById('settings-daily-row');
-  els.ensembleNavBtn = document.getElementById('ensemble-nav-btn');
-  els.ensembleMenu = document.getElementById('ensemble-menu');
+  els.ensembleTabs = document.getElementById('ensemble-tabs');
 
   initCanvas(els.viewport, els.content);
   createAsterismLayer();
@@ -86,10 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
     signOut();
     toggleAuthUI(false);
     setStatus('サインアウトしました');
-  });
-  els.ensembleNavBtn.addEventListener('click', toggleEnsembleMenu);
-  document.addEventListener('pointerdown', (event) => {
-    if (!els.ensembleMenu.hidden && !event.target.closest('.ensemble-nav')) closeEnsembleMenu();
   });
   window.addEventListener('hashchange', applyRoute);
 
@@ -204,7 +199,6 @@ async function onSignedIn() {
     state.fileId = fileId;
     const migrated = applyLoadedData(data);
     dataLoaded = true;
-    els.ensembleNavBtn.disabled = false;
     applyRoute();
     setStatus('読み込みました');
     if (migrated) scheduleAutoSave();
@@ -420,7 +414,6 @@ const viewportMemory = {};
 
 function applyRoute() {
   if (!dataLoaded) return;
-  closeEnsembleMenu();
   if (currentRoute) viewportMemory[routeKey(currentRoute)] = getViewportSnapshot();
 
   const route = parseRoute();
@@ -442,6 +435,7 @@ function applyRoute() {
 
   currentScreen = screen;
   currentRoute = route;
+  renderEnsembleTabs();
   document.body.dataset.screen = route.screen;
   const ok = screen.enter(route);
   if (ok === false) return; // 画面側が別のルートへ飛ばした(存在しないソウル等)
@@ -589,36 +583,34 @@ function formatDate(iso) {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/* ---------------- アンサンブルのプルダウン(ヘッダー) ---------------- */
+/* ---------------- アンサンブルの舞台タブ(ヘッダー) ----------------
+ * 2026-09-25: 当初はプルダウン(「アンサンブル」→「アンサンブル in コンサートホール」の2段階)にしたが、
+ * 実際に使って「2段階クリックが手間」というユーザーの判断で、1クリックで切り替えられるタブに変えた。
+ * 舞台のソウルが増えるたびにタブが増える。入りきらない時は横スクロール。 */
 
 function ensembleHash(stage) {
   return `#/ensemble/${encodeURIComponent(stage.id)}`;
 }
 
-function toggleEnsembleMenu() {
-  if (!els.ensembleMenu.hidden) {
-    closeEnsembleMenu();
+/** ヘッダーの舞台タブを描き直す。画面の切り替え時と、ソウルの作成・編集・削除の後に呼ぶ */
+function renderEnsembleTabs() {
+  if (!els.ensembleTabs) return;
+  if (!dataLoaded) {
+    els.ensembleTabs.innerHTML = '';
     return;
   }
   const currentStageId = currentRoute && currentRoute.screen === 'ensemble' ? currentRoute.stageId : null;
-  const stages = stageSouls();
-  els.ensembleMenu.innerHTML = stages
-    .map((stage) => {
-      const active = stage.id === currentStageId ? ' ensemble-menu-item--active' : '';
-      return `<a class="ensemble-menu-item${active}" href="${ensembleHash(stage)}">` +
-        `${soulOrbSvg(stage, 18)}<span>アンサンブル in ${escapeHtml(stage.name)}</span></a>`;
-    })
-    .join('') +
-    `<div class="ensemble-menu-hint">舞台のソウルを増やすと、ここにアンサンブルが増えます</div>`;
-  els.ensembleMenu.hidden = false;
-  els.ensembleNavBtn.classList.add('nav-link--open');
+  els.ensembleTabs.innerHTML =
+    `<span class="ensemble-tabs-label">アンサンブル</span>` +
+    stageSouls()
+      .map((stage) => `<a class="ensemble-tab${stage.id === currentStageId ? ' ensemble-tab--active' : ''}" href="${ensembleHash(stage)}" ` +
+        `title="アンサンブル in ${escapeHtml(stage.name)}" style="--stage-color:${stage.color}">` +
+        `<span class="ensemble-tab-dot"></span>${escapeHtml(stage.name)}</a>`)
+      .join('');
+  const active = els.ensembleTabs.querySelector('.ensemble-tab--active');
+  if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
-function closeEnsembleMenu() {
-  if (!els.ensembleMenu) return;
-  els.ensembleMenu.hidden = true;
-  els.ensembleNavBtn.classList.remove('nav-link--open');
-}
 
 /* ---------------- 保存 ---------------- */
 
@@ -1027,7 +1019,6 @@ function onCardMoved(card, el) {
 }
 
 function handleGlobalKeydown(event) {
-  if (event.key === 'Escape') closeEnsembleMenu();
   const guideEl = getEditGuideCard();
   if (!guideEl) return;
   const target = event.target;

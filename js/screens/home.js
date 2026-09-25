@@ -152,10 +152,11 @@
     const soul = makeSoul({ name: values.name, category: values.category, color: values.color, x: spot.x, y: spot.y });
     state.souls.push(soul);
     renderCard(soul);
+    renderEnsembleTabs();
     scheduleAutoSave();
     setStatus(
       soul.category === 'stage'
-        ? `「${soul.name}」のソウルを作りました。アンサンブルのプルダウンに「アンサンブル in ${soul.name}」が増えました`
+        ? `「${soul.name}」のソウルを作りました。ヘッダーのアンサンブルに「${soul.name}」のタブが増えました`
         : `「${soul.name}」のソウルを作りました`
     );
   }
@@ -170,7 +171,7 @@
     if (values.category) soul.category = values.category;
     soul.color = values.color || soul.color;
     if (wasStage && soul.category !== 'stage') {
-      setStatus('区分を舞台から変えたため、このソウルのアンサンブルはプルダウンに出なくなりました(カードは残っています)', { important: true });
+      setStatus('区分を舞台から変えたため、このソウルのアンサンブルはタブに出なくなりました(カードは残っています)', { important: true });
     }
     const el = cardElById(soul.id);
     if (el) {
@@ -178,6 +179,7 @@
       el.remove();
     }
     renderCard(soul);
+    renderEnsembleTabs();
     scheduleAutoSave();
   }
 
@@ -197,6 +199,7 @@
     if (choice !== 'delete') return;
     removeCardFromScope(soul); // scope.cards === state.souls なので、ここでstateからも外れる
     delete state.ensembles[soul.id];
+    renderEnsembleTabs();
     setStatus(`「${soul.name}」のソウルを削除しました`);
     scheduleAutoSave();
   }

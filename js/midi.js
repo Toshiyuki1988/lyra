@@ -190,6 +190,82 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
     }
   }
 
+  /* ---------------- コメントして作り直す ----------------
+   * 2026-09-25追加(ユーザー要望): MIDIカードにコメントすると、前のMIDIとコメントを踏まえた改善版を
+   * Geminiが作り、元のカードの右隣に置いて Asterism の線で自動的につなぐ(_v2.mid, _v3.mid…)。
+   * 線は原則ユーザーが手で結ぶものだが、改善の系譜を辿れるようにするため、ここだけは自動で結ぶ。 */
+
+  function findStageOfCard(card) {
+    const stageId = Object.keys(state.ensembles).find((id) => (state.ensembles[id].cards || []).some((c) => c.id === card.id));
+    return stageId ? getSoul(stageId) : null;
+  }
+
+  function baseName(name) {
+    return String(name || 'lyra').replace(/\.mid$/i, '').replace(/_v\d+$/i, '');
+  }
+
+  async function reviseMidi(card) {
+    const stage = findStageOfCard(card);
+    if (!stage) return;
+    const values = await showFormDialog({
+      title: `「${card.name}」を作り直す`,
+      message: 'どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを1回呼びます)。',
+      submitLabel: '作り直す',
+      fields: [{ name: 'comment', label: 'コメント', type: 'textarea', required: true, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' }],
+    });
+    if (!values) return;
+    const ens = getEnsemble(stage.id);
+    const speech = card.speechId ? ens.cards.find((c) => c.id === card.speechId) : null;
+    const history = [];
+    for (let c = card; c && history.length < 4; c = c.revisionOf ? ens.cards.find((x) => x.id === c.revisionOf) : null) {
+      if (c.comment) history.unshift(c.comment);
+    }
+    const m = card.midi;
+    const prompt = `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
+
+前回のMIDI(JSON。start・duration・beat は拍単位):
+${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, notes: m.notes, cc: m.cc, markers: m.markers, tempoChanges: m.tempoChanges })}
+
+出力の約束:
+- コメントで触れていない部分は、なるべく前回を保つ(全部を作り替えない)
+- notes は最大${MAX_NOTES}個。キースイッチ用のノートは入れない
+- cc の label は「CC74 → 何のつまみに割り当てる想定か」の形を保つ
+- markers は構造語彙(密度・明度・動き・空間・緊張・滲み・間・揺らぎ)で区切ったセクション名
+- description は、前回から何を変えたかを40字以内で`;
+    setStatus('MIDIを作り直しています…', { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: MIDI_SCHEMA, maxOutputTokens: 8192, label: 'MIDIの作り直し' });
+      const midi = sanitizeMidi(raw);
+      if (midi.notes.length === 0 && midi.cc.length === 0) throw new Error('ノートが1つも出てきませんでした');
+      const version = (card.version || 1) + 1;
+      const next = {
+        id: newId(),
+        type: 'midi',
+        name: `${baseName(card.name)}_v${version}.mid`,
+        description: String(raw.description || '').slice(0, 60),
+        comment: values.comment.slice(0, 200),
+        version,
+        revisionOf: card.id,
+        memberIds: card.memberIds || [],
+        speechId: card.speechId || null,
+        midi,
+        x: (card.x || 0) + (card.width || 210) + 70,
+        y: (card.y || 0) + 10,
+        width: null,
+        height: null,
+        tilt: Math.round((Math.random() * 4 - 2) * 10) / 10,
+        createdAt: new Date().toISOString(),
+      };
+      addCardToEnsemble(stage, next);
+      connectEnsembleCards(stage, card.id, next.id);
+      setStatus(`「${next.name}」を作りました`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`MIDIを作り直せませんでした: ${err.message}`, { important: true });
+    }
+  }
+
   /* ---------------- カード・パネル ---------------- */
 
   /** ピアノロール風の小さな図(SVG) */
@@ -227,18 +303,24 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
     el.innerHTML =
       `<div class="midi-head"><span class="midi-icon">♪</span><span class="ens-card-kind ens-card-kind--accent">MIDI${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
+      (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
-      `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button></div>`;
+      `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
+      `<button type="button" class="btn-small" data-midi="revise">作り直す</button></div>`;
     el.querySelector('[data-midi="play"]').addEventListener('click', (event) => {
       event.stopPropagation();
       togglePlay(card);
+    });
+    el.querySelector('[data-midi="revise"]').addEventListener('click', (event) => {
+      event.stopPropagation();
+      reviseMidi(card);
     });
   }
 
   function describe(card) {
     const m = card.midi;
-    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
+    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
       (m.cc.length ? `、CC ${m.cc.map((l) => l.label || `CC${l.controller}`).join(' / ')}` : '');
   }
@@ -264,6 +346,7 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="mid">.midを書き出す</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="wav">WAVに書き出す(仮音源)</button>` +
+      `<button type="button" class="btn-secondary" data-midi-action="revise">コメントして作り直す</button>` +
       `</div>`;
   }
 
@@ -284,6 +367,7 @@ ${values.hint ? `ユーザーの注文: ${values.hint}\n` : ''}
       setStatus(`${card.name}を書き出しました`);
     });
     panel.querySelector('[data-midi-action="wav"]').addEventListener('click', () => exportWav(card));
+    panel.querySelector('[data-midi-action="revise"]').addEventListener('click', () => reviseMidi(card));
   }
 
   function downloadBlob(blob, filename) {
