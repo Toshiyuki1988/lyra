@@ -244,28 +244,51 @@ ${WRITEUP_RULES}`;
     return String(name || 'lyra').replace(/\.mid$/i, '').replace(/_v\d+$/i, '');
   }
 
+  /* 2026-09-25: 「編集したものに、さらにいろんなアステリズムをつないでブラッシュアップする」方向性(ユーザー判断)で、
+   * MIDIカードにASTRでつないだカード(ソウル・パラメータ・気づき・課題など)とその持ち主のソウルの知識も渡すようにした。
+   * つないだものがあればコメントは空でもよい。改善版はつないだソウルも memberIds に引き継ぐ。
+   * 手で編集したカード(midi.edited)は、実際のノートも渡して尊重させる。 */
   async function reviseMidi(card) {
     const stage = findStageOfCard(card);
     if (!stage) return;
+    const m = card.midi;
+    const isSketch = !!m.sketch;
+    const melodic = isSketch || m.kind === 'melody';
+    // 旋律を作る経路では、「鳴らす」と同じくアーティスト名・曲名などの項目を渡さない
+    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: melodic }) : null;
+    // コード+旋律には音色のソウル(プラグイン)の知識は効かないので渡さない(CCを持つMIDIには渡す)
+    const linkSouls = links ? links.souls.filter((s) => !isSketch || s.category !== 'plugin') : [];
+    const linkNote = links
+      ? `\n\nASTRでつないだもの: ${links.names.join('・')}${linkSouls.length ? `(ソウル: ${linkSouls.map((s) => s.name).join('・')}の知識も渡します)` : ''}。これを取り入れてブラッシュアップします。コメントは空でもかまいません。`
+      : '\n\nMIDIカードにASTRでソウルやパラメータのカードをつないでおくと、その知識も取り入れてブラッシュアップします。';
     const values = await showFormDialog({
       title: `「${card.name}」を作り直す`,
-      message: `どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを${card.midi.sketch || card.midi.kind === 'melody' ? '2回。主旋律の反芻を含みます' : '1回'}呼びます)。`,
+      message: `どう変えたいかを書いてください。前のMIDIとこのコメントを踏まえた改善版を作り、右隣に線でつないで置きます(Geminiを${melodic ? '2回。主旋律の反芻を含みます' : '1回'}呼びます)。` +
+        (m.edited ? '手で編集した音も踏まえます。' : '') + linkNote,
       submitLabel: '作り直す',
-      fields: [{ name: 'comment', label: 'コメント', type: 'textarea', required: true, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' }],
+      fields: [{ name: 'comment', label: 'コメント', type: 'textarea', required: !links, placeholder: '後半はもっと音数を減らして、最後の2小節は長く伸ばしたい など' }],
     });
     if (!values) return;
+    const comment = String(values.comment || '').trim();
+    const material = window.LyraSoulMaterial || (() => '');
+    const linkText = links
+      ? `\nASTRでこのMIDIにつないだカード(今回のブラッシュアップで取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n') || '- (ソウルのカードのみ)'}\n` +
+        (linkSouls.length ? `\nつないだソウルと手持ちの知識:\n${linkSouls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, links.focusParamIds, { excludeReferences: melodic })}`).join('\n\n')}\n` : '') +
+        `\nつないだカード・ソウルの特徴を、コメントと矛盾しない範囲で取り入れる。${isSketch ? 'signature には取り入れた特徴を1〜2個足してよい(合計5個まで)。' : ''}\n`
+      : '';
+    const editedText = m.edited
+      ? `\nユーザーは前回の版を編集画面で手で直している。手で直した実際の音(拍・音名・長さ)は次のとおりで、前回の${isSketch ? '設計図(旋律は直した旋律に合わせてある)' : 'MIDI'}より優先して尊重する。コード・ベースの音が直されていれば、その響きをコードネームに反映する:\n${editedNotesText(m)}\n`
+      : '';
     const ens = getEnsemble(stage.id);
     const speech = card.speechId ? ens.cards.find((c) => c.id === card.speechId) : null;
     const history = [];
     for (let c = card; c && history.length < 4; c = c.revisionOf ? ens.cards.find((x) => x.id === c.revisionOf) : null) {
       if (c.comment) history.unshift(c.comment);
     }
-    const m = card.midi;
-    const isSketch = !!m.sketch;
     const prompt = isSketch
       ? `あなたは作曲支援アプリLYRAの作曲担当です。前に作ったコード+旋律の断片を、ユーザーのコメントに沿って作り直してください。
-${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
-
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || '(なし。つないだカード・ソウルを取り入れる)'}
+${linkText}${editedText}
 前回の設計図(JSON):
 ${JSON.stringify(sketchForPrompt(m.sketch))}
 
@@ -275,8 +298,8 @@ ${sketchRules(`コメントで指示が無ければ前回と同じ${m.sketch.bar
 - description は、前回から何を変えたかを40字以内で
 ${WRITEUP_RULES}(今回の版に合わせて書き直す)`
       : `あなたは作曲支援アプリLYRAです。前に作ったMIDIの断片を、ユーザーのコメントに沿って作り直してください。
-${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${values.comment}
-
+${speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}\n` : ''}${history.length ? `これまでのコメント(古い順): ${history.join(' / ')}\n` : ''}今回のコメント: ${comment || '(なし。つないだカード・ソウルを取り入れる)'}
+${linkText}${editedText}
 前回のMIDI(JSON。start・duration・beat は拍単位):
 ${JSON.stringify({ name: card.name, tempo: m.tempo, beatsPerBar: m.beatsPerBar, notes: m.notes, cc: m.cc, markers: m.markers, tempoChanges: m.tempoChanges })}
 
@@ -291,7 +314,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     setStatus('MIDIを作り直しています…', { busy: true });
     try {
       const raw = await askGeminiJson({ prompt, responseSchema: isSketch ? SKETCH_SCHEMA : MIDI_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'MIDIの作り直し' });
-      const purpose = raw.concept || raw.description || values.comment;
+      const purpose = raw.concept || raw.description || comment;
       let midi;
       if (isSketch) {
         midi = renderSketch(await ruminateSketch(sanitizeSketch(raw), purpose));
@@ -310,10 +333,11 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         name: `${baseName(card.name)}_v${version}.mid`,
         description: String(raw.description || '').slice(0, 60),
         ...writeup(raw),
-        comment: values.comment.slice(0, 200),
+        comment: comment.slice(0, 200),
+        linkedNames: links ? links.names.slice(0, 6) : [],
         version,
         revisionOf: card.id,
-        memberIds: card.memberIds || [],
+        memberIds: [...new Set([...(card.memberIds || []), ...linkSouls.map((s) => s.id)])],
         speechId: card.speechId || null,
         midi,
         x: (card.x || 0) + (card.width || 210) + 70,
@@ -947,6 +971,8 @@ ${WRITEUP_RULES}`;
       `<div class="midi-head"><span class="midi-icon">♪</span><span class="ens-card-kind ens-card-kind--accent">MIDI${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
+      (card.linkedNames && card.linkedNames.length ? `<div class="ens-card-sub midi-comment">+ ${escapeHtml(card.linkedNames.join('・'))}をつないで</div>` : '') +
+      (card.midi.edited ? `<div class="ens-card-sub midi-comment">✎ 手で編集済み</div>` : '') +
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="ens-card-sub midi-concept">${escapeHtml(card.concept)}</div>` : '') +
       (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
@@ -972,7 +998,7 @@ ${WRITEUP_RULES}`;
   function describe(card) {
     const m = card.midi;
     const sk = m.sketch;
-    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
+    return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${card.midi.edited ? '(ユーザーが手で編集済み)' : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
       (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
         (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
       (m.markers.length ? `、セクション ${m.markers.map((x) => x.label).join(' → ')}` : '') +
@@ -1027,6 +1053,7 @@ ${WRITEUP_RULES}`;
       (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${(t.beat / m.beatsPerBar + 1).toFixed(1)}小節目 → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
+      `<button type="button" class="btn-secondary" data-midi-action="edit">編集する</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="mid">.midを書き出す</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="wav">WAVに書き出す(仮音源)</button>` +
       `<button type="button" class="btn-secondary" data-midi-action="revise">コメントして作り直す</button>` +
@@ -1052,6 +1079,7 @@ ${WRITEUP_RULES}`;
       downloadBlob(new Blob([buildSmf(card)], { type: 'audio/midi' }), card.name);
       setStatus(`${card.name}を書き出しました`);
     });
+    panel.querySelector('[data-midi-action="edit"]').addEventListener('click', () => openMidiEditor(card));
     panel.querySelector('[data-midi-action="wav"]').addEventListener('click', () => exportWav(card));
     panel.querySelector('[data-midi-action="revise"]').addEventListener('click', () => reviseMidi(card));
     const box = panel.querySelector('[data-midi-export]');
@@ -1183,7 +1211,7 @@ ${WRITEUP_RULES}`;
   function bindExportBox(box, card, panel) {
     bindDragOut(box, card);
     const pick = box.querySelector('[data-midi-select]');
-    if (pick) pick.addEventListener('click', () => openRangeEditor(card, () => refreshExportUi(panel, card)));
+    if (pick) pick.addEventListener('click', () => openMidiEditor(card, { mode: 'range' }));
     const clear = box.querySelector('[data-midi-select-clear]');
     if (clear) clear.addEventListener('click', () => {
       card.selection = null;
@@ -1192,23 +1220,37 @@ ${WRITEUP_RULES}`;
     });
   }
 
-  /** 大きなピアノロールで範囲を囲む画面 */
-  function openRangeEditor(card, onDone) {
+  /* ---- MIDIの編集画面 ----
+   * 2026-09-25: 「MIDI編集画面が分からなかった」という指摘で、パネルの奥にあった「範囲を選ぶ」画面を、MIDIカードの
+   * 編集ガイドの「Edit」から開く編集画面に広げた。ノートを直す(空いた所をクリックで追加・ドラッグで移動・右端で長さ・
+   * ダブルクリックか「選んだ音を消す」で削除)と、書き出す範囲を囲む(以前の「範囲を選ぶ」)の2つの道具を持つ。
+   * 保存はそのカードに上書きし、midi.edited を立てる。コード+旋律は設計図の旋律も直した旋律に合わせる
+   * (作り直しは設計図でやり取りするため)。直したカードにASTRでカードをつないで「作り直す」と、
+   * つないだソウルの知識も踏まえてブラッシュアップする(reviseMidi)。 */
+
+  /** 編集画面を開く。opts.mode: 'note'(既定)/ 'range'、opts.onDone: 保存した後に呼ぶ */
+  function openMidiEditor(card, opts = {}) {
     const m = card.midi;
-    if (!m.notes.length) return;
     const bpb = m.beatsPerBar;
-    const beats = Math.ceil(totalBeats(m) / bpb - EPS) * bpb;
+    let notes = m.notes.map((n) => ({ ...n }));
+    // 後ろに1小節の余白を足して、終わりの先にも音を置けるようにする
+    const beats = (Math.ceil(totalBeats(m) / bpb - EPS) + 1) * bpb;
     let lo = 127;
     let hi = 0;
-    m.notes.forEach((n) => { lo = Math.min(lo, n.pitch); hi = Math.max(hi, n.pitch); });
-    lo = Math.max(0, lo - 1);
-    hi = Math.min(127, hi + 1);
+    notes.forEach((n) => { lo = Math.min(lo, n.pitch); hi = Math.max(hi, n.pitch); });
+    if (!notes.length) {
+      lo = 60;
+      hi = 60;
+    }
+    lo = Math.max(0, lo - 6);
+    hi = Math.min(127, Math.max(hi + 6, lo + 23));
     const rows = hi - lo + 1;
     const W = 1000;
     const H = 520;
     const rowH = H / rows;
     const xOf = (beat) => (beat / beats) * W;
     const yOf = (pitch) => H - (pitch - lo + 1) * rowH; // その音の行の上端
+    const parts = partsOf(m);
 
     const black = [1, 3, 6, 8, 10];
     const rowBg = [];
@@ -1218,59 +1260,177 @@ ${WRITEUP_RULES}`;
     }
     const grid = [];
     for (let b = 0; b <= beats; b++) grid.push(`<line class="${b % bpb === 0 ? 're-bar' : 're-beat'}" x1="${xOf(b).toFixed(1)}" y1="0" x2="${xOf(b).toFixed(1)}" y2="${H}"/>`);
-    const noteEls = m.notes.map((n, i) => `<rect data-i="${i}" class="re-note${n.part ? ` roll-${n.part}` : ''}" x="${xOf(n.start).toFixed(1)}" y="${(yOf(n.pitch) + 0.5).toFixed(1)}" ` +
-      `width="${Math.max(2, xOf(n.duration) - 1).toFixed(1)}" height="${Math.max(2, rowH - 1).toFixed(1)}" rx="1.5"/>`).join('');
     const barNums = [];
     for (let b = 0; b < beats; b += bpb) barNums.push(`<span style="left:${(b / beats) * 100}%">${b / bpb + 1}</span>`);
     const cLabels = [];
     for (let p = lo; p <= hi; p++) if (p % 12 === 0) cLabels.push(`<span style="top:${(yOf(p) / H) * 100}%;height:${(rowH / H) * 100}%">${midiToNoteName(p)}</span>`);
+    const partSelect = parts.length > 1
+      ? `<label class="re-field">足す音のパート<select data-re-part>${parts.map((p) => `<option value="${p}">${PART_LABELS[p]}</option>`).join('')}</select></label>`
+      : '';
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML =
-      `<div class="modal range-editor"><h2>範囲を選んで書き出す · ${escapeHtml(card.name)}</h2>` +
-      `<p class="modal-desc">ドラッグで四角く囲むと、その範囲の音だけを書き出します(拍単位。Shiftを押しながらだと小節単位)。</p>` +
+      `<div class="modal range-editor"><h2>MIDIを編集 · ${escapeHtml(card.name)}</h2>` +
+      `<div class="re-tools"><div class="re-modes">` +
+      `<button type="button" class="re-mode" data-re-mode="note">ノートを直す</button>` +
+      `<button type="button" class="re-mode" data-re-mode="range">書き出す範囲を囲む</button></div>` +
+      `<label class="re-field">細かさ<select data-re-snap><option value="1">1拍</option><option value="0.5">8分</option><option value="0.25" selected>16分</option></select></label>` +
+      partSelect +
+      `<button type="button" class="btn-small" data-re="delete">選んだ音を消す</button>` +
+      `<button type="button" class="btn-small" data-re="undo">元に戻す</button></div>` +
+      `<p class="modal-desc" data-re-help></p>` +
       `<div class="re-wrap"><div class="re-keys">${cLabels.join('')}</div><div class="re-main"><div class="re-bars">${barNums.join('')}</div>` +
-      `<svg class="re-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g>${rowBg.join('')}</g><g>${grid.join('')}</g><g>${noteEls}</g>` +
+      `<svg class="re-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g>${rowBg.join('')}</g><g>${grid.join('')}</g><g data-re-notes></g>` +
       `<rect class="re-sel" x="0" y="0" width="0" height="0" visibility="hidden"/></svg></div></div>` +
       `<div class="re-info" data-re-info></div>` +
-      `<div class="modal-actions"><button type="button" class="secondary" data-re="play">▶ 範囲を試聴</button>` +
-      `<button type="button" class="secondary" data-re="all">全体</button>` +
+      `<div class="modal-actions"><button type="button" class="secondary" data-re="play">▶ 試聴</button>` +
+      `<button type="button" class="secondary" data-re="all">範囲を全体に</button>` +
       `<button type="button" class="secondary" data-re="cancel">やめる</button>` +
-      `<button type="button" data-re="ok">この範囲にする</button></div></div>`;
+      `<button type="button" data-re="ok">保存</button></div></div>`;
     document.body.appendChild(overlay);
 
     const svg = overlay.querySelector('.re-svg');
+    const noteLayer = overlay.querySelector('[data-re-notes]');
     const selEl = overlay.querySelector('.re-sel');
     const info = overlay.querySelector('[data-re-info]');
+    const help = overlay.querySelector('[data-re-help]');
     const playBtn = overlay.querySelector('[data-re="play"]');
+    const snapEl = overlay.querySelector('[data-re-snap]');
+    const partEl = overlay.querySelector('[data-re-part]');
+    let mode = opts.mode === 'range' ? 'range' : 'note';
     let sel = card.selection ? { ...card.selection } : null;
+    let picked = -1; // 選んでいる音(notes の添字)
+    let drag = null;
     let anchor = null;
     let preview = null;
+    let dirty = false;
+    let lastDown = null; // ダブルクリックの見分け用 { i, t }
+    const undoStack = [];
 
-    const draw = () => {
+    const snap = () => Number(snapEl.value) || 0.25;
+    const pushUndo = () => {
+      undoStack.push(notes.map((n) => ({ ...n })));
+      if (undoStack.length > 50) undoStack.shift();
+      dirty = true;
+    };
+    const noteAttrs = (el, n) => {
+      el.setAttribute('x', xOf(n.start).toFixed(1));
+      el.setAttribute('y', (yOf(n.pitch) + 0.5).toFixed(1));
+      el.setAttribute('width', Math.max(2, xOf(n.duration) - 1).toFixed(1));
+    };
+
+    const drawNotes = () => {
+      noteLayer.innerHTML = notes.map((n, i) => `<rect data-i="${i}" class="re-note${n.part ? ` roll-${n.part}` : ''}${i === picked ? ' re-note--picked' : ''}" ` +
+        `x="${xOf(n.start).toFixed(1)}" y="${(yOf(n.pitch) + 0.5).toFixed(1)}" width="${Math.max(2, xOf(n.duration) - 1).toFixed(1)}" height="${Math.max(2, rowH - 1).toFixed(1)}" rx="1.5"/>`).join('');
+      drawSel();
+    };
+    const draftMidi = () => ({ ...m, notes: notes.slice().sort((a, b) => a.start - b.start) });
+    const drawSel = () => {
       if (!sel) {
         selEl.setAttribute('visibility', 'hidden');
-        info.textContent = '範囲: 全体(まだ囲んでいません)';
       } else {
         selEl.setAttribute('visibility', 'visible');
         selEl.setAttribute('x', xOf(sel.start).toFixed(1));
         selEl.setAttribute('width', (xOf(sel.end) - xOf(sel.start)).toFixed(1));
         selEl.setAttribute('y', yOf(sel.high).toFixed(1));
         selEl.setAttribute('height', (yOf(sel.low) + rowH - yOf(sel.high)).toFixed(1));
-        info.textContent = selectionLabel({ ...card, selection: sel }).replace('書き出す範囲', '範囲');
       }
-      const inSel = sel ? new Set(sliceMidi({ ...m, notes: m.notes.map((n, i) => ({ ...n, i })) }, sel).notes.map((n) => n.i)) : null;
-      svg.querySelectorAll('.re-note').forEach((el) => el.classList.toggle('re-note--out', Boolean(inSel) && !inSel.has(Number(el.dataset.i))));
+      const inSel = sel ? new Set(sliceMidi({ ...m, notes: notes.map((n, i) => ({ ...n, i })) }, sel).notes.map((n) => n.i)) : null;
+      noteLayer.querySelectorAll('.re-note').forEach((el) => el.classList.toggle('re-note--out', Boolean(inSel) && !inSel.has(Number(el.dataset.i))));
+      const n = notes[picked];
+      const range = sel ? selectionLabel({ ...card, midi: draftMidi(), selection: sel }).replace('書き出す範囲', '範囲') : '書き出す範囲: 全体';
+      info.textContent = `${notes.length}音${dirty ? '(未保存の変更あり)' : ''} · ${range}` +
+        (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, bpb)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${PART_LABELS[n.part]}` : ''})` : '');
+      playBtn.textContent = preview ? '■ 停止' : sel ? '▶ 範囲を試聴' : '▶ 試聴';
+    };
+    const setMode = (next) => {
+      mode = next;
+      overlay.querySelectorAll('[data-re-mode]').forEach((b) => b.classList.toggle('re-mode--active', b.dataset.reMode === mode));
+      svg.classList.toggle('re-svg--note', mode === 'note');
+      help.textContent = mode === 'note'
+        ? '空いた所をクリックで音を足す(そのままドラッグで長さ)。音をドラッグで移動、右端をドラッグで長さ、ダブルクリックかDeleteキーで削除。Ctrl+Zで元に戻す'
+        : 'ドラッグで四角く囲むと、⇩のチップでその範囲の音だけを書き出します(拍単位。Shiftを押しながらだと小節単位)';
     };
 
     const point = (event) => {
       const r = svg.getBoundingClientRect();
       const fx = Math.min(1, Math.max(0, (event.clientX - r.left) / r.width));
       const fy = Math.min(0.9999, Math.max(0, (event.clientY - r.top) / r.height));
-      return { beat: fx * beats, pitch: hi - Math.floor(fy * rows) };
+      return { beat: fx * beats, pitch: hi - Math.floor(fy * rows), pxPerBeat: r.width / beats };
     };
-    const update = (event) => {
+    const hitNote = (pt) => {
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const n = notes[i];
+        if (n.pitch === pt.pitch && pt.beat >= n.start - EPS && pt.beat < n.start + n.duration) return i;
+      }
+      return -1;
+    };
+
+    /* ノートを直す */
+    const noteDown = (event) => {
+      const pt = point(event);
+      const q = snap();
+      const i = hitNote(pt);
+      // ダブルクリックで削除。押すたびに音の四角を描き直すので dblclick イベントは届かず、ここで2回目の押下を見分ける
+      const now = Date.now();
+      if (i >= 0 && lastDown && lastDown.i === i && now - lastDown.t < 400) {
+        lastDown = null;
+        picked = i;
+        deletePicked();
+        return;
+      }
+      lastDown = { i: i >= 0 ? i : notes.length, t: now };
+      if (i >= 0) {
+        picked = i;
+        const n = notes[i];
+        const edge = Math.min(n.duration / 3, 8 / pt.pxPerBeat); // 右端8px(短い音は3分の1)をつかむと長さを変える
+        drag = { type: pt.beat > n.start + n.duration - edge ? 'resize' : 'move', i, orig: { ...n }, pt, moved: false };
+      } else {
+        pushUndo();
+        const start = Math.min(Math.floor(pt.beat / q + EPS) * q, beats - q);
+        const part = partEl ? partEl.value : parts[0];
+        notes.push({ ...(part ? { part } : {}), pitch: pt.pitch, start, duration: q, velocity: part === 'chords' ? 70 : 90 });
+        picked = notes.length - 1;
+        drag = { type: 'resize', i: picked, orig: { ...notes[picked] }, pt, moved: true };
+      }
+      drawNotes();
+    };
+    const noteMove = (event) => {
+      const pt = point(event);
+      const q = snap();
+      const n = notes[drag.i];
+      const o = drag.orig;
+      if (drag.type === 'move') {
+        const dBeat = Math.round((pt.beat - drag.pt.beat) / q) * q;
+        const start = Math.min(Math.max(0, o.start + dBeat), beats - o.duration);
+        const pitch = Math.min(hi, Math.max(lo, o.pitch + pt.pitch - drag.pt.pitch));
+        if (start === n.start && pitch === n.pitch) return;
+        if (!drag.moved) pushUndo();
+        drag.moved = true;
+        n.start = start;
+        n.pitch = pitch;
+      } else {
+        const end = Math.min(beats, Math.max(o.start + q, Math.round(pt.beat / q) * q));
+        if (Math.abs(end - o.start - n.duration) < EPS) return;
+        if (!drag.moved) pushUndo();
+        drag.moved = true;
+        n.duration = end - o.start;
+      }
+      // 動かしている間は、その音の四角だけを書き換える(全部を引き直さない)
+      const el = noteLayer.querySelector(`[data-i="${drag.i}"]`);
+      if (el) noteAttrs(el, n);
+    };
+    const deletePicked = () => {
+      if (picked < 0 || !notes[picked]) return;
+      pushUndo();
+      notes.splice(picked, 1);
+      picked = -1;
+      drawNotes();
+    };
+
+    /* 書き出す範囲を囲む */
+    const rangeUpdate = (event) => {
       const a = anchor;
       const b = point(event);
       const q = event.shiftKey ? bpb : 1;
@@ -1280,17 +1440,32 @@ ${WRITEUP_RULES}`;
       end = Math.min(end, beats);
       start = Math.min(start, end - q);
       sel = { start, end, low: Math.min(a.pitch, b.pitch), high: Math.max(a.pitch, b.pitch) };
-      draw();
+      drawSel();
     };
+
     svg.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       svg.setPointerCapture(event.pointerId);
-      anchor = point(event);
-      update(event);
+      if (mode === 'note') {
+        noteDown(event);
+      } else {
+        anchor = point(event);
+        rangeUpdate(event);
+      }
     });
-    svg.addEventListener('pointermove', (event) => { if (anchor) update(event); });
-    svg.addEventListener('pointerup', () => { anchor = null; });
-    svg.addEventListener('pointercancel', () => { anchor = null; });
+    svg.addEventListener('pointermove', (event) => {
+      if (mode === 'note' && drag) noteMove(event);
+      else if (mode === 'range' && anchor) rangeUpdate(event);
+    });
+    const endPointer = () => {
+      if (drag) {
+        drag = null;
+        drawNotes();
+      }
+      anchor = null;
+    };
+    svg.addEventListener('pointerup', endPointer);
+    svg.addEventListener('pointercancel', endPointer);
 
     const stopPreview = () => {
       if (preview) {
@@ -1298,25 +1473,58 @@ ${WRITEUP_RULES}`;
         clearTimeout(preview.timer);
         preview = null;
       }
-      playBtn.textContent = '▶ 範囲を試聴';
+      drawSel();
     };
     const close = () => {
       stopPreview();
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
     };
+    const tryClose = async () => {
+      if (dirty) {
+        const choice = await showChoiceDialog({
+          title: '編集した内容を捨てますか?',
+          message: '保存していないノートの変更があります。',
+          options: [
+            { label: '編集に戻る', value: 'back', secondary: true },
+            { label: '捨てて閉じる', value: 'discard', danger: true },
+          ],
+        });
+        if (choice !== 'discard') return;
+      }
+      close();
+    };
     const onKey = (event) => {
+      if (document.querySelectorAll('.modal-overlay').length > 1) return; // 確認ダイアログを出している間
+      if (event.target && event.target.tagName === 'SELECT') return;
+      // カードの編集ガイドのキー(Delete=カードの削除、E=編集)に届かないよう、編集画面を開いている間は止める
+      event.stopPropagation();
       if (event.key === 'Escape') {
-        event.stopPropagation();
-        close();
+        tryClose();
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && mode === 'note') {
+        event.preventDefault();
+        deletePicked();
+      } else if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')) {
+        event.preventDefault();
+        undo();
       }
     };
+    const undo = () => {
+      if (!undoStack.length) return;
+      notes = undoStack.pop();
+      picked = -1;
+      dirty = true;
+      drawNotes();
+    };
     document.addEventListener('keydown', onKey, true);
-    attachBackgroundTapToClose(overlay, close);
-    overlay.querySelector('[data-re="cancel"]').addEventListener('click', close);
+    attachBackgroundTapToClose(overlay, tryClose);
+    overlay.querySelectorAll('[data-re-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.reMode)));
+    overlay.querySelector('[data-re="delete"]').addEventListener('click', deletePicked);
+    overlay.querySelector('[data-re="undo"]').addEventListener('click', undo);
+    overlay.querySelector('[data-re="cancel"]').addEventListener('click', tryClose);
     overlay.querySelector('[data-re="all"]').addEventListener('click', () => {
       sel = null;
-      draw();
+      drawSel();
     });
     playBtn.addEventListener('click', () => {
       if (preview) {
@@ -1325,22 +1533,70 @@ ${WRITEUP_RULES}`;
       }
       stopAll();
       const ctx = soundAudioCtx();
-      const handle = scheduleSynth(ctx, { midi: sliceMidi(m, sel) }, ctx.currentTime + 0.05);
+      const handle = scheduleSynth(ctx, { midi: sliceMidi(draftMidi(), sel) }, ctx.currentTime + 0.05);
       preview = { handle, timer: setTimeout(stopPreview, handle.duration * 1000 + 200) };
-      playBtn.textContent = '■ 停止';
+      drawSel();
     });
     overlay.querySelector('[data-re="ok"]').addEventListener('click', () => {
-      if (sel && !sliceMidi(m, sel).notes.length) {
-        info.textContent = 'この範囲には音がありません。囲み直してください';
+      const draft = draftMidi();
+      if (!draft.notes.length) {
+        info.textContent = '音が1つもありません。音を足すか「やめる」で閉じてください';
         return;
       }
+      if (sel && !sliceMidi(draft, sel).notes.length) {
+        info.textContent = '書き出す範囲に音がありません。囲み直すか「範囲を全体に」を押してください';
+        return;
+      }
+      if (dirty) applyEdit(card, draft.notes);
       card.selection = sel;
       scheduleAutoSave();
       close();
-      setStatus(card.selection ? `${selectionLabel(card)}。⇩のチップでこの範囲だけを書き出します` : '書き出す範囲を全体に戻しました');
-      if (onDone) onDone();
+      if (window.refreshEnsembleCard) window.refreshEnsembleCard(card);
+      refreshMini();
+      setStatus(dirty
+        ? `「${card.name}」を保存しました。ASTRでソウルやカードをつないで「作り直す」と、それを踏まえてブラッシュアップします`
+        : card.selection ? `${selectionLabel(card)}。⇩のチップでこの範囲だけを書き出します` : '書き出す範囲を全体にしました');
+      if (opts.onDone) opts.onDone();
+      else if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
     });
-    draw();
+    setMode(mode);
+    drawNotes();
+  }
+
+  /** 編集したノートをカードに書き込む。コード+旋律は設計図の旋律も合わせる(作り直しは設計図でやり取りするため) */
+  function applyEdit(card, notes) {
+    const m = card.midi;
+    m.notes = notes.slice(0, MAX_SKETCH_NOTES);
+    m.edited = true;
+    const sk = m.sketch;
+    if (sk) {
+      // 設計図の旋律はハネを付ける前の位置で持つので、renderSketch() で付けたハネを外して戻す
+      const shift = sk.swing > 0.01 ? sk.swing / 6 : 0;
+      const unswing = (b) => (shift && Math.abs(b - Math.floor(b) - 0.5 - shift) < 1e-3 ? b - shift : b);
+      sk.melody = m.notes
+        .filter((n) => n.part === 'melody')
+        .map((n) => {
+          const start = unswing(n.start);
+          return { pitch: n.pitch, start, duration: Math.max(0.05, unswing(n.start + n.duration) - start), velocity: n.velocity };
+        });
+      sk.bars = sketchBars(sk.chords, sk.melody, sk.beatsPerBar);
+    }
+  }
+
+  /** 手で直した実際のノート(パートごと、同時に鳴る音は+でまとめる)。作り直しのプロンプト用 */
+  function editedNotesText(m) {
+    const byPart = {};
+    m.notes.forEach((n) => {
+      const part = n.part || 'notes';
+      const key = `${Math.round(n.start * 1000) / 1000}`;
+      byPart[part] = byPart[part] || new Map();
+      const slot = byPart[part].get(key) || { start: n.start, duration: n.duration, names: [] };
+      slot.names.push(midiToNoteName(n.pitch));
+      byPart[part].set(key, slot);
+    });
+    return Object.entries(byPart)
+      .map(([part, map]) => `${PART_LABELS[part] || '音'}: ${[...map.values()].slice(0, 160).map((s) => `${Math.round(s.start * 100) / 100}拍 ${s.names.join('+')}(${Math.round(s.duration * 100) / 100})`).join(' / ')}`)
+      .join('\n');
   }
 
   /* ---- 書き出し先フォルダ(ハンドルをIndexedDBに保存) ---- */
@@ -1764,5 +2020,5 @@ ${WRITEUP_RULES}`;
 
   const isPlaying = (cardId) => Boolean(playing && playing.cardId === cardId);
 
-  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, selectionLabel, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  window.LyraMidi = { openMidiEditor, createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, selectionLabel, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();

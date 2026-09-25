@@ -1533,5 +1533,16 @@ a.btn-secondary { display: block; }
 .re-note--out { opacity: 0.22; }
 .re-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1.5; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; pointer-events: none; }
 .re-info { font-size: 12px; color: var(--ink); margin-top: 8px; min-height: 1.5em; }
+.re-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 2px; }
+.re-modes { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.range-editor .re-mode { background: transparent; color: var(--muted); border: 0; border-radius: 0; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.range-editor .re-mode + .re-mode { border-left: 1px solid var(--line); }
+.range-editor .re-mode--active { background: var(--accent); color: #fff; }
+.re-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.re-field select { font-size: 12px; padding: 3px 4px; }
+.re-svg--note { cursor: cell; }
+.re-svg--note .re-note { cursor: grab; }
+.re-note--picked { stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.range-editor .re-tools .btn-small { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 5px 10px; }
 .roll-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
 .midi-sel-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }

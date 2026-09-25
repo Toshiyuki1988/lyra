@@ -66,6 +66,7 @@
 
   let stage = null;
   let focusCardId = null;
+  let panelCardId = null; // 右パネルに表示中のカード(refreshEnsemblePanel 用)
   let listening = false;
 
   const screen = {
@@ -121,14 +122,20 @@
     },
 
     cardHexes(card) {
-      const editable = card.type === 'text' || (card.type === 'task' && card.origin !== 'app');
+      // MIDIカードのEditは編集画面(js/midi.js の openMidiEditor)を開く(2026-09-25)
+      const editable = card.type === 'text' || card.type === 'midi' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') : '';
       return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools;
     },
 
     onHexAction(action, card, el) {
-      if (action === 'edit') startEditingCard(el);
+      if (action === 'edit' && card.type === 'midi') {
+        if (window.LyraMidi) {
+          deactivateEditGuide(el);
+          window.LyraMidi.openMidiEditor(card);
+        }
+      } else if (action === 'edit') startEditingCard(el);
       else if (action === 'delete') confirmDeleteCard(card);
       else if (action === 'listen') listenFromTask(card);
       else if (action === 'sketch') sketchFromTask(card);
@@ -984,6 +991,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
   }
 
   function showCardPanel(card) {
+    panelCardId = card.id;
     const head = (title, sub) => `<div class="panel-head"><div class="panel-title-wrap"><div class="panel-title">${title}</div>` +
       (sub ? `<div class="panel-sub">${sub}</div>` : '') +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>`;
@@ -1217,6 +1225,52 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     }
   }
 
+  /** 右パネルがそのカードを表示中なら描き直す(MIDIの編集画面で保存した後など) */
+  function refreshEnsemblePanel(card) {
+    if (!currentRoute || currentRoute.screen !== 'ensemble' || els.sidePanel.hidden || panelCardId !== card.id) return;
+    showCardPanel(card);
+  }
+
+  /**
+   * MIDIカードのブラッシュアップ用に、ASTRでつないだカードとその持ち主のソウルを集める(js/midi.js の reviseMidi)。
+   * 改善版どうしの自動の線でつながったMIDIカードと発言カードは数えない。ほかに何もつながっていなければnull。
+   * opts.excludeReferences: アーティスト名・曲名などのパラメータカードを外す(旋律を作る時)
+   */
+  function midiLinks(card, opts = {}) {
+    if (!currentRoute || currentRoute.screen !== 'ensemble' || !getCardById(card.id)) return null;
+    const comp = componentOf(card.id);
+    if (!comp) return null;
+    const linked = comp.map((id) => getCardById(id)).filter((c) => {
+      if (!c || c.type === 'midi' || c.type === 'speech') return false;
+      if (c.type === 'soul' && c.soulId === stage.id) return false;
+      if (c.type === 'param' && opts.excludeReferences) {
+        const { owner, p } = findParam(c);
+        if (owner && p && isReferenceParam(owner, p)) return false;
+      }
+      return true;
+    });
+    if (!linked.length) return null;
+    const soulIds = new Set();
+    linked.forEach((c) => ownerIdsOf(c).forEach((id) => soulIds.add(id)));
+    soulIds.delete(stage.id);
+    const nameOf = (c) => {
+      if (c.type === 'soul') return (getSoul(c.soulId) || {}).name || null;
+      if (c.type === 'param') return (findParam(c).p || {}).name || null;
+      if (c.type === 'text') return '気づき';
+      if (c.type === 'task') return '課題';
+      if (c.type === 'source') return 'つないだ出典';
+      return c.name || null;
+    };
+    return {
+      souls: [...soulIds].map((id) => getSoul(id)).filter(Boolean),
+      lines: linked.filter((c) => c.type !== 'soul').map(cardLine).filter(Boolean),
+      names: [...new Set(linked.map(nameOf).filter(Boolean))],
+      focusParamIds: new Set(linked.filter((c) => c.type === 'param').map((c) => c.paramId)),
+    };
+  }
+
+  window.LyraMidiLinks = midiLinks;
+  window.refreshEnsemblePanel = refreshEnsemblePanel;
   window.addCardToEnsemble = addCardToEnsemble;
   window.connectEnsembleCards = connectEnsembleCards;
   window.refreshEnsembleCard = refreshEnsembleCard;
