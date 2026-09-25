@@ -1493,3 +1493,6 @@ a.btn-secondary { display: block; }
 
 /* MIDIの改善版カード: どのコメントを受けて作り直したか */
 .midi-comment { color: var(--muted); font-size: 10px; }
+
+/* レシピで設定し終えた行(小窓のチェック) */
+.recipe-row--done { opacity: 0.5; }

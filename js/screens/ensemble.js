@@ -250,7 +250,7 @@
         `<span>自動招集 · ${escapeHtml(names || '楽典')}</span></div>` +
         voices + chain + feedback +
         `<div class="speech-actions">` +
-        (card.recipe && card.recipe.length ? `<button type="button" class="btn-small" data-speech="recipe">レシピ</button>` : '') +
+        `<button type="button" class="btn-small" data-speech="recipe">レシピ${card.recipe && card.recipe.length ? `(${card.recipe.length})` : ''}</button>` +
         `<button type="button" class="btn-small" data-speech="midi">MIDIにする</button>` +
         (card.feedback ? '' : `<button type="button" class="btn-small" data-speech="worked">効いた</button>` +
           `<button type="button" class="btn-small" data-speech="not">効かなかった</button>`) +
@@ -490,7 +490,7 @@ ${soulBlocks}
 3. STAGE は「この部屋(${stage.name})で鳴らす前提」での助言をする
 4. voices の speaker には上の角括弧の記号(${[...speakers.map((s) => s.key), 'STAGE', THEORY_ID].join(', ')})だけを使う。1人1回、各${VOICE_MAX - 30}字以内。互いの発言に反応してよい。全員が話す必要はない
 5. chain は「楽曲コンセプト・文脈(concept) → 星図の構造語彙(structure: 密度・明度・動き・空間・緊張・滲み・間・揺らぎ などで) → 具体的な音色・操作(operations)」の3段階
-6. recipe は、MIDIで表せない離散選択式のパラメータやマクロの設定を value と一言の intent で。soul にはそのパラメータを持つソウルの記号(S1 など)、module には手持ちの知識の [ ] 内の表記、param にはその下のパラメータ名を、どちらも一字一句そのまま書く。発言の中でパラメータに触れる時も「FXタブのUTILITY」のように場所を添える。手持ちの知識に載っていない名前(フィルターの種類名など)を param にしない。選択肢の値は value に書く(例: param「FILTER TYPE」value「LPF」)。無ければ空の配列
+6. recipe は、提案の音色づくりに関わる主要な設定(離散的な選択肢も、ノブの値も)を5〜12個、画面の上から順に value と一言の intent で。soul にはそのパラメータを持つソウルの記号(S1 など)、module には手持ちの知識の [ ] 内の表記、param にはその下のパラメータ名を、どちらも一字一句そのまま書く。発言の中でパラメータに触れる時も「FXタブのUTILITY」のように場所を添える。手持ちの知識に載っていない名前(フィルターの種類名など)を param にしない。選択肢の値は value に書く(例: param「FILTER TYPE」value「LPF」)。無ければ空の配列
 7. 資料の文章を長く引用しない。自分の言葉で短く`;
     return { prompt, speakers };
   }
@@ -516,7 +516,7 @@ ${soulBlocks}
         type: 'speech',
         voices: (result.voices || []).map((v) => ({ speaker: idOf(v.speaker), text: String(v.text || '').slice(0, VOICE_MAX) })),
         chain: result.chain || null,
-        recipe: (result.recipe || []).slice(0, 12).map((r) => resolveRecipeItem(r, idOf(r.soul), souls)),
+        recipe: (result.recipe || []).slice(0, 16).map((r) => resolveRecipeItem(r, idOf(r.soul), souls)),
         memberIds: [targetStage.id, ...souls.map((s) => s.id)],
         triggerCardIds: compIds.slice(),
         feedback: null,
@@ -627,50 +627,228 @@ ${soulBlocks}
     return `${where ? `${where} / ` : ''}${r.param}: ${r.value}${r.intent ? ` — ${r.intent}` : ''}${r.paramId ? '' : '(手持ちのパラメータと一致せず)'}`;
   }
 
+  /** 画面の順番(手順)を崩さないよう、同じソウル・モジュールが「続いている間」だけまとめる */
+  function groupRecipe(items) {
+    const groups = [];
+    items.forEach((r, index) => {
+      const key = `${r.soulId || ''}|${r.moduleName || ''}`;
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) {
+        last.items.push({ r, index });
+        return;
+      }
+      groups.push({ key, soul: r.soulId ? getSoul(r.soulId) : null, moduleName: r.moduleName, items: [{ r, index }] });
+    });
+    return groups;
+  }
+
   function showRecipe(card) {
     const items = recipeItems(card);
-    // ソウル → モジュールの順にまとめて表示する
-    const groups = [];
-    items.forEach((r) => {
-      const key = `${r.soulId || ''}|${r.moduleName || ''}`;
-      let g = groups.find((x) => x.key === key);
-      if (!g) {
-        g = { key, soul: r.soulId ? getSoul(r.soulId) : null, moduleName: r.moduleName, items: [] };
-        groups.push(g);
-      }
-      g.items.push(r);
-    });
-    const body = groups
-      .map((g) => `<div class="recipe-group">` +
-        `<div class="recipe-where">${g.soul ? soulOrbSvg(g.soul, 16) : ''}<span>${escapeHtml(g.soul ? g.soul.name : '(ソウル不明)')}</span>` +
-        `${g.moduleName ? `<span class="recipe-sep">›</span><span>${escapeHtml(g.moduleName)}</span>` : ''}</div>` +
-        g.items.map((r) => {
-          const inner = `<div class="recipe-row-main"><span class="recipe-param">${escapeHtml(r.param)}</span>` +
-            `<span class="recipe-value">${escapeHtml(r.value)}</span></div>` +
-            (r.intent ? `<div class="recipe-intent">${escapeHtml(r.intent)}</div>` : '') +
-            (r.paramId ? '' : `<div class="recipe-miss">手持ちのパラメータ名と一致しませんでした(資料での表記と違う名前の可能性があります)</div>`);
-          const p = r.paramId && g.soul ? g.soul.params.find((x) => x.id === r.paramId) : null;
-          return p
-            ? `<a class="recipe-row recipe-row--link" href="#/soul/${encodeURIComponent(g.soul.id)}/${encodeURIComponent(p.moduleId)}/${encodeURIComponent(p.id)}" title="ソウル画面でこのパラメータを開く">${inner}</a>`
-            : `<div class="recipe-row">${inner}</div>`;
-        }).join('') +
-        `</div>`)
-      .join('');
+    const done = card.recipeDone || {};
+    const body = items.length
+      ? groupRecipe(items)
+        .map((g) => `<div class="recipe-group">` +
+          `<div class="recipe-where">${g.soul ? soulOrbSvg(g.soul, 16) : ''}<span>${escapeHtml(g.soul ? g.soul.name : '(ソウル不明)')}</span>` +
+          `${g.moduleName ? `<span class="recipe-sep">›</span><span>${escapeHtml(g.moduleName)}</span>` : ''}</div>` +
+          g.items.map(({ r, index }) => {
+            const inner = `<div class="recipe-row-main"><span class="recipe-param">${done[index] ? '✓ ' : ''}${escapeHtml(r.param)}</span>` +
+              `<span class="recipe-value">${escapeHtml(r.value)}</span></div>` +
+              (r.intent ? `<div class="recipe-intent">${escapeHtml(r.intent)}</div>` : '') +
+              (r.paramId ? '' : `<div class="recipe-miss">手持ちのパラメータ名と一致しませんでした(資料での表記と違う名前の可能性があります)</div>`);
+            const p = r.paramId && g.soul ? g.soul.params.find((x) => x.id === r.paramId) : null;
+            const cls = `recipe-row${done[index] ? ' recipe-row--done' : ''}`;
+            return p
+              ? `<a class="${cls} recipe-row--link" href="#/soul/${encodeURIComponent(g.soul.id)}/${encodeURIComponent(p.moduleId)}/${encodeURIComponent(p.id)}" title="ソウル画面でこのパラメータを開く">${inner}</a>`
+              : `<div class="${cls}">${inner}</div>`;
+          }).join('') +
+          `</div>`)
+        .join('')
+      : '<div class="panel-empty">この発言にはまだレシピがありません。下のボタンで、初期状態から音色を作る手順を作れます。</div>';
     const panel = openSidePanel(
       `<div class="panel-head"><div class="panel-title-wrap"><div class="panel-title">パラメータレシピ</div>` +
-      `<div class="panel-sub">MIDIで表せない設定の一覧。行をタップすると、そのパラメータをソウル画面で開きます</div></div>` +
+      `<div class="panel-sub">${card.recipeFull ? '初期状態から作る手順(画面の上から順)。' : ''}行をタップすると、そのパラメータをソウル画面で開きます</div></div>` +
       `<button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       body +
-      `<div class="panel-actions"><button type="button" class="btn-primary" data-action="copy">テキストでコピー</button></div>`
+      `<div class="panel-actions">` +
+      (items.length ? `<button type="button" class="btn-primary" data-action="pip">小窓で出す(Cubaseの上に浮かべる)</button>` : '') +
+      `<button type="button" class="btn-secondary" data-action="full">${card.recipeFull ? '詳しいレシピを作り直す' : '初期状態から作る詳しいレシピにする'}</button>` +
+      (items.length ? `<button type="button" class="btn-secondary" data-action="copy">テキストでコピー</button>` : '') +
+      `</div>`
     );
     panel.querySelector('.panel-close').addEventListener('click', closeSidePanel);
-    panel.querySelector('[data-action="copy"]').addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(items.map(recipeLine).join('\n'));
-        setStatus('レシピをコピーしました');
-      } catch (err) {
-        setStatus('コピーできませんでした(ブラウザが許可していません)', { important: true });
+    const pipBtn = panel.querySelector('[data-action="pip"]');
+    if (pipBtn) pipBtn.addEventListener('click', () => popOutRecipe(card));
+    panel.querySelector('[data-action="full"]').addEventListener('click', () => buildFullRecipe(card));
+    const copyBtn = panel.querySelector('[data-action="copy"]');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(items.map(recipeLine).join('\n'));
+          setStatus('レシピをコピーしました');
+        } catch (err) {
+          setStatus('コピーできませんでした(ブラウザが許可していません)', { important: true });
+        }
+      });
+    }
+  }
+
+  /* ---- 初期状態から作る詳しいレシピ ----
+   * 2026-09-25: 発言に付くレシピが2個ほどしか出ず「1から音色を作るならもっと欲しい」という要望を受けて追加。
+   * レシピ専用にGeminiを1回呼び、Initの状態から画面の上から順に15〜30項目の手順を作らせる。 */
+
+  const FULL_RECIPE_SCHEMA = { type: 'OBJECT', properties: { recipe: SPEECH_SCHEMA.properties.recipe }, required: ['recipe'] };
+
+  async function buildFullRecipe(card) {
+    const targetStage = stage;
+    const souls = (card.memberIds || []).map((id) => getSoul(id)).filter((s) => s && s.id !== targetStage.id && s.params.length);
+    if (!souls.length) {
+      setStatus('レシピを作れるソウル(解体済みのパラメータを持つソウル)がこの発言に招集されていません', { important: true });
+      return;
+    }
+    const choice = await showChoiceDialog({
+      title: '初期状態から作る詳しいレシピにしますか?',
+      message: `${souls.map((s) => s.name).join('・')}を初期化した状態から、この音色を作る手順を画面の上から順に15〜30項目で作ります(Geminiを1回呼びます)。今のレシピは置き換わります。`,
+      options: [
+        { label: 'やめる', value: 'cancel', secondary: true },
+        { label: '作る', value: 'run' },
+      ],
+    });
+    if (choice !== 'run') return;
+    const speakers = souls.map((s, i) => ({ key: `S${i + 1}`, soul: s }));
+    const triggerParamIds = new Set((card.triggerCardIds || [])
+      .map((id) => getEnsemble(targetStage.id).cards.find((c) => c.id === id))
+      .filter((c) => c && c.type === 'param')
+      .map((c) => c.paramId));
+    const prompt = `作曲支援アプリLYRAです。次のアンサンブルの提案の音色を、プラグインを初期化した状態(Init)から作るための設定手順(パラメータレシピ)を作ってください。
+
+提案:
+${(card.voices || []).map((v) => `- ${v.text}`).join('\n')}
+コンセプト: ${card.chain ? card.chain.concept : ''}
+構造語彙: ${card.chain ? card.chain.structure : ''}
+操作: ${card.chain ? (card.chain.operations || []).join(' / ') : ''}
+
+使えるソウルと手持ちの知識:
+${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.category)})\n${soulMaterial(soul, triggerParamIds)}`).join('\n\n')}
+
+ルール:
+1. 画面の上から順(音源・オシレーター → フィルター → エンベロープ → LFO・モジュレーション → エフェクト → 全体)に、15〜30項目
+2. soul には記号(S1 など)、module には手持ちの知識の [ ] 内の表記、param にはその下のパラメータ名を、一字一句そのまま書く。手持ちの知識に無いパラメータは使わない
+3. value は具体的に(数値・%・dB・ms、ノブの位置なら「12時」、選択肢なら選択肢名)。範囲が分かるものはその範囲内で
+4. モジュレーションの割り当ては、param に割り当て先のパラメータ、value に「LFO1から +30%」のように書く
+5. intent はその設定の狙いを20字以内で
+6. 初期状態のままでよい項目は書かない`;
+    setStatus('詳しいレシピを作っています…', { busy: true });
+    try {
+      const result = await askGeminiJson({ prompt, responseSchema: FULL_RECIPE_SCHEMA, maxOutputTokens: 6144, timeoutMs: 180000, label: '詳しいレシピ' });
+      const idOf = (key) => {
+        const hit = speakers.find((s) => s.key === key);
+        return hit ? hit.soul.id : null;
+      };
+      const recipe = (result.recipe || []).slice(0, 40).map((r) => resolveRecipeItem(r, idOf(r.soul), souls));
+      if (!recipe.length) throw new Error('レシピが1つも出てきませんでした');
+      card.recipe = recipe;
+      card.recipeFull = true;
+      card.recipeDone = {};
+      scheduleAutoSave();
+      if (stage === targetStage) {
+        refreshEnsembleCard(card);
+        showRecipe(card);
       }
+      const missed = recipe.filter((r) => !r.paramId).length;
+      setStatus(`${recipe.length}項目のレシピを作りました${missed ? `(うち${missed}項目は手持ちのパラメータ名と一致せず)` : ''}`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`レシピを作れませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /* ---- 小窓(Document Picture-in-Picture)----
+   * 2026-09-25: 「レシピをCubaseの操作画面の上に浮かべたい」という要望を受けて追加。
+   * Chrome/Edge(デスクトップ)のDocument Picture-in-Pictureは、他のアプリより手前に常に表示される小窓を
+   * 開ける。無いブラウザでは普通の別ウィンドウ(最前面にはならない)で開く。
+   * 各行のチェック(設定し終えた印)は card.recipeDone に保存する。 */
+
+  const PIP_STYLE = `
+    body { margin: 0; font-family: 'Noto Sans JP', sans-serif; background: #faf8f3; color: #35302a; }
+    header { position: sticky; top: 0; background: #faf8f3; border-bottom: 1px solid #e4ddd0; padding: 10px 14px 8px; }
+    h1 { font-size: 13px; margin: 0; color: #2b2620; font-weight: 700; }
+    .sub { font-size: 10px; color: #a39a86; margin-top: 2px; }
+    .progress { font-size: 10px; color: #a9761f; margin-top: 4px; }
+    main { padding: 8px 12px 16px; }
+    .where { font-size: 10px; color: #8a8171; margin: 10px 0 4px; }
+    label.row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; margin-bottom: 4px;
+      background: #fff; border: 1px solid #e4ddd0; border-radius: 7px; cursor: pointer; }
+    label.row input { margin-top: 3px; accent-color: #b8863b; }
+    .main { display: flex; justify-content: space-between; gap: 8px; width: 100%; }
+    .param { font-size: 12px; font-weight: 500; color: #2b2620; }
+    .value { font-size: 12px; color: #8a4c1e; font-family: 'IBM Plex Mono', monospace; text-align: right; }
+    .intent { font-size: 10px; color: #6d6455; margin-top: 1px; }
+    .miss { font-size: 9px; color: #b3402b; }
+    .body { flex: 1; min-width: 0; }
+    label.row.done { opacity: 0.45; }
+    label.row.done .param { text-decoration: line-through; }
+  `;
+
+  let pipWindow = null;
+
+  async function popOutRecipe(card) {
+    let win = null;
+    try {
+      if (window.documentPictureInPicture) {
+        if (pipWindow && !pipWindow.closed) pipWindow.close();
+        win = await window.documentPictureInPicture.requestWindow({ width: 340, height: 560 });
+      }
+    } catch (err) {
+      debugLog(`小窓(Document Picture-in-Picture)を開けなかったため別ウィンドウで開く: ${err.message}`);
+      win = null;
+    }
+    if (!win) {
+      win = window.open('', 'lyra-recipe', 'width=360,height=600');
+      if (!win) {
+        setStatus('小窓を開けませんでした(ポップアップがブロックされた可能性があります)', { important: true });
+        return;
+      }
+      setStatus('このブラウザは常に手前に出す小窓に対応していないため、別ウィンドウで開きました');
+    }
+    pipWindow = win;
+    renderPip(win, card);
+  }
+
+  function renderPip(win, card) {
+    const doc = win.document;
+    const items = recipeItems(card);
+    card.recipeDone = card.recipeDone || {};
+    const title = card.chain && card.chain.concept ? card.chain.concept : 'パラメータレシピ';
+    const souls = [...new Set(items.map((r) => r.soulId).filter(Boolean))].map((id) => getSoul(id)).filter(Boolean);
+    doc.title = `LYRA レシピ · ${title}`;
+    doc.head.innerHTML =
+      `<meta charset="utf-8">` +
+      `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400&display=swap">` +
+      `<style>${PIP_STYLE}</style>`;
+    const rows = groupRecipe(items)
+      .map((g) => `<div class="where">${escapeHtml(g.soul ? g.soul.name : '')}${g.moduleName ? ` › ${escapeHtml(g.moduleName)}` : ''}</div>` +
+        g.items.map(({ r, index }) => `<label class="row${card.recipeDone[index] ? ' done' : ''}" data-index="${index}">` +
+          `<input type="checkbox"${card.recipeDone[index] ? ' checked' : ''}>` +
+          `<div class="body"><div class="main"><span class="param">${escapeHtml(r.param)}</span><span class="value">${escapeHtml(r.value)}</span></div>` +
+          (r.intent ? `<div class="intent">${escapeHtml(r.intent)}</div>` : '') +
+          (r.paramId ? '' : `<div class="miss">手持ちのパラメータ名と一致せず</div>`) +
+          `</div></label>`).join(''))
+      .join('');
+    const count = () => Object.values(card.recipeDone).filter(Boolean).length;
+    doc.body.innerHTML =
+      `<header><h1>${escapeHtml(title)}</h1>` +
+      `<div class="sub">${escapeHtml(souls.map((s) => s.name).join('・'))}${card.recipeFull ? ' · 初期状態から' : ''}</div>` +
+      `<div class="progress">設定済み <span data-count>${count()}</span> / ${items.length}</div></header>` +
+      `<main>${rows}</main>`;
+    doc.body.querySelectorAll('label.row').forEach((row) => {
+      const input = row.querySelector('input');
+      input.addEventListener('change', () => {
+        const index = Number(row.dataset.index);
+        card.recipeDone[index] = input.checked;
+        row.classList.toggle('done', input.checked);
+        doc.body.querySelector('[data-count]').textContent = String(count());
+        scheduleAutoSave();
+      });
     });
   }
 
