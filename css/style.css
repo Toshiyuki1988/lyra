@@ -1662,3 +1662,60 @@ a.btn-secondary { display: block; }
 .beat-row--fill code { color: #8a4f3a; }
 .roll-notes rect.roll-drums, .re-note.roll-drums { fill: #6d5a8a; }
 .roll-legend-drums::before { background: #6d5a8a; }
+
+/* ---------- 画像検索(Pixabay、js/imagesearch.js、2026-09-26) ----------
+   キャンバスを隠さない浮いたパネル(左上)。開いたままサムネイルを次々クリックして画像カードを入れ替える */
+.imgsearch {
+  position: fixed;
+  left: 16px;
+  top: 64px;
+  width: 340px;
+  max-height: calc(100vh - 150px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(60, 50, 20, 0.16);
+  padding: 12px 14px;
+  z-index: 60;
+}
+.imgsearch[hidden] { display: none; }
+.imgsearch-head { display: flex; align-items: center; justify-content: space-between; }
+.imgsearch-title { font-size: 13px; color: var(--ink); letter-spacing: 0.04em; }
+.imgsearch-form { display: flex; gap: 6px; }
+.imgsearch-q { flex: 1; min-width: 0; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.imgsearch-type { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.imgsearch-keynote, .imgsearch-target { font-size: 11px; color: #6d6455; line-height: 1.5; }
+.imgsearch-grid {
+  flex: 1;
+  min-height: 80px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  align-content: start;
+}
+.imgsearch-thumb {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #f1ece2;
+  aspect-ratio: 1;
+  overflow: hidden;
+  cursor: pointer;
+}
+.imgsearch-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-user-drag: none; }
+.imgsearch-thumb:hover { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.imgsearch-thumb--picked { border-color: var(--accent); }
+.imgsearch-thumb--loading { opacity: 0.45; cursor: progress; }
+.imgsearch-msg { grid-column: 1 / -1; font-size: 11px; color: #6d6455; padding: 10px 2px; line-height: 1.5; }
+.imgsearch-more-row { text-align: center; }
+.imgsearch-foot { display: flex; align-items: center; justify-content: space-between; }
+.imgsearch-credit { font-size: 11px; color: #6d6455; }
+@media (max-width: 899px) {
+  .imgsearch { left: 8px; right: 8px; width: auto; top: 56px; max-height: 55vh; }
+}
+/* display を指定した要素でも hidden 属性で隠れるように(もっと見る・画像の無いカードの img) */
+.imgsearch [hidden], .ens-image[hidden], .panel-image[hidden] { display: none; }

@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsModal = document.getElementById('settings-modal');
   els.settingsClientId = document.getElementById('settings-client-id');
   els.settingsApiKey = document.getElementById('settings-api-key');
+  els.settingsPixabayKey = document.getElementById('settings-pixabay-key');
   els.settingsError = document.getElementById('settings-error');
   els.settingsSaveBtn = document.getElementById('settings-save-btn');
   els.settingsCancelBtn = document.getElementById('settings-cancel-btn');
@@ -119,6 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function openSettings() {
   els.settingsClientId.value = CONFIG.GOOGLE_CLIENT_ID;
   els.settingsApiKey.value = CONFIG.GEMINI_API_KEY;
+  els.settingsPixabayKey.value = CONFIG.PIXABAY_API_KEY;
   els.settingsError.hidden = true;
   els.settingsCancelBtn.hidden = !isConfigured(); // 初回の必須設定中は閉じる手段を出さない
   // 日次課題のオン/オフはDriveのデータ(state.prefs)に保存するため、読み込み後だけ出す
@@ -139,7 +141,7 @@ function handleSaveSettings() {
     els.settingsError.hidden = false;
     return;
   }
-  saveUserConfig({ clientId, apiKey });
+  saveUserConfig({ clientId, apiKey, pixabayKey: els.settingsPixabayKey.value });
   closeSettings();
   if (dataLoaded && state.prefs.dailyTask !== els.settingsDaily.checked) {
     state.prefs.dailyTask = els.settingsDaily.checked;

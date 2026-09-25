@@ -107,6 +107,7 @@
     leave() {
       document.removeEventListener('keydown', onEnsembleKeydown);
       document.removeEventListener('paste', onPaste);
+      if (window.LyraImageSearch) window.LyraImageSearch.close();
       els.viewport.removeEventListener('dragover', onDragOver);
       els.viewport.removeEventListener('drop', onDrop);
       if (window.LyraMidi) window.LyraMidi.stopAll();
@@ -1346,11 +1347,12 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       const tried = card.tried || [];
       html = head(`画像${card.name ? ` · ${escapeHtml(card.name)}` : ''}`, `${formatDate(card.replacedAt || card.createdAt)} · この端末だけに保存`) +
         `<div class="panel-section"><img class="panel-image" alt="" draggable="false"></div>` +
-        `<div class="panel-section"><button type="button" class="btn-small" data-image="replace">画像を入れ替える</button></div>` +
+        (card.source && card.source.pageURL ? `<div class="panel-section"><a class="panel-source" href="${escapeHtml(card.source.pageURL)}" target="_blank" rel="noopener">${escapeHtml(card.source.site)}${card.source.user ? ` · ${escapeHtml(card.source.user)}` : ''} で見る</a></div>` : '') +
+        `<div class="panel-section"><button type="button" class="btn-small" data-image="replace">画像を探して入れ替える</button></div>` +
         `<div class="panel-section"><div class="panel-label">印象</div><div class="panel-readonly">${card.impression ? escapeHtml(card.impression) : '(未記入。カードのEditで書けます。空のまま「鳴らす」「ビート」を押すとGeminiが書きます)'}</div></div>` +
         (tried.length ? `<div class="panel-section"><div class="panel-label">これまでに試した画像(${tried.length})</div>` +
           tried.map((t) => `<div class="panel-readonly">${escapeHtml(t.name || '(名前なし)')}${t.impression ? ` — ${escapeHtml(t.impression)}` : ''}</div>`).join('') + `</div>` : '') +
-        `<div class="panel-empty">上の「鳴らす」でコード+旋律、「ビート」でドラムビートを、この画像の印象から作ります。別の画像をカードにドロップする・左下の「入替」・このカードを選んだままCtrl+Vで、位置と線はそのまま画像だけを入れ替えられます。画像はDriveに上げず、この端末にだけ置きます。</div>`;
+        `<div class="panel-empty">上の「鳴らす」でコード+旋律、「ビート」でドラムビートを、この画像の印象から作ります。左下の「入替」(画像検索が開き、クリックするたびに入れ替わります)・別の画像をカードにドロップ・このカードを選んだままCtrl+Vで、位置と線はそのまま画像だけを入れ替えられます。画像はDriveに上げず、この端末にだけ置きます。</div>`;
     } else if (card.type === 'midi' && window.LyraMidi) {
       html = window.LyraMidi.panelHtml(card);
     } else if (card.type === 'audio' && window.LyraAudio) {
@@ -1516,7 +1518,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     const targetEl = event.target && event.target.closest && event.target.closest('.star-card--ens-image');
     const target = targetEl ? getCardById(targetEl.dataset.id) : null;
     if (target && images.length) {
-      replaceImage(target, images[0]);
+      replaceImage(target, images[0], null);
       return;
     }
     images.forEach((f, i) => importImage(f, { x: pos.x + (audios.length + i) * 30, y: pos.y + (audios.length + i) * 30 }));
@@ -1541,29 +1543,65 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
 
   const TRIED_MAX = 20;
 
-  async function pickImage() {
-    const file = await pickFile('image/*');
-    if (file) importImage(file, newCardSpawnPos());
+  /* 画像検索(js/imagesearch.js、Pixabay)のパネルを開く。target があればその画像カードを入れ替え、無ければ最初の
+   * クリックで新しいカードを置き、以後はそのカードを入れ替える(パネルを開いたまま、次々に試せるように) */
+  let searchTargetId = null;
+
+  function openImageSearch(target) {
+    searchTargetId = target ? target.id : null;
+    const pickInto = async (file, meta) => {
+      const t = searchTargetId ? getCardById(searchTargetId) : null;
+      if (t && t.type === 'image') await replaceImage(t, file, meta);
+      else {
+        const card = await importImage(file, newCardSpawnPos(), meta);
+        if (card) {
+          searchTargetId = card.id;
+          if (window.LyraImageSearch) window.LyraImageSearch.setTarget(card.name);
+        }
+      }
+    };
+    if (!window.LyraImageSearch) {
+      pickFile('image/*').then((file) => file && pickInto(file, null));
+      return;
+    }
+    window.LyraImageSearch.open({
+      targetLabel: target ? target.name || '画像' : '',
+      onPick: pickInto,
+      onPickFile: async () => {
+        const file = await pickFile('image/*');
+        if (file) await pickInto(file, null);
+      },
+    });
   }
 
-  async function pickReplacement(card, el) {
+  function pickImage() {
+    openImageSearch(null);
+  }
+
+  function pickReplacement(card, el) {
     if (el) deactivateEditGuide(el);
-    const file = await pickFile('image/*');
-    if (file) replaceImage(card, file);
+    openImageSearch(card);
   }
 
-  function imageName(file) {
+  function imageName(file, meta) {
+    if (meta && meta.name) return String(meta.name).slice(0, 40);
     return (file.name && file.name !== 'image.png' ? file.name : 'clipboard').replace(/\.\w+$/, '').slice(0, 40);
   }
 
+  /** 出どころ(Pixabayから選んだ時だけ)。カードの表示にPixabayのURLは使わない */
+  function imageSource(meta) {
+    return meta && meta.site ? { site: meta.site, id: meta.id, pageURL: meta.pageURL, user: meta.user, tags: meta.tags } : null;
+  }
+
   /** 位置・線はそのまま、画像だけを入れ替える。前の画像の名前と印象は tried に残す */
-  async function replaceImage(card, file) {
+  async function replaceImage(card, file, meta) {
     setStatus('画像を入れ替えています…', { busy: true });
     try {
       const { blob, width, height } = await downscaleImage(file, IMAGE_MAX_SIDE, IMAGE_QUALITY);
       await putLocalImage(card.id, blob);
       if (card.name || card.impression) card.tried = [{ name: card.name, impression: card.impression || '' }, ...(card.tried || [])].slice(0, TRIED_MAX);
-      card.name = imageName(file);
+      card.name = imageName(file, meta);
+      card.source = imageSource(meta);
       card.imgWidth = width;
       card.imgHeight = height;
       card.impression = '';
@@ -1577,6 +1615,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       if (panelCardId === card.id && !els.sidePanel.hidden) showCardPanel(card);
       revealEnsembleCard(card);
       scheduleAutoSave();
+      if (searchTargetId === card.id && window.LyraImageSearch) window.LyraImageSearch.setTarget(card.name);
       setStatus(`画像を「${card.name}」に入れ替えました(${(blob.size / 1024).toFixed(0)}KB)`);
     } catch (err) {
       console.error(err);
@@ -1596,10 +1635,11 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     else importImage(item.getAsFile(), newCardSpawnPos());
   }
 
-  async function importImage(file, pos) {
-    if (!file) return;
+  /** 新しい画像カードを置き、そのカードを返す(失敗したらnull) */
+  async function importImage(file, pos, meta) {
+    if (!file) return null;
     const targetStage = stage;
-    const name = imageName(file);
+    const name = imageName(file, meta);
     setStatus('画像を読み込んでいます…', { busy: true });
     try {
       const { blob, width, height } = await downscaleImage(file, IMAGE_MAX_SIDE, IMAGE_QUALITY);
@@ -1609,6 +1649,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
         id,
         type: 'image',
         name,
+        source: imageSource(meta),
         imgWidth: width,
         imgHeight: height,
         impression: '',
@@ -1622,9 +1663,11 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       revealEnsembleCard(card);
       focusCardId = card.id;
       setStatus(`画像を置きました(${(blob.size / 1024).toFixed(0)}KB、この端末だけに保存)。上の「鳴らす」「ビート」でMIDIを作り、別の画像をドロップすると入れ替えられます`);
+      return card;
     } catch (err) {
       console.error(err);
       setStatus(`画像を置けませんでした: ${err.message}`, { important: true });
+      return null;
     }
   }
 
