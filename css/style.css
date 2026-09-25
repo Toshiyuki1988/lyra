@@ -528,6 +528,9 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card-hex--sketch { transform: translate(-50%, calc(-100% - 10px)); }
 .star-card-hex--beat { transform: translate(calc(50% + 6px), calc(-100% - 10px)); background: #6d5a8a; }
 .star-card--ens-soul .star-card-hex--beat { transform: translate(-50%, calc(-100% - 10px)); }
+/* 画像カード(2026-09-26)は「鳴らす」「ビート」の2つを真ん中で左右に並べる */
+.star-card--ens-image .star-card-hex--sketch { transform: translate(calc(-100% - 3px), calc(-100% - 10px)); }
+.star-card--ens-image .star-card-hex--beat { transform: translate(3px, calc(-100% - 10px)); }
 .star-card-hex-strut--listen,
 .star-card-hex-strut--sketch,
 .star-card-hex-strut--beat { display: none; }
@@ -535,6 +538,9 @@ a.crumb:hover { color: var(--accent-ink); }
 /* 気づき⇔課題の入れ替え(2026-09-25): カードの左下の外側(ASTRの左隣) */
 .star-card-hex--swap { left: 0; top: 100%; transform: translate(-45%, 14px); background: #7d6f58; font-size: 10.5px; }
 .star-card-hex-strut--swap { display: none; }
+/* 画像カードの「入替」(2026-09-26): 同じ左下。位置・線はそのまま画像だけを入れ替える */
+.star-card-hex--replace { left: 0; top: 100%; transform: translate(-45%, 14px); background: #7d6f58; font-size: 10.5px; }
+.star-card-hex-strut--replace { display: none; }
 
 /* ---------- モーダル(設定・選択ダイアログ共通) ---------- */
 
@@ -1251,6 +1257,23 @@ a.crumb:hover { color: var(--accent-ink); }
 .ens-card-soulhead { display: flex; align-items: center; gap: 6px; font-size: 10px; color: color-mix(in srgb, var(--soul-color) 70%, #000); margin-bottom: 3px; }
 .ens-card-soulhead svg { flex: none; }
 .star-card--ens-soul .ens-card-title { font-size: 13px; }
+/* 画像カード(2026-09-26): 画像そのものと、その印象の文(Editで書ける。空なら「鳴らす」「ビート」の時にGeminiが書く) */
+.star-card--ens-image { padding: 8px; }
+.ens-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  border-radius: 4px;
+  background: #f1ece2;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+  margin: 3px 0 4px;
+}
+.ens-image-missing { font-size: 11px; color: #9a8f7c; background: #f1ece2; border: 1px dashed #cfc5b2; border-radius: 4px; padding: 14px 8px; margin: 3px 0 4px; line-height: 1.5; text-align: center; }
+.star-card--ens-image .star-card-memo { font-size: 11px; color: #6d6455; }
+.panel-image { display: block; max-width: 100%; border-radius: 6px; -webkit-user-drag: none; }
 
 /* ---------- 資料パネル(解体パイプライン) ---------- */
 

@@ -94,16 +94,19 @@
         { id: 'text', label: '気づき', icon: '<path d="M5 6h14M12 6v13M9 19h6"/>', onClick: () => addTextCard() },
         { id: 'task', label: '課題', icon: '<path d="M9 11l2 2 4-4"/><rect x="4" y="4" width="16" height="16" rx="3"/>', onClick: () => addUserTask() },
         { id: 'audio', label: 'オーディオ', icon: '<path d="M4 12h2l2-6 3 12 3-9 2 3h4"/>', onClick: () => pickAudio() },
+        { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 3-3 4 4"/>', onClick: () => pickImage() },
         { id: 'summary', label: 'まとめ', icon: '<path d="M6 5h12M6 10h12M6 15h8M6 20h5"/>', onClick: () => summarize() },
       ]);
       els.viewport.addEventListener('dragover', onDragOver);
       els.viewport.addEventListener('drop', onDrop);
       document.addEventListener('keydown', onEnsembleKeydown);
+      document.addEventListener('paste', onPaste);
       return true;
     },
 
     leave() {
       document.removeEventListener('keydown', onEnsembleKeydown);
+      document.removeEventListener('paste', onPaste);
       els.viewport.removeEventListener('dragover', onDragOver);
       els.viewport.removeEventListener('drop', onDrop);
       if (window.LyraMidi) window.LyraMidi.stopAll();
@@ -124,7 +127,7 @@
 
     cardHexes(card) {
       // MIDIカードのEditは編集画面(js/midi.js の openMidiEditor)を開く(2026-09-25)
-      const editable = card.type === 'text' || card.type === 'midi' || (card.type === 'task' && card.origin !== 'app');
+      const editable = card.type === 'text' || card.type === 'midi' || card.type === 'image' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
       // 美学・ジャンル・作曲家のソウルカードには上に「ビート」(そのソウルのジャンルを象徴するビートをすぐ作る)
@@ -132,10 +135,13 @@
       const soulTools = soulOwner && BEAT_CATEGORIES.includes(soulOwner.category) ? hexHtml('beat', 'ビート') : '';
       // 気づきカードには上に「感想」(Geminiなどの話し手に一言もらう)
       const noteTools = card.type === 'text' ? hexHtml('comment', '感想') : '';
+      // 画像カードには上に「鳴らす」「ビート」(画像の印象から、コード+旋律/ビートを作る。2026-09-26)
+      // 左下の「入替」で、位置・線・印象の履歴はそのまま画像だけを入れ替える(試しては入れ替え、を繰り返すため)
+      const imageTools = card.type === 'image' ? hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') : '';
       // 気づき⇔課題の入れ替え(左下)。アプリからの課題は理由・対象のパラメータを持つので入れ替えない
       const swap = card.type === 'text' || (card.type === 'task' && card.origin !== 'app')
         ? hexHtml('swap', card.type === 'text' ? '→課題' : '→気づき') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + soulTools + swap;
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + imageTools + soulTools + swap;
     },
 
     onHexAction(action, card, el) {
@@ -147,6 +153,8 @@
       } else if (action === 'edit') startEditingCard(el);
       else if (action === 'delete') confirmDeleteCard(card);
       else if (action === 'listen') listenFromTask(card);
+      else if (action === 'sketch' && card.type === 'image') sketchFromImage(card, el);
+      else if (action === 'replace') pickReplacement(card, el);
       else if (action === 'sketch') sketchFromTask(card);
       else if (action === 'comment') commentOnNote(card, el);
       else if (action === 'swap') swapNoteTask(card);
@@ -179,6 +187,7 @@
     if (card.type === 'audio' || card.type === 'midi') return 210;
     if (card.type === 'summary') return 320;
     if (card.type === 'comment') return 230;
+    if (card.type === 'image') return 220;
     return 180;
   }
 
@@ -311,6 +320,24 @@
     midi(card, el) {
       if (window.LyraMidi) window.LyraMidi.buildCard(card, el);
       else el.innerHTML = `<div class="ens-card-kind">MIDI</div><div class="ens-card-title">${escapeHtml(card.name || '')}</div>`;
+    },
+
+    image(card, el) {
+      el.innerHTML =
+        `<div class="ens-card-kind">画像${card.name ? ` · ${escapeHtml(card.name)}` : ''}</div>` +
+        `<img class="ens-image" alt="" draggable="false"${card.imgWidth && card.imgHeight ? ` style="aspect-ratio:${card.imgWidth} / ${card.imgHeight}"` : ''}>` +
+        `<div class="ens-image-missing" hidden>この端末に画像がありません。画像をこのカードにドロップすると入れ直せます</div>` +
+        `<textarea class="star-card-memo" spellcheck="false" data-field="impression" placeholder="印象(空なら「鳴らす」「ビート」の時にGeminiが書きます)">${escapeHtml(card.impression || '')}</textarea>`;
+      const img = el.querySelector('.ens-image');
+      getLocalImageUrl(card.id)
+        .then((url) => {
+          if (url) img.src = url;
+          else {
+            img.hidden = true;
+            el.querySelector('.ens-image-missing').hidden = false;
+          }
+        })
+        .catch((err) => console.error(err));
     },
 
     audio(card, el) {
@@ -451,6 +478,7 @@
     window.LyraMidi.createBeat({
       stage,
       souls,
+      images: imageCardsOf(cards, card.id),
       contextText: cards.map(cardLine).filter(Boolean).map((l) => `- ${l}`).join('\n'),
       focusParamIds: new Set(cards.filter((c) => c.type === 'param').map((c) => c.paramId)),
       memberIds: [stage.id, ...souls.map((s) => s.id)],
@@ -463,11 +491,12 @@
   function sketchFromTask(card) {
     const comp = componentOf(card.id);
     if (!comp) {
-      setStatus('この課題カードをASTRで美学・ジャンル・作曲家のソウルのカードとつないでから「鳴らす」を押してください', { important: true });
+      setStatus('この課題カードをASTRで美学・ジャンル・作曲家のソウルか画像のカードとつないでから「鳴らす」を押してください', { important: true });
       return;
     }
-    if (!sketchSouls(recruitedSouls(comp)).length) {
-      setStatus('「鳴らす」には、美学・ジャンル・作曲家のソウル(またはそのパラメータ)のカードをつないでください', { important: true });
+    const hasImage = comp.some((id) => (getCardById(id) || {}).type === 'image');
+    if (!hasImage && !sketchSouls(recruitedSouls(comp)).length) {
+      setStatus('「鳴らす」には、美学・ジャンル・作曲家のソウル(またはそのパラメータ)か、画像のカードをつないでください', { important: true });
       return;
     }
     focusCardId = card.id;
@@ -507,7 +536,8 @@
     window.LyraMidi.createSketch({
       // つないだMIDIのパートは差し替えに使える。気づき・課題カードの文は「光景・物語」の初期値にする(ダイアログで直せる)
       midiSources: placed.filter((c) => c.type === 'midi').slice(0, 3),
-      storyDefault: userTexts(placed).join(' / '),
+      storyDefault: [...userTexts(placed), ...placed.filter((c) => c.type === 'image' && c.impression).map((c) => c.impression.trim().slice(0, 200))].join(' / '),
+      images: imageCardsOf(placed, fromCardId),
       fromCardId,
       stage,
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので渡さない
@@ -746,6 +776,8 @@ ${task}
       }
       case 'midi':
         return window.LyraMidi ? window.LyraMidi.describe(card) : `[MIDI] ${card.name}`;
+      case 'image':
+        return `[画像] ${card.name || ''}${card.impression ? ` 印象: ${card.impression.slice(0, 200)}` : '(印象は未記入)'}`;
       case 'audio':
         return `[オーディオ] ${card.name}${card.duration ? `(${Math.round(card.duration)}秒)` : ''}`;
       case 'comment':
@@ -1310,6 +1342,15 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
         (card.title ? `<div class="panel-section"><div class="panel-label">見出し</div><div class="panel-readonly">${escapeHtml(card.title)}</div></div>` : '') +
         (card.direction ? `<div class="panel-section"><div class="panel-label">問い・視点</div><div class="panel-readonly">${escapeHtml(card.direction)}</div></div>` : '') +
         `<div class="panel-section"><div class="panel-readonly voice-panel-text">${escapeHtml(card.text || '')}</div></div>`;
+    } else if (card.type === 'image') {
+      const tried = card.tried || [];
+      html = head(`画像${card.name ? ` · ${escapeHtml(card.name)}` : ''}`, `${formatDate(card.replacedAt || card.createdAt)} · この端末だけに保存`) +
+        `<div class="panel-section"><img class="panel-image" alt="" draggable="false"></div>` +
+        `<div class="panel-section"><button type="button" class="btn-small" data-image="replace">画像を入れ替える</button></div>` +
+        `<div class="panel-section"><div class="panel-label">印象</div><div class="panel-readonly">${card.impression ? escapeHtml(card.impression) : '(未記入。カードのEditで書けます。空のまま「鳴らす」「ビート」を押すとGeminiが書きます)'}</div></div>` +
+        (tried.length ? `<div class="panel-section"><div class="panel-label">これまでに試した画像(${tried.length})</div>` +
+          tried.map((t) => `<div class="panel-readonly">${escapeHtml(t.name || '(名前なし)')}${t.impression ? ` — ${escapeHtml(t.impression)}` : ''}</div>`).join('') + `</div>` : '') +
+        `<div class="panel-empty">上の「鳴らす」でコード+旋律、「ビート」でドラムビートを、この画像の印象から作ります。別の画像をカードにドロップする・左下の「入替」・このカードを選んだままCtrl+Vで、位置と線はそのまま画像だけを入れ替えられます。画像はDriveに上げず、この端末にだけ置きます。</div>`;
     } else if (card.type === 'midi' && window.LyraMidi) {
       html = window.LyraMidi.panelHtml(card);
     } else if (card.type === 'audio' && window.LyraAudio) {
@@ -1328,6 +1369,11 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     panel.querySelector('.panel-close').addEventListener('click', closeSidePanel);
     if (card.type === 'midi' && window.LyraMidi) window.LyraMidi.bindPanel(panel, card);
     if (card.type === 'audio' && window.LyraAudio) window.LyraAudio.bindPanel(panel, card);
+    if (card.type === 'image') {
+      const img = panel.querySelector('.panel-image');
+      getLocalImageUrl(card.id).then((url) => { if (url) img.src = url; else img.hidden = true; }).catch((err) => console.error(err));
+      panel.querySelector('[data-image="replace"]').addEventListener('click', () => pickReplacement(card));
+    }
   }
 
   function sourceTitle(owner, reading) {
@@ -1459,11 +1505,142 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
   }
 
   function onDrop(event) {
-    const files = [...(event.dataTransfer?.files || [])].filter((f) => f.type.startsWith('audio/') || /\.(wav|aiff?|mp3|m4a|flac|ogg)$/i.test(f.name));
-    if (!files.length || !window.LyraAudio) return;
+    const all = [...(event.dataTransfer?.files || [])];
+    const audios = window.LyraAudio ? all.filter((f) => f.type.startsWith('audio/') || /\.(wav|aiff?|mp3|m4a|flac|ogg)$/i.test(f.name)) : [];
+    const images = all.filter(isImageFile);
+    if (!audios.length && !images.length) return;
     event.preventDefault();
     const pos = clientToContent(event.clientX, event.clientY);
-    files.forEach((f, i) => window.LyraAudio.importFile(f, stage, { x: pos.x + i * 30, y: pos.y + i * 30 }));
+    audios.forEach((f, i) => window.LyraAudio.importFile(f, stage, { x: pos.x + i * 30, y: pos.y + i * 30 }));
+    // 画像カードの上に落とした時は、そのカードの画像を入れ替える(1枚目だけ)
+    const targetEl = event.target && event.target.closest && event.target.closest('.star-card--ens-image');
+    const target = targetEl ? getCardById(targetEl.dataset.id) : null;
+    if (target && images.length) {
+      replaceImage(target, images[0]);
+      return;
+    }
+    images.forEach((f, i) => importImage(f, { x: pos.x + (audios.length + i) * 30, y: pos.y + (audios.length + i) * 30 }));
+  }
+
+  /* ---- 画像カード(2026-09-26、ユーザー要望「画像カードを新設し、画像の印象からMIDIを生成できるように」) ----
+   * 道具バーの「画像」・ドロップ・Ctrl+Vの貼り付けで置く。card: { type: 'image', name, imgWidth, imgHeight, impression, tried[] }。
+   * **観賞用ではなく「試しては入れ替え」を繰り返すための材料**(ユーザー判断)。そのため:
+   *   - 画像はDriveに上げず、この端末のIndexedDB(js/app.js の putLocalImage、キーはカードID)にだけ置く。入れ替えは上書き
+   *     なので、何度入れ替えてもDriveは増えない(Driveのファイルはアプリから消さない決まりなので、Driveに上げると増え続ける)。
+   *     長辺512px・JPEG品質0.72に縮めてから置く(Geminiの画像入力は768pxのタイル単位なので、印象を読むにはこれで足りる)
+   *   - 入れ替え: 画像カードへのドロップ / 左下の「入替」ヘックス / パネルのボタン / そのカードを選んだままCtrl+V。
+   *     位置・線はそのまま、印象は空に戻し、前の画像の名前と印象を tried に残す(最大20件)
+   *   - 上の「鳴らす」「ビート」で、画像をそのままGeminiに添付してMIDIを作る。印象の文が空なら、
+   *     その同じ1回の呼び出しでGeminiに印象を書かせてカードに残す(APIの回数を増やさない) */
+  const IMAGE_MAX_SIDE = 512;
+  const IMAGE_QUALITY = 0.72;
+
+  function isImageFile(f) {
+    return Boolean(f) && (f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(f.name || ''));
+  }
+
+  const TRIED_MAX = 20;
+
+  async function pickImage() {
+    const file = await pickFile('image/*');
+    if (file) importImage(file, newCardSpawnPos());
+  }
+
+  async function pickReplacement(card, el) {
+    if (el) deactivateEditGuide(el);
+    const file = await pickFile('image/*');
+    if (file) replaceImage(card, file);
+  }
+
+  function imageName(file) {
+    return (file.name && file.name !== 'image.png' ? file.name : 'clipboard').replace(/\.\w+$/, '').slice(0, 40);
+  }
+
+  /** 位置・線はそのまま、画像だけを入れ替える。前の画像の名前と印象は tried に残す */
+  async function replaceImage(card, file) {
+    setStatus('画像を入れ替えています…', { busy: true });
+    try {
+      const { blob, width, height } = await downscaleImage(file, IMAGE_MAX_SIDE, IMAGE_QUALITY);
+      await putLocalImage(card.id, blob);
+      if (card.name || card.impression) card.tried = [{ name: card.name, impression: card.impression || '' }, ...(card.tried || [])].slice(0, TRIED_MAX);
+      card.name = imageName(file);
+      card.imgWidth = width;
+      card.imgHeight = height;
+      card.impression = '';
+      card.replacedAt = new Date().toISOString();
+      card.height = null;
+      const el = cardElById(card.id);
+      if (el) el.style.height = '';
+      rerenderCard(card);
+      focusCardId = card.id;
+      renderMembers();
+      if (panelCardId === card.id && !els.sidePanel.hidden) showCardPanel(card);
+      revealEnsembleCard(card);
+      scheduleAutoSave();
+      setStatus(`画像を「${card.name}」に入れ替えました(${(blob.size / 1024).toFixed(0)}KB)`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`画像を入れ替えられませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  function onPaste(event) {
+    const target = event.target;
+    if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)) return;
+    const item = [...(event.clipboardData?.items || [])].find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+    if (!item) return;
+    event.preventDefault();
+    // 最後に選んだカードが画像カードなら、その画像を入れ替える
+    const focused = focusCardId ? getCardById(focusCardId) : null;
+    if (focused && focused.type === 'image') replaceImage(focused, item.getAsFile());
+    else importImage(item.getAsFile(), newCardSpawnPos());
+  }
+
+  async function importImage(file, pos) {
+    if (!file) return;
+    const targetStage = stage;
+    const name = imageName(file);
+    setStatus('画像を読み込んでいます…', { busy: true });
+    try {
+      const { blob, width, height } = await downscaleImage(file, IMAGE_MAX_SIDE, IMAGE_QUALITY);
+      const id = newId();
+      await putLocalImage(id, blob);
+      const card = {
+        id,
+        type: 'image',
+        name,
+        imgWidth: width,
+        imgHeight: height,
+        impression: '',
+        x: pos.x - 110,
+        y: pos.y - 80,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      addCardToEnsemble(targetStage, card);
+      revealEnsembleCard(card);
+      focusCardId = card.id;
+      setStatus(`画像を置きました(${(blob.size / 1024).toFixed(0)}KB、この端末だけに保存)。上の「鳴らす」「ビート」でMIDIを作り、別の画像をドロップすると入れ替えられます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`画像を置けませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /** 画像カードの「鳴らす」: 画像(とつないだソウル・カード)から、コード+旋律を作る */
+  function sketchFromImage(card, el) {
+    if (el) deactivateEditGuide(el);
+    focusCardId = card.id;
+    renderMembers();
+    makeSketch(componentOf(card.id) || [card.id], card.id);
+  }
+
+  /** 画像カード(押したカードを先頭に、最大3枚) */
+  function imageCardsOf(cards, firstId) {
+    const list = cards.filter((c) => c && c.type === 'image');
+    list.sort((a, b) => (b.id === firstId) - (a.id === firstId));
+    return list.slice(0, 3);
   }
 
   async function confirmDeleteCard(card) {
@@ -1473,6 +1650,8 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
         ? 'アンサンブルからカードを外します(ソウル側の記録はそのまま残ります)。'
         : card.type === 'audio'
           ? 'カードとそこから伸びている線が消えます。Driveに保存した音声の実体は残ります。'
+          : card.type === 'image'
+            ? 'カードとそこから伸びている線が消えます。この端末に置いた画像も消えます(Driveには上げていません)。'
           : 'カードとそこから伸びている線が消えます。',
       options: [
         { label: 'やめる', value: 'cancel', secondary: true },
@@ -1481,6 +1660,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     });
     if (choice !== 'delete') return;
     if (focusCardId === card.id) focusCardId = null;
+    if (card.type === 'image') deleteLocalImage(card.id).catch((err) => console.error(err));
     removeCardFromScope(card);
     closeSidePanel();
     renderMembers();
@@ -1568,6 +1748,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       if (c.type === 'text') return '気づき';
       if (c.type === 'task') return '課題';
       if (c.type === 'source') return 'つないだ出典';
+      if (c.type === 'image') return '画像';
       return c.name || null;
     };
     return {

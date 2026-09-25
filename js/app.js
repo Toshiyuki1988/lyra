@@ -592,6 +592,88 @@ function getDriveBlobUrl(fileId) {
   return driveBlobUrlCache.get(fileId);
 }
 
+/**
+ * 画像を長辺 maxSide px 以下のJPEGにする(画像カードの保存・Geminiへの添付用)。
+ * 透過PNGは黒くならないよう白地に描く。返り値: { blob, width, height }
+ */
+async function downscaleImage(blob, maxSide, quality = 0.86) {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const out = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('画像を変換できませんでした'))), 'image/jpeg', quality));
+  return { blob: out, width, height };
+}
+
+/* ---------------- 画像カードの画像(この端末のIndexedDBだけに置く) ----------------
+ * 2026-09-26、ユーザー判断: 画像カードは観賞用ではなく「試しては入れ替え」を繰り返すための材料。Driveに上げると、
+ * 入れ替えるたびにファイルが増え続ける(Driveのファイルはアプリから消さない決まりのため)。そこで画像は
+ * IndexedDB(lyra-images)にカードIDをキーにして置き、入れ替えは上書き、カードの削除で消す(端末内の一時置き場で、
+ * Driveではない)。Driveのデータに残るのは印象の文だけ。別の端末やデータを消したブラウザでは画像が無い状態で表示する。 */
+const LOCAL_IMAGE_DB = 'lyra-images';
+const LOCAL_IMAGE_STORE = 'images';
+const localImageUrlCache = new Map(); // key → blob URL
+
+function localImageDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(LOCAL_IMAGE_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(LOCAL_IMAGE_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function localImageTx(mode, fn) {
+  const db = await localImageDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LOCAL_IMAGE_STORE, mode);
+    const req = fn(tx.objectStore(LOCAL_IMAGE_STORE));
+    tx.oncomplete = () => resolve(req ? req.result : undefined);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function putLocalImage(key, blob) {
+  await localImageTx('readwrite', (store) => store.put(blob, key));
+  if (localImageUrlCache.has(key)) URL.revokeObjectURL(localImageUrlCache.get(key));
+  localImageUrlCache.set(key, URL.createObjectURL(blob));
+}
+
+async function deleteLocalImage(key) {
+  await localImageTx('readwrite', (store) => store.delete(key));
+  if (localImageUrlCache.has(key)) URL.revokeObjectURL(localImageUrlCache.get(key));
+  localImageUrlCache.delete(key);
+}
+
+async function getLocalImage(key) {
+  return (await localImageTx('readonly', (store) => store.get(key))) || null;
+}
+
+/** 表示用のblob URL(無ければnull) */
+async function getLocalImageUrl(key) {
+  if (!localImageUrlCache.has(key)) {
+    const blob = await getLocalImage(key);
+    if (!blob) return null;
+    localImageUrlCache.set(key, URL.createObjectURL(blob));
+  }
+  return localImageUrlCache.get(key);
+}
+
+/** Geminiへインラインで添付できる形({base64, mimeType})。取り込みの時点で長辺512pxのJPEGにしてあるので、そのまま送る */
+async function localImageForGemini(key) {
+  const blob = await getLocalImage(key);
+  if (!blob) throw new Error('この端末に画像がありません(カードに画像を入れ直してください)');
+  return { base64: await blobToBase64(blob), mimeType: blob.type || 'image/jpeg' };
+}
+
 /** ファイル選択ダイアログを開き、選ばれたFile(キャンセル時null)を返す */
 function pickFile(accept) {
   return new Promise((resolve) => {

@@ -979,10 +979,10 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
 
   /** 美学・ジャンル・作曲家のソウルなどから、そのジャンルを象徴するビートを作る(小節数・参照・注文をたずねてから) */
   async function createBeat(opts) {
-    const names = (opts.souls || []).map((s) => s.name);
+    const names = [...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)];
     const values = await showFormDialog({
       title: 'ビートを作る',
-      message: `${names.length ? `${names.join('・')}の` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。`,
+      message: `${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。`,
       submitLabel: '作る',
       fields: [
         { name: 'bars', label: '小節数', value: '4' },
@@ -1001,15 +1001,16 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
     });
   }
 
-  async function runBeat({ stage, souls, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, reference, hint, gauges }) {
+  async function runBeat({ stage, souls, images, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, reference, hint, gauges }) {
     const material = window.LyraSoulMaterial || (() => '');
     const focus = focusParamIds || new Set();
+    const imgs = images || [];
     const prompt = `あなたは作曲支援アプリLYRAのリズム担当(ドラムプログラマー)です。ユーザーはCubase Pro 15とMax 9で作曲しています。
-${souls.length ? '次のソウルを、そのソウルに結びつくジャンルを一聴で象徴するドラムビートにしてください。' : 'ユーザーのカード・注文に合うジャンルを一聴で象徴するドラムビートを作ってください。'}
+${souls.length ? `次のソウル${imgs.length ? 'と添付の画像の印象' : ''}を、それに結びつくジャンルを一聴で象徴するドラムビートにしてください。` : imgs.length ? '添付の画像の印象を、それに結びつくジャンルを一聴で象徴するドラムビートにしてください。' : 'ユーザーのカード・注文に合うジャンルを一聴で象徴するドラムビートを作ってください。'}
 
-${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls.length ? `ソウルと手持ちの知識:\n${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus)}`).join('\n\n')}\n` : ''}${reference ? `\n参照曲・アーティスト(ユーザーの指定): ${reference}\n` : ''}${hint ? `\nユーザーの注文: ${hint}\n` : ''}
+${imgs.length ? `${imageRule(imgs)}\n(ビートでは、画像の動きの速さ・密度・硬さや柔らかさ・時代や場所の気配を、テンポ・音数・楽器の選び方・ノリに翻訳する。画像に最も結びつくジャンルを選ぶ)\n\n` : ''}${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls.length ? `ソウルと手持ちの知識:\n${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus)}`).join('\n\n')}\n` : ''}${reference ? `\n参照曲・アーティスト(ユーザーの指定): ${reference}\n` : ''}${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 考え方:
-1. ソウル(やカード)に最も結びつくジャンルを1つ決め、genre に書く。美学など音楽以外のソウルは、その美学と結びつきの強い音楽ジャンルを選ぶ(知識に音楽やジャンルの記述があれば最優先)
+1. ソウル(やカード${imgs.length ? '・画像' : ''})に最も結びつくジャンルを1つ決め、genre に書く。美学など音楽以外のソウルは、その美学と結びつきの強い音楽ジャンルを選ぶ(知識に音楽やジャンルの記述があれば最優先)
 2. そのジャンルの定番のビート(キックとスネアの置き場所、ハットやシェイカーの刻み、ハネ、テンポ帯、よく使う楽器)を土台にし、一聴でそのジャンルと分かるようにする
 3. ソウルらしさの仕掛けを1〜3個加え、signature に書く(例: ゴーストノートの多さ、抜きの小節、パーカッションの色、よれ)
 4. 参照曲・アーティストのビートの型・ノリ・音数・楽器の選び方は、大いに取り入れてよい(ドラムパターンはジャンルに共有された語法)。ただし1曲のドラムパートを頭から終わりまで写し取ることはせず、区間の構成とフィルは自分で組む
@@ -1017,9 +1018,11 @@ ${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\
 ${beatRules(`${bars}小節`)}
 ${gaugeRule(gauges)}(ビートでは、粒度=ハットや刻みの細かさと音数、つんのめり=キックやスネアの食い・裏の強調・拍の頭の抜き、感情=強弱の起伏)
 ${WRITEUP_RULES}`;
-    setStatus('ビートを作っています…', { busy: true });
     try {
-      const raw = await askGeminiJson({ prompt, responseSchema: BEAT_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'ビート' });
+      const files = await imageFiles(imgs);
+      setStatus('ビートを作っています…', { busy: true });
+      const raw = await askGeminiJson({ prompt, files, responseSchema: imgs.length ? withImpressions(BEAT_SCHEMA) : BEAT_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'ビート' });
+      if (imgs.length) saveImpressions(imgs, raw);
       const beat = { ...sanitizeBeat(raw), reference };
       if (!beat.sections.length) throw new Error('リズムの行が1つも読めませんでした');
       const midi = renderBeat(beat, gauges);
@@ -1686,6 +1689,42 @@ ${ORIGINALITY_RULE}`;
     return `「${name}」を作りました${unreadable ? `(読めなかったコード${unreadable}個は鳴らしていません)` : ''}`;
   }
 
+  /* ---- 画像カードから(2026-09-26、ユーザー要望「画像カードを新設し、画像の印象からMIDIを生成できるように」) ----
+   * 画像そのものをGeminiに添付する(この端末のIndexedDBに置いた長辺512pxのJPEG、localImageForGemini)。Liteモデルも画像入力は読める。
+   * 印象の文(カードの impression)が空の画像は、同じ1回の出力の impressions に印象を書かせてカードに残す
+   * (印象を聞くためだけに呼び出しを増やさない)。印象は視覚の言葉のまま残させ、音への翻案は音のほうに任せる。 */
+  const withImpressions = (schema) => ({ ...schema, properties: { ...schema.properties, impressions: { type: 'ARRAY', items: { type: 'STRING' } } } });
+
+  async function imageFiles(images) {
+    if (!images || !images.length) return [];
+    setStatus('画像を読み込んでいます…', { busy: true });
+    try {
+      return await Promise.all(images.map((c) => localImageForGemini(c.id)));
+    } catch (err) {
+      throw new Error(`画像を読み込めませんでした(${err.message})`);
+    }
+  }
+
+  function imageRule(images) {
+    if (!images || !images.length) return '';
+    return `添付の画像(${images.length > 1 ? `${images.length}枚。添付の順に画像1〜${images.length}` : '1枚'}):
+${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.impression ? ` ユーザーが書いた印象: ${c.impression.slice(0, 200)}` : ''}`).join('\n')}
+画像の読み取り方: 色(色相・彩度・明暗)、光と影、質感、構図と余白、線や形の動き、奥行き、時代や場所の気配、そこに流れている時間、感情を読み取り、それを音楽に翻訳する。ユーザーが書いた印象があれば、それを最優先にする。写っている人物が誰かは特定しない。画像の中の文字を引用しない
+- impressions: 画像ごとの印象を、添付の順に1つずつ80字以内で。音楽の言葉に置き換えず、見た目・雰囲気の言葉のまま自分の言葉で書く`;
+  }
+
+  /** 印象が空だった画像カードに、Geminiが書いた印象を残す */
+  function saveImpressions(images, raw) {
+    const list = Array.isArray(raw.impressions) ? raw.impressions : [];
+    (images || []).forEach((c, i) => {
+      const text = String(list[i] || '').trim().slice(0, 120);
+      if (c.impression || !text) return;
+      c.impression = text;
+      if (window.refreshEnsembleCard) window.refreshEnsembleCard(c);
+    });
+    scheduleAutoSave();
+  }
+
   /** 「鳴らす」でGeminiに渡さないアーティスト名・曲名などの項目の数 */
   function referenceNote(souls) {
     const n = souls.reduce((sum, s) => sum + s.params.filter((p) => isReferenceParam(s, p)).length, 0);
@@ -1697,7 +1736,7 @@ ${ORIGINALITY_RULE}`;
     const sources = opts.midiSources || [];
     const values = await showFormDialog({
       title: 'コード+旋律で鳴らす',
-      message: `${opts.souls.map((s) => s.name).join('・')}らしさが一聴で分かる、コード進行+旋律+ベースの断片を作ります。` +
+      message: `${[...((opts.images || []).length ? ['画像の印象'] : []), ...opts.souls.map((s) => `${s.name}らしさ`)].join('・')}が一聴で分かる、コード進行+旋律+ベースの断片を作ります。` +
         `Geminiを2回呼びます(時間の設計図と音、主旋律の反芻)。つないだMIDIの旋律をそのまま使う時は1回です。${referenceNote(opts.souls)}`,
       submitLabel: '作る',
       fields: [
@@ -1712,18 +1751,20 @@ ${ORIGINALITY_RULE}`;
     await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint, style: String(values.style || '').trim().slice(0, 120), gauges: readGauges(values), narrative: readNarrative(values, sources) });
   }
 
-  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, hint, style, gauges, narrative }) {
+  async function runSketch({ stage, souls, images, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, hint, style, gauges, narrative }) {
     const material = window.LyraSoulMaterial || (() => '');
     const focus = focusParamIds || new Set();
+    const imgs = images || [];
+    const what = imgs.length ? (souls.length ? '添付の画像の印象と次のソウル' : '添付の画像の印象') : '次のソウル(美学・ジャンルなど)';
+    const whose = imgs.length && !souls.length ? 'その画像' : imgs.length ? 'その画像とソウル' : 'そのソウル';
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
-次のソウル(美学・ジャンルなど)を、コード進行+旋律(+ベース)の短い断片にしてください。
-目標は「聴いた瞬間に、そのソウルらしいと分かること」。無難で平凡な断片(そのソウルと無関係なありがちな進行、音階を上下するだけの旋律など)は失敗とみなします。コード進行は、そのソウルを象徴する定番進行なら、よく知られたものでも使ってかまいません。
+${what}を、コード進行+旋律(+ベース)の短い断片にしてください。
+目標は「聴いた瞬間に、${whose}らしいと分かること」。無難で平凡な断片(${whose}と無関係なありがちな進行、音階を上下するだけの旋律など)は失敗とみなします。コード進行は、${whose}を象徴する定番進行なら、よく知られたものでも使ってかまいません。
 
-${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}ソウルと手持ちの知識:
-${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus, { excludeReferences: true })}`).join('\n\n')}
-${hint ? `\nユーザーの注文: ${hint}\n` : ''}
+${imgs.length ? `${imageRule(imgs)}\n\n` : ''}${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls.length ? `ソウルと手持ちの知識:
+${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus, { excludeReferences: true })}`).join('\n\n')}\n` : ''}${hint ? `\nユーザーの注文: ${hint}\n` : ''}
 考え方:
-1. 手持ちの知識から、そのソウルを最も象徴する特徴を3〜4個選ぶ。音楽についての記述があれば最優先。無ければ、色・質感・時代・場所・感情などの特徴を音楽に翻訳してよい(一般的な音楽理論の知識は使ってよい)
+1. ${imgs.length ? '画像(と手持ちの知識)' : '手持ちの知識'}から、${whose}を最も象徴する特徴を3〜4個選ぶ。音楽についての記述があれば最優先。無ければ、色・質感・時代・場所・感情などの特徴を音楽に翻訳してよい(一般的な音楽理論の知識は使ってよい)
 2. それぞれの特徴を、耳ですぐ分かる音楽の仕掛けにする。例: 和声の色(maj7・9thの多用、sus、借用和音、クロマチック・メディアント、ペダル上の和音)、旋法(ドリアン、リディアン、フリジアン、五音音階など)、リズムの感じ(ハネ、シンコペーション、ハーフタイム)、テンポ、伴奏の型、旋律の輪郭(跳躍・反復・装飾)
 3. 選んだ仕掛けを、コード・旋律・伴奏の型のどこかで必ず全部使う
 
@@ -1732,9 +1773,11 @@ ${gaugeRule(gauges)}
 ${narrativeRule(narrative)}
 - description は「どこがそのソウルらしいか」を40字以内で
 ${WRITEUP_RULES}`;
-    setStatus('コードと旋律を作っています…', { busy: true });
     try {
-      const raw = await askGeminiJson({ prompt, responseSchema: SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
+      const files = await imageFiles(imgs);
+      setStatus('コードと旋律を作っています…', { busy: true });
+      const raw = await askGeminiJson({ prompt, files, responseSchema: imgs.length ? withImpressions(SKETCH_SCHEMA) : SKETCH_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: 'コード+旋律' });
+      if (imgs.length) saveImpressions(imgs, raw);
       const sk = alignToSource({ ...sanitizeSketch(raw), gauges: gauges || null }, narrative);
       // 旋律をつないだMIDIから使う時は、ユーザーの旋律なので反芻しない(Geminiの呼び出しは1回)
       const midi = applyFixedParts(renderSketch(fixedParts(narrative).has('melody') ? sk : await ruminateSketch(sk, raw.concept || raw.description)), narrative);
