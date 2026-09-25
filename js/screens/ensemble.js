@@ -411,24 +411,40 @@
     }
   }
 
-  /** ソウル1体ぶんの「手持ちの知識」。つながったカードに出てくるパラメータは詳しく、他は短く */
+  /**
+   * ソウル1体ぶんの「手持ちの知識」。解体した全パラメータをモジュールごとにまとめて渡す。
+   * 線でつながったカードに出てくるパラメータは詳しく(説明全文・奏法対応・気づき)、他は短く(効果80字・意図40字)。
+   * 2026-09-25: 以前は「他」を先頭40件に切っていたため、Serum2(229件)では後ろのモジュールが
+   * ソウルから見えなかった。全件でも1〜2万トークン程度で、無料枠でも問題なく送れる。
+   */
   function soulMaterial(soul, focusParamIds) {
     const vocab = (soul.vocabulary || []).map((v) => `${v.term}=${v.meaning}`).join('; ');
-    const focus = soul.params.filter((p) => focusParamIds.has(p.id));
-    const others = soul.params.filter((p) => !focusParamIds.has(p.id)).slice(0, 40);
-    const line = (p, long) => {
-      const m = soul.modules.find((x) => x.id === p.moduleId);
-      const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
-      const eff = long ? r.effect : String(r.effect || '').slice(0, 50);
-      return `   - ${m ? m.name : ''} / ${p.name}${p.range ? ` [${p.range}]` : ''}: ${eff || '(説明なし)'}` +
-        (long && r.intent ? ` 意図: ${r.intent}` : '') +
-        (long && p.analog ? ` 奏法対応: ${p.analog}` : '') +
-        (long && p.notes.length ? ` 気づき: ${p.notes.slice(-3).map((n) => n.text).join(' / ')}` : '') +
-        (p.verified ? '' : '(未確認)');
+    const cut = (text, max) => {
+      const t = String(text || '').trim();
+      return t.length > max ? `${t.slice(0, max)}…` : t;
     };
+    const line = (p) => {
+      const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
+      const head = `     - ${p.verified ? '✓' : ''}${p.name}${p.range ? ` [${p.range}]` : ''}`;
+      if (focusParamIds.has(p.id)) {
+        return `${head}: ${r.effect || '(説明なし)'}` +
+          (r.intent ? ` 意図: ${r.intent}` : '') +
+          (p.analog ? ` 奏法対応: ${p.analog}` : '') +
+          (p.notes.length ? ` 気づき: ${p.notes.slice(-3).map((n) => n.text).join(' / ')}` : '');
+      }
+      return `${head}: ${cut(r.effect, 80) || '(説明なし)'}` +
+        (r.intent ? ` / 意図: ${cut(r.intent, 40)}` : '') +
+        (p.notes.length ? ` / 気づき: ${cut(p.notes[p.notes.length - 1].text, 60)}` : '');
+    };
+    const groups = soul.modules
+      .map((m) => {
+        const params = soul.params.filter((p) => p.moduleId === m.id);
+        return params.length ? `   [${m.name}]\n${params.map(line).join('\n')}` : '';
+      })
+      .filter(Boolean);
     const notes = soul.notes.slice(-5).map((n) => `   - ${n.text}`).join('\n');
     return (vocab ? `  共通語彙: ${vocab}\n` : '') +
-      `  手持ちの知識:\n${[...focus.map((p) => line(p, true)), ...others.map((p) => line(p, false))].join('\n') || '   (まだ解体した知識がない)'}` +
+      `  手持ちの知識(✓は実機で確認済み、それ以外は資料から抽出しただけの未確認):\n${groups.join('\n') || '   (まだ解体した知識がない)'}` +
       (notes ? `\n  このソウルへの気づき:\n${notes}` : '');
   }
 

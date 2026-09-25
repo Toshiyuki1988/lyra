@@ -789,19 +789,25 @@ ${m.params.map((p) => `- ${p}`).join('\n')}
 
   /* ---------------- 共通語彙への変換表 ---------------- */
 
-  function soulDigest(soul, maxParams = 60) {
-    const lines = soul.params.slice(0, maxParams).map((p) => {
-      const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
-      const m = soul.modules.find((x) => x.id === p.moduleId);
-      return `- ${m ? m.name : ''} / ${p.name}: ${clip(r.effect, 80)}`;
-    });
-    return lines.join('\n');
+  /** ソウルの全パラメータをモジュールごとにまとめた要約(以前は先頭60件だけで、後ろのモジュールが漏れていた) */
+  function soulDigest(soul) {
+    return soul.modules
+      .map((m) => {
+        const params = soul.params.filter((p) => p.moduleId === m.id);
+        if (!params.length) return '';
+        return `[${m.name}]\n` + params.map((p) => {
+          const r = p.readings.find((x) => x.effect) || p.readings[0] || {};
+          return `- ${p.name}: ${clip(r.effect, 60)}`;
+        }).join('\n');
+      })
+      .filter(Boolean)
+      .join('\n');
   }
 
   async function buildVocabulary(soul, signal) {
     const result = await askGeminiJson({
       prompt: `${subjectLine(soul)}
-次は、このソウルが資料から学んだ知識の一部です:
+次は、このソウルが資料から学んだ知識です:
 ${soulDigest(soul)}
 
 作曲の共通言語として「${VOCAB_TERMS.join('・')}」の${VOCAB_TERMS.length}語を使います。
