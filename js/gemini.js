@@ -44,7 +44,7 @@ function withTimeoutSignal(externalSignal, ms) {
  *   無料キーだと即429になることがCONSTELLATIONで実機確認済みのため、最初から持たせない。
  * @returns {Promise<string>} 生成されたテキスト(responseSchema指定時はJSON文字列)
  */
-async function askGemini({ prompt, files, responseSchema, signal, maxOutputTokens }) {
+async function askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label }) {
   const parts = [{ text: prompt }];
   (files || []).forEach((f) => {
     if (f && f.fileUri) parts.push({ file_data: { mime_type: f.mimeType, file_uri: f.fileUri } });
@@ -60,7 +60,9 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
   }
   if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
 
-  const { signal: fetchSignal, cleanup } = withTimeoutSignal(signal, GEMINI_TIMEOUT_MS);
+  const limitMs = timeoutMs || GEMINI_TIMEOUT_MS;
+  const startedAt = Date.now();
+  const { signal: fetchSignal, cleanup } = withTimeoutSignal(signal, limitMs);
   let res;
   try {
     res = await fetch(`${GEMINI_API}/models/${CONFIG.GEMINI_MODEL}:generateContent`, {
@@ -78,7 +80,7 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
       const e = new Error(
         wasUserCancel
           ? 'キャンセルされました'
-          : `Gemini APIの応答がありません(${GEMINI_TIMEOUT_MS / 1000}秒でタイムアウトしました)。電波状況をご確認のうえもう一度お試しください`
+          : `Gemini APIの応答がありません(${limitMs / 1000}秒でタイムアウトしました)。電波状況をご確認のうえもう一度お試しください`
       );
       e.cancelled = wasUserCancel;
       e.timedOut = !wasUserCancel;
@@ -101,6 +103,12 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
     throw new Error(`Gemini API error ${res.status}: ${bodyText}`);
   }
   const data = await res.json();
+  // 2026-09-25: Serum2マニュアルの解体が90秒でタイムアウトした件で、どこに時間がかかっているか
+  // (入力=PDFの読み込み量か、出力量か)を事実で確かめるための無条件ログ(?debugの時だけ表示)
+  const usage = data.usageMetadata || {};
+  debugLog(`Gemini${label ? `[${label}]` : ''}: ${((Date.now() - startedAt) / 1000).toFixed(1)}秒, ` +
+    `入力${usage.promptTokenCount ?? '?'}tok, 出力${usage.candidatesTokenCount ?? '?'}tok, ` +
+    `終了理由${data.candidates?.[0]?.finishReason ?? '?'}`);
   return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
 }
 
@@ -108,8 +116,8 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
  * responseSchemaで構造化出力させ、パース済みのオブジェクトを返す。
  * JSONモードでもまれにコードフェンス付きで返ることがあるため、念のため除去してからparseする。
  */
-async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputTokens }) {
-  const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens });
+async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label }) {
+  const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label });
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   return JSON.parse(cleaned);
 }

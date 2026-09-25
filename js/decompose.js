@@ -21,6 +21,9 @@
   const INLINE_MAX_BYTES = 18 * 1024 * 1024;
   const WEB_TEXT_MAX_CHARS = 80000;
   const EFFECT_MAX = 160;
+  // 大きなマニュアルPDFは読み込むだけで時間がかかるため、解体の呼び出しだけ制限時間を長くする
+  // (2026-09-25、Serum2の日本語マニュアルで構造把握が既定の90秒を超えた)
+  const DECOMPOSE_TIMEOUT_MS = 300000;
   const INTENT_MAX = 140;
 
   const VOCAB_TERMS = ['密度', '明度', '動き', '空間', '緊張', '滲み', '間', '揺らぎ'];
@@ -401,7 +404,11 @@
           responseSchema: STRUCTURE_SCHEMA,
           signal: controller.signal,
           maxOutputTokens: 8192,
+          timeoutMs: DECOMPOSE_TIMEOUT_MS,
+          label: '構造把握',
         });
+        debugLog(`解体: 構造把握の結果 ${(structure.modules || []).length}モジュール / ` +
+          `${(structure.modules || []).reduce((a, m) => a + (m.params || []).length, 0)}パラメータ`);
         const modules = splitIntoChunks(
           (structure.modules || [])
             .map((m) => ({ name: clip(m.name, 40), pages: clip(m.pages, 40), params: dedupe((m.params || []).map((p) => clip(p, 60))) }))
@@ -423,6 +430,8 @@
           responseSchema: DETAIL_SCHEMA,
           signal: controller.signal,
           maxOutputTokens: 8192,
+          timeoutMs: DECOMPOSE_TIMEOUT_MS,
+          label: `詳細 ${m.name}`,
         });
         pending.extracted += mergeDetail(soul, src, m, detail.params || []);
         pending.index += 1;
@@ -474,8 +483,11 @@
     }
     if (!blob.type) blob = new Blob([blob], { type: 'application/pdf' });
     progress('PDFをGeminiに渡しています…');
+    debugLog(`解体: PDF ${(blob.size / 1024 / 1024).toFixed(1)}MB「${src.title}」`);
     try {
+      const t0 = Date.now();
       const uploaded = await uploadGeminiFile(blob, src.title, signal);
+      debugLog(`解体: Files APIへのアップロード成功(${((Date.now() - t0) / 1000).toFixed(1)}秒)`);
       return { files: [{ fileUri: uploaded.fileUri, mimeType: uploaded.mimeType }], text: '' };
     } catch (err) {
       if (signal.aborted) throw err;
