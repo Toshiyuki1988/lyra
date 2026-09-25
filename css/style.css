@@ -518,6 +518,15 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card-hex-strut--edit { right: -20px; top: 50%; transform: translateY(-50%); }
 .star-card-hex-strut--delete { left: -20px; top: 50%; transform: translateY(-50%); }
 
+/* 課題カード(アンサンブル)だけの「聴く」「鳴らす」: カードの上の外側に左右に並べる(2026-09-25、
+   右下の招集パネルを廃止して移した。その課題カードのまとまりが対象) */
+.star-card-hex--listen,
+.star-card-hex--sketch { left: 50%; top: 0; background: var(--accent); letter-spacing: 0.04em; }
+.star-card-hex--listen { transform: translate(calc(-100% - 4px), calc(-100% - 10px)); }
+.star-card-hex--sketch { transform: translate(4px, calc(-100% - 10px)); }
+.star-card-hex-strut--listen,
+.star-card-hex-strut--sketch { display: none; }
+
 /* ---------- モーダル(設定・選択ダイアログ共通) ---------- */
 
 .modal-overlay {
@@ -1272,41 +1281,11 @@ a.crumb:hover { color: var(--accent-ink); }
 
 /* ---------- アンサンブル: 招集パネル・発言カード ---------- */
 
-.ens-members {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
-  width: min(300px, calc(100% - 48px));
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 18px;
-  box-shadow: 0 1px 3px rgba(60, 50, 20, 0.05);
-}
-.ens-members-label { font-size: 11px; color: var(--faint); margin-bottom: 8px; letter-spacing: 0.05em; }
-.ens-members-text { font-size: 12px; color: var(--text); line-height: 1.7; }
-.ens-member-list { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 12px; }
-.ens-member { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink); }
-.ens-member svg { flex: none; }
-.ens-member--stage { color: var(--muted); }
-.ens-member-theory-dot {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1.5px solid #cfc6b3;
-  background: radial-gradient(circle, transparent 0 4px, #cfc6b3 4px 5px, transparent 5px);
-}
-.ens-member--theory { color: var(--muted); }
-.ens-listen { width: 100%; }
-.ens-sketch { width: 100%; margin-top: 6px; }
-
 @media (max-width: 640px) {
-  .ens-members { right: 12px; bottom: 12px; width: calc(100% - 24px); padding: 10px 14px; }
-  .ens-members-text { font-size: 11px; }
   .ens-heading { top: 12px; left: 14px; }
 }
 
-/* 招集中のまとまりに含まれるカード */
+/* 対象のまとまり(最後にタップ/移動したカードのまとまり)に含まれるカード */
 .star-card--ens.star-card--in-focus {
   border-color: var(--accent-line);
   box-shadow: 0 2px 8px rgba(184, 134, 59, 0.14);
@@ -1523,3 +1502,13 @@ a.btn-secondary { display: block; }
 @media (max-width: 640px) {
   #mini-btn { display: none; }
 }
+
+/* Shift+A のソウル一覧(アンサンブル) */
+.soul-picker { width: min(420px, calc(100vw - 32px)); }
+.soul-picker-list { max-height: min(60vh, 520px); overflow-y: auto; margin: 4px -6px 0; padding: 0 6px; }
+.soul-picker-cat { font-size: 11px; color: var(--faint); letter-spacing: 0.05em; margin: 12px 0 4px; }
+.modal .soul-picker-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; margin-bottom: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 13px; font-weight: 500; text-align: left; cursor: pointer; box-shadow: none; }
+.modal .soul-picker-item:hover, .modal .soul-picker-item:focus-visible { border-color: var(--accent); background: #fdf6e8; color: var(--ink); outline: none; }
+.soul-picker-item svg { flex: none; }
+.soul-picker-count { margin-left: auto; font-size: 11px; color: var(--faint); }

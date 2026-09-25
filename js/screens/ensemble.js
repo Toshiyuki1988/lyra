@@ -96,10 +96,12 @@
       ]);
       els.viewport.addEventListener('dragover', onDragOver);
       els.viewport.addEventListener('drop', onDrop);
+      document.addEventListener('keydown', onEnsembleKeydown);
       return true;
     },
 
     leave() {
+      document.removeEventListener('keydown', onEnsembleKeydown);
       els.viewport.removeEventListener('dragover', onDragOver);
       els.viewport.removeEventListener('drop', onDrop);
       if (window.LyraMidi) window.LyraMidi.stopAll();
@@ -108,8 +110,9 @@
 
     buildCard(card, el) {
       el.classList.add('star-card--ens', `star-card--ens-${card.type}`);
-      if (typeof card.tilt !== 'number') card.tilt = randomTilt();
-      el.style.setProperty('rotate', `${card.type === 'speech' ? 0 : card.tilt}deg`);
+      // 2026-09-25: モックアップどおりカードを少し傾けていたが、ユーザー判断で真っ直ぐにそろえた
+      // (card.tilt は古いデータに残っているが使わない)
+      el.style.setProperty('rotate', '0deg');
       if (!card.width) el.style.width = `${defaultWidth(card)}px`;
       const builder = CARD_BUILDERS[card.type];
       if (builder) builder(card, el);
@@ -119,12 +122,16 @@
 
     cardHexes(card) {
       const editable = card.type === 'text' || (card.type === 'task' && card.origin !== 'app');
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
+      const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') : '';
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools;
     },
 
     onHexAction(action, card, el) {
       if (action === 'edit') startEditingCard(el);
       else if (action === 'delete') confirmDeleteCard(card);
+      else if (action === 'listen') listenFromTask(card);
+      else if (action === 'sketch') sketchFromTask(card);
     },
 
     onCardTap(card) {
@@ -285,8 +292,7 @@
       `<div class="ens-heading">` +
       `<div class="ens-title">アンサンブル · ${escapeHtml(stage.name)}</div>` +
       `<div class="ens-subtitle">偶然の接続から、必然の一手へ</div>` +
-      `</div>` +
-      `<div class="ens-members" id="ens-members"></div>`;
+      `</div>`;
     renderMembers();
   }
 
@@ -351,41 +357,59 @@
     return [...ids].map((id) => getSoul(id)).filter(Boolean);
   }
 
+  /**
+   * 対象のまとまり(最後にタップ/移動したカードのまとまり)のカードに印を付ける。
+   * 2026-09-25: 右下の「招集中」パネル(アンサンブルを聴く/コード+旋律で鳴らすのボタン)は、どのカードを中心に
+   * 行われるのか分かりにくいというユーザー判断で廃止し、2つの操作は課題カードの編集ガイドの上のヘックスへ移した。
+   */
   function renderMembers() {
-    const wrap = document.getElementById('ens-members');
-    if (!wrap) return;
     const comp = focusComponent();
     els.content.querySelectorAll('.star-card--in-focus').forEach((el) => el.classList.remove('star-card--in-focus'));
-    if (!comp) {
-      wrap.innerHTML =
-        `<div class="ens-members-label">招集はここでは自動</div>` +
-        `<div class="ens-members-text">カード同士をASTRで線につなぐと、つないだカードの持ち主のソウルが自動で招集されます。` +
-        `別の舞台のソウルも、カードとして持ち込んでつなげばゲスト参加します。</div>`;
-      return;
-    }
+    if (!comp) return;
     comp.forEach((id) => {
       const el = cardElById(id);
       if (el) el.classList.add('star-card--in-focus');
     });
-    const souls = recruitedSouls(comp);
-    const people = [
-      `<span class="ens-member ens-member--stage">${soulOrbSvg(stage, 20)}<span>${escapeHtml(stage.name)}(場)</span></span>`,
-      ...souls.map((s) => `<span class="ens-member">${soulOrbSvg(s, 20)}<span>${escapeHtml(s.name)}</span></span>`),
-      `<span class="ens-member ens-member--theory"><span class="ens-member-theory-dot"></span><span>楽典</span></span>`,
-    ];
-    wrap.innerHTML =
-      `<div class="ens-members-label">招集中 · つながった${comp.length}枚のカード</div>` +
-      `<div class="ens-member-list">${people.join('')}</div>` +
-      `<button type="button" class="btn-primary ens-listen" ${listening ? 'disabled' : ''}>${listening ? 'アンサンブルが話し合っています…' : 'アンサンブルを聴く'}</button>` +
-      (sketchSouls(souls).length ? `<button type="button" class="btn-secondary ens-sketch">コード+旋律で鳴らす</button>` : '');
-    wrap.querySelector('.ens-listen').addEventListener('click', () => listen(comp));
-    const sketchBtn = wrap.querySelector('.ens-sketch');
-    if (sketchBtn) sketchBtn.addEventListener('click', () => makeSketch(comp));
+  }
+
+  /** そのカードを含む、線でつながったまとまり(無ければnull) */
+  function componentOf(cardId) {
+    return components().find((c) => c.includes(cardId)) || null;
+  }
+
+  function listenFromTask(card) {
+    if (listening) {
+      setStatus('アンサンブルが話し合っている最中です');
+      return;
+    }
+    const comp = componentOf(card.id);
+    if (!comp) {
+      setStatus('この課題カードをASTRでほかのカードとつないでから「聴く」を押してください', { important: true });
+      return;
+    }
+    focusCardId = card.id;
+    renderMembers();
+    listen(comp);
+  }
+
+  function sketchFromTask(card) {
+    const comp = componentOf(card.id);
+    if (!comp) {
+      setStatus('この課題カードをASTRで美学・ジャンル・作曲家のソウルのカードとつないでから「鳴らす」を押してください', { important: true });
+      return;
+    }
+    if (!sketchSouls(recruitedSouls(comp)).length) {
+      setStatus('「鳴らす」には、美学・ジャンル・作曲家のソウル(またはそのパラメータ)のカードをつないでください', { important: true });
+      return;
+    }
+    focusCardId = card.id;
+    renderMembers();
+    makeSketch(comp);
   }
 
   /* ---- コード+旋律で鳴らす ----
    * 2026-09-25: 「美学からつないだだけで、その美学を一聴で表すコード+メロディが出てくるように」という要望で追加。
-   * 美学・ジャンル・作曲家のソウルが招集されている時だけボタンを出す。アンサンブルの発言を経ずに、
+   * 美学・ジャンル・作曲家のソウルが招集されている時に使える。アンサンブルの発言を経ずに、
    * つないだカードとソウルの知識から直接 js/midi.js の createSketch を呼ぶ。Gemini呼び出しは無料枠保護の
    * 決まり(明示操作のみ)に合わせ、線をつないだだけでは呼ばない。 */
 
@@ -400,7 +424,11 @@
     }
     const souls = recruitedSouls(compIds);
     const cards = compIds.map((id) => getCardById(id)).filter(Boolean);
-    const pos = speechPosition(compIds);
+    // 発言カードはまとまりの右上に出るので、MIDIカードはまとまりの下に置く(重ならないように)
+    const placed = compIds.map((id) => getCardById(id)).filter(Boolean);
+    const pos = placed.length
+      ? { x: Math.min(...placed.map((c) => c.x || 0)), y: Math.max(...placed.map((c) => (c.y || 0) + (c.height || 120))) + 60 }
+      : newCardSpawnPos();
     window.LyraMidi.createSketch({
       stage,
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので渡さない
@@ -409,7 +437,7 @@
       focusParamIds: new Set(cards.filter((c) => c.type === 'param').map((c) => c.paramId)),
       memberIds: [stage.id, ...souls.map((s) => s.id)],
       x: pos.x,
-      y: pos.y + 40,
+      y: pos.y,
     });
   }
 
@@ -1016,6 +1044,71 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     if (!reading.sourceId) return '手入力';
     const src = owner.sources.find((s) => s.id === reading.sourceId);
     return `${src ? src.title : '(外された資料)'}${reading.page ? ` ${reading.page}` : ''}`;
+  }
+
+  /* ---------------- Shift+A: ソウルを参加させる ----------------
+   * 2026-09-25追加(ユーザー要望)。アンサンブル画面でShift+Aを押すと全ソウルの一覧を出し、クリックしたソウルの
+   * カードを置く。置いたカードは線でつないだ時に招集される(Asterismは手動接続のみ、の決まりどおり自動では結ばない)。
+   * 対象のまとまりがあれば、そのカードの右隣に置く。 */
+
+  function onEnsembleKeydown(event) {
+    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'a') return;
+    const target = event.target;
+    if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.isContentEditable)) return;
+    // 表示中のダイアログがあれば出さない(fixed配置なので offsetParent ではなく getClientRects で見る)
+    if ([...document.querySelectorAll('.modal-overlay.visible')].some((m) => m.getClientRects().length)) return;
+    event.preventDefault();
+    openSoulPicker();
+  }
+
+  function openSoulPicker() {
+    const souls = state.souls.filter((s) => s.id !== stage.id);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible';
+    const groups = SOUL_CATEGORIES
+      .map((cat) => ({ cat, list: souls.filter((s) => s.category === cat.id) }))
+      .filter((g) => g.list.length);
+    overlay.innerHTML =
+      `<div class="modal soul-picker"><h2>ソウルを参加させる</h2>` +
+      `<p class="modal-desc">クリックしたソウルのカードを置きます。ASTRでつなぐと招集されます(Shift+A)</p>` +
+      `<div class="soul-picker-list">${groups.length ? groups.map((g) => `<div class="soul-picker-cat">${escapeHtml(g.cat.label)}</div>` +
+        g.list.map((s) => `<button type="button" class="soul-picker-item" data-soul-id="${s.id}">${soulOrbSvg(s, 20)}<span>${escapeHtml(s.name)}</span>` +
+          `<span class="soul-picker-count">${s.params.length ? `${s.params.length}項目` : ''}</span></button>`).join('')).join('')
+        : '<div class="panel-empty">ほかのソウルがまだありません</div>'}</div>` +
+      `<div class="modal-actions"><button type="button" class="secondary" data-close>閉じる</button></div></div>`;
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    };
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.querySelectorAll('[data-soul-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        close();
+        placeSoulCard(getSoul(btn.dataset.soulId));
+      });
+    });
+    attachBackgroundTapToClose(overlay, close);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    const first = overlay.querySelector('.soul-picker-item');
+    if (first) first.focus();
+  }
+
+  function placeSoulCard(soul) {
+    if (!soul) return;
+    const anchor = focusCardId ? getCardById(focusCardId) : null;
+    const near = anchor ? { x: (anchor.x || 0) + (anchor.width || defaultWidth(anchor)) + 60, y: anchor.y || 0 } : {};
+    const { el } = pushCard({ type: 'soul', soulId: soul.id, ...near });
+    const c = getCardCenterFromEl(el);
+    animateViewportTo(c.x, c.y);
+    el.classList.add('star-card--found');
+    setStatus(`${soul.name}のソウルを置きました。ASTRでつなぐと招集されます`);
   }
 
   /* ---------------- カードの追加・削除 ---------------- */
