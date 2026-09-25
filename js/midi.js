@@ -982,13 +982,16 @@ ${WRITEUP_RULES}`;
 
   function midiFileName(card, part) {
     const base = String(card.name || 'lyra').replace(/\.mid$/i, '').replace(/[\\/:*?"<>|]/g, '') || 'lyra';
-    return `${base}${part ? `_${PART_NAMES[part]}` : ''}.mid`;
+    const suffix = !part || part === 'merged' ? '' : part === 'split' ? '_parts' : `_${PART_NAMES[part]}`;
+    return `${base}${suffix}.mid`;
   }
 
   function dragChipsHtml(card) {
     const parts = partsOf(card.midi);
     const chip = (part, label) => `<span class="midi-drag" draggable="true" role="button" tabindex="0" data-drag-part="${part}" title="クリックで書き出し先フォルダへ保存(ドラッグならデスクトップ・エクスプローラーへ)">⇩ ${escapeHtml(label)}</span>`;
-    return `<div class="midi-drags">${chip('', parts.length > 1 ? '全トラック' : 'MIDI')}${parts.length > 1 ? parts.map((p) => chip(p, PART_LABELS[p])).join('') : ''}</div>`;
+    if (parts.length <= 1) return `<div class="midi-drags">${chip('', 'MIDI')}</div>`;
+    return `<div class="midi-drags">${chip('merged', '1トラックで')}${chip('split', `パート別${parts.length}トラック`)}` +
+      `${parts.map((p) => chip(p, PART_LABELS[p])).join('')}</div>`;
   }
 
   function dragOutHtml(card) {
@@ -1168,8 +1171,11 @@ ${WRITEUP_RULES}`;
   /**
    * format 1: トラック0=テンポ・拍子・マーカー(Cubaseのテンポトラック・マーカートラックに入る)、
    * トラック1以降=ノートとCC。コード+旋律の断片は Melody(ch1)/ Chords(ch2)/ Bass(ch3)の別トラック。
+   * mode: 省略か'split'=パートごとの別トラック / 'merged'=全パートを1トラック(ch1)にまとめる / 'melody'などパート名=そのパートだけ。
+   * 2026-09-25: 「全トラック」をCubaseのインストゥルメントトラックに入れると3トラックに分かれてしまう、という
+   * 実機の指摘で 'merged' を追加(1本のトラックに入れたい時用)。
    */
-  function buildSmf(card, onlyPart) {
+  function buildSmf(card, mode) {
     const m = card.midi;
     const t = (beat) => Math.round(beat * PPQ);
     const conductor = [
@@ -1193,10 +1199,10 @@ ${WRITEUP_RULES}`;
       }
       return events;
     };
-    const parts = partsOf(m).filter((part) => !onlyPart || part === onlyPart);
+    const parts = mode === 'merged' ? [] : partsOf(m).filter((part) => !mode || mode === 'split' || part === mode);
     const tracks = parts.length
       ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), ch, PART_NAMES[part], ch === 0))
-      : [noteTrack(m.notes, 0, 'LYRA', true)];
+      : [noteTrack(m.notes, 0, mode === 'merged' ? midiFileName(card, null).replace(/\.mid$/i, '') : 'LYRA', true)];
     const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1 + tracks.length, (PPQ >> 8) & 255, PPQ & 255];
     return new Uint8Array([...header, ...trackChunk(conductor), ...tracks.flatMap((ev) => trackChunk(ev))]);
   }
