@@ -48,6 +48,8 @@
           properties: {
             name: { type: 'STRING' },
             pages: { type: 'STRING' },
+            pdfStart: { type: 'INTEGER' },
+            pdfEnd: { type: 'INTEGER' },
             params: { type: 'ARRAY', items: { type: 'STRING' } },
           },
           required: ['name', 'params'],
@@ -395,25 +397,48 @@
 
     try {
       const content = await prepareContent(src, input, controller.signal, progress);
+      const call = (label, fn) => withRateLimitRetry(label, fn, progress, controller.signal);
+
+      // PDFのページ番号(pdfStart)を持たない、旧方式の構造把握で止まっていたもの(まだ1モジュールも
+      // 読んでいない)は、ページ単位で切り分けられるよう構造把握からやり直す
+      if (src.pending && src.type === 'pdf' && src.pending.index === 0 && !src.pending.modules.some((m) => m.pdfStart)) {
+        debugLog('解体: 旧方式の途中データ(PDFのページ番号なし)のため、構造把握からやり直す');
+        src.pending = null;
+      }
 
       if (!src.pending) {
-        progress(`「${src.title}」の構造を把握しています…`);
-        const structure = await askGeminiJson({
+        if (content.kind === 'pdf') {
+          progress('PDFのページ数を調べています…');
+          await loadPdfDoc(content);
+        }
+        const files = content.kind === 'pdf' ? await fullPdfFiles(content, src, controller.signal, progress) : [];
+        progress(`「${src.title}」の構造を把握しています…(大きな資料は1〜2分かかります)`);
+        const structure = await call('構造把握', () => askGeminiJson({
           prompt: structurePrompt(soul, src, content),
-          files: content.files,
+          files,
           responseSchema: STRUCTURE_SCHEMA,
           signal: controller.signal,
           maxOutputTokens: 8192,
           timeoutMs: DECOMPOSE_TIMEOUT_MS,
           label: '構造把握',
-        });
+        }));
         debugLog(`解体: 構造把握の結果 ${(structure.modules || []).length}モジュール / ` +
           `${(structure.modules || []).reduce((a, m) => a + (m.params || []).length, 0)}パラメータ`);
         const modules = splitIntoChunks(
-          (structure.modules || [])
-            .map((m) => ({ name: clip(m.name, 40), pages: clip(m.pages, 40), params: dedupe((m.params || []).map((p) => clip(p, 60))) }))
-            .filter((m) => m.name && m.params.length)
+          fillPdfRanges(
+            (structure.modules || [])
+              .map((m) => ({
+                name: clip(m.name, 40),
+                pages: clip(m.pages, 40),
+                pdfStart: Number.isInteger(m.pdfStart) ? m.pdfStart : null,
+                pdfEnd: Number.isInteger(m.pdfEnd) ? m.pdfEnd : null,
+                params: dedupe((m.params || []).map((p) => clip(p, 60))),
+              }))
+              .filter((m) => m.name && m.params.length),
+            content.pageCount
+          )
         );
+        debugLog(`解体: モジュールのPDFページ ${modules.map((m) => `${m.name}=${m.pdfStart || '?'}-${m.pdfEnd || '?'}`).join(', ')}`);
         if (modules.length === 0) throw new Error('この資料からモジュールとパラメータを見つけられませんでした');
         src.pending = { modules, index: 0, extracted: 0 };
         scheduleAutoSave();
@@ -424,16 +449,17 @@
       while (pending.index < pending.modules.length) {
         const m = pending.modules[pending.index];
         progress(`「${m.name}」を読んでいます(${pending.index + 1} / ${pending.modules.length})`, pending.index / pending.modules.length);
-        const detail = await askGeminiJson({
-          prompt: detailPrompt(soul, src, m, content),
-          files: content.files,
-          responseSchema: DETAIL_SCHEMA,
-          signal: controller.signal,
-          maxOutputTokens: 8192,
-          timeoutMs: DECOMPOSE_TIMEOUT_MS,
-          label: `詳細 ${m.name}`,
-        });
-        pending.extracted += mergeDetail(soul, src, m, detail.params || []);
+        let params = await readModuleDetail(soul, src, m, content, 0, call, controller.signal, progress);
+        // 切り出したページに目当てのパラメータがほとんど無ければ、ページ番号がずれているとみて
+        // 前後を広げて1回だけ取り直す
+        const wanted = new Set(m.params.map(normalizeName));
+        const hits = params.filter((x) => wanted.has(normalizeName(x.name))).length;
+        if (m.pdfStart && content.kind === 'pdf' && hits < Math.max(1, Math.ceil(m.params.length * 0.3))) {
+          debugLog(`解体: 「${m.name}」は切り出したページで${hits}/${m.params.length}件しか見つからないため、前後を広げて読み直す`);
+          await sleep(CALL_INTERVAL_MS);
+          params = await readModuleDetail(soul, src, m, content, 8, call, controller.signal, progress);
+        }
+        pending.extracted += mergeDetail(soul, src, m, params);
         pending.index += 1;
         scheduleAutoSave();
         if (pending.index < pending.modules.length) await sleep(CALL_INTERVAL_MS);
@@ -452,6 +478,7 @@
       setStatus(`解体が終わりました(${src.extractedCount}件)。抽出したものは点線(未確認)で入っています`, { important: true });
     } catch (err) {
       console.error(err);
+      debugLog(`解体: 停止 ${err.message.slice(0, 300)}`);
       if (err.cancelled || controller.signal.aborted) {
         setStatus('解体を中断しました。「続きから解体」で再開できます', { important: true });
       } else {
@@ -472,30 +499,192 @@
     }
   }
 
-  /** 資料をGeminiに渡せる形にする。PDFはFiles APIへ上げてURIを使い回し、だめならインライン送信 */
-  async function prepareContent(src, input, signal, progress) {
-    if (src.type === 'web') return { files: [], text: String(input).slice(0, WEB_TEXT_MAX_CHARS) };
+  /*
+   * PDFの渡し方(2026-09-25、Serum2の日本語マニュアル36.6MBでの実測を受けて変更):
+   * 全体を丸ごと渡すと1回あたり入力が約20万トークン・約90秒かかり、モジュールの数だけ繰り返すと
+   * 30分以上かかるうえ、無料枠の「1分あたりの入力トークン数」の上限にも当たる。そこで、
+   *   - 構造把握(1回だけ)… PDF全体をFiles APIで渡し、各モジュールの「PDF上の通しページ番号」も出させる
+   *   - モジュールごとの詳細 … そのページだけをブラウザ内で切り出した小さなPDF(pdf-lib)を渡す
+   * pdf-libを読み込めない・PDFを開けない時だけ、旧来どおり全体を渡す。
+   */
+
+  const PDF_LIB_URL = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+  const PAGE_PAD_BEFORE = 1;
+  const PAGE_PAD_AFTER = 2;
+  const MAX_SUBSET_PAGES = 40;
+  let pdfLibPromise = null;
+
+  function loadPdfLib() {
+    if (window.PDFLib) return Promise.resolve(window.PDFLib);
+    if (!pdfLibPromise) {
+      pdfLibPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = PDF_LIB_URL;
+        script.onload = () => resolve(window.PDFLib);
+        script.onerror = () => {
+          pdfLibPromise = null;
+          reject(new Error('pdf-libを読み込めませんでした'));
+        };
+        document.head.appendChild(script);
+      });
+    }
+    return pdfLibPromise;
+  }
+
+  /** 資料をGeminiに渡す準備。PDFは実体(blob)だけ用意し、全体の送信・ページの切り出しは必要になった時に行う */
+  async function prepareContent(src, input) {
+    if (src.type === 'web') return { kind: 'text', text: String(input).slice(0, WEB_TEXT_MAX_CHARS) };
     let blob = input instanceof Blob ? input : null;
     if (!blob) {
-      progress('DriveからPDFを読み込んでいます…');
+      setStatus('DriveからPDFを読み込んでいます…', { busy: true });
       const res = await driveFetch(`/files/${src.fileId}?alt=media`);
       blob = await res.blob();
     }
     if (!blob.type) blob = new Blob([blob], { type: 'application/pdf' });
-    progress('PDFをGeminiに渡しています…');
     debugLog(`解体: PDF ${(blob.size / 1024 / 1024).toFixed(1)}MB「${src.title}」`);
+    return { kind: 'pdf', text: '', blob, full: null, doc: null, pageCount: null, subsets: new Map() };
+  }
+
+  /** PDF全体をGeminiに渡せる形(Files APIのURI、だめならインライン)にする。1回の解体で1度だけ */
+  async function fullPdfFiles(content, src, signal, progress) {
+    if (content.full) return content.full;
+    progress('PDFをGeminiに渡しています…');
     try {
       const t0 = Date.now();
-      const uploaded = await uploadGeminiFile(blob, src.title, signal);
+      const uploaded = await uploadGeminiFile(content.blob, src.title, signal);
       debugLog(`解体: Files APIへのアップロード成功(${((Date.now() - t0) / 1000).toFixed(1)}秒)`);
-      return { files: [{ fileUri: uploaded.fileUri, mimeType: uploaded.mimeType }], text: '' };
+      content.full = [{ fileUri: uploaded.fileUri, mimeType: uploaded.mimeType }];
     } catch (err) {
       if (signal.aborted) throw err;
       debugLog(`Files APIが使えなかったためインライン送信に切り替え: ${err.message}`);
-      if (blob.size > INLINE_MAX_BYTES) {
-        throw new Error(`PDFが大きすぎます(${Math.round(blob.size / 1024 / 1024)}MB)。Files APIが使えない環境ではおよそ18MBまでです。章ごとに分けたPDFで試してください`);
+      if (content.blob.size > INLINE_MAX_BYTES) {
+        throw new Error(`PDFが大きすぎます(${Math.round(content.blob.size / 1024 / 1024)}MB)。Files APIが使えない環境ではおよそ18MBまでです。章ごとに分けたPDFで試してください`);
       }
-      return { files: [{ base64: await blobToBase64(blob), mimeType: 'application/pdf' }], text: '' };
+      content.full = [{ base64: await blobToBase64(content.blob), mimeType: 'application/pdf' }];
+    }
+    return content.full;
+  }
+
+  /** pdf-libでPDFを開く。開けなければfalse(以後はページの切り出しをせず全体を渡す) */
+  async function loadPdfDoc(content) {
+    if (content.doc !== null) return content.doc;
+    try {
+      const t0 = Date.now();
+      const PDFLib = await loadPdfLib();
+      content.doc = await PDFLib.PDFDocument.load(await content.blob.arrayBuffer(), { ignoreEncryption: true });
+      content.pageCount = content.doc.getPageCount();
+      debugLog(`解体: pdf-libでPDFを開いた(${content.pageCount}ページ、${((Date.now() - t0) / 1000).toFixed(1)}秒)`);
+    } catch (err) {
+      debugLog(`解体: pdf-libでPDFを開けなかったため、ページの切り出しをせず全体を渡す: ${err.message}`);
+      content.doc = false;
+    }
+    return content.doc;
+  }
+
+  /** PDFのstart〜endページ(1始まり)だけを切り出した小さなPDFを、インライン送信の形で返す */
+  async function subsetPdfFiles(content, start, end) {
+    const key = `${start}-${end}`;
+    if (!content.subsets.has(key)) {
+      const PDFLib = await loadPdfLib();
+      const out = await PDFLib.PDFDocument.create();
+      const indices = [];
+      for (let i = start - 1; i <= end - 1 && i < content.pageCount; i++) indices.push(i);
+      const pages = await out.copyPages(content.doc, indices);
+      pages.forEach((p) => out.addPage(p));
+      const bytes = await out.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      debugLog(`解体: PDFの${start}〜${end}ページを切り出し(${(blob.size / 1024 / 1024).toFixed(2)}MB)`);
+      content.subsets.set(key, [{ base64: await blobToBase64(blob), mimeType: 'application/pdf' }]);
+    }
+    return content.subsets.get(key);
+  }
+
+  /**
+   * 構造把握で返ってきたPDFページ番号を整える。範囲外・欠けているものは、印刷されたページ番号
+   * (pages: "p.30-38")とPDF上のページ番号の差(他のモジュールから求めた中央値)で補う。
+   */
+  function fillPdfRanges(modules, pageCount) {
+    if (!pageCount) return modules;
+    const printedStart = (m) => {
+      const hit = String(m.pages || '').match(/(\d+)/);
+      return hit ? Number(hit[1]) : null;
+    };
+    const printedEnd = (m) => {
+      const nums = String(m.pages || '').match(/\d+/g);
+      return nums ? Number(nums[nums.length - 1]) : null;
+    };
+    const valid = (n) => Number.isInteger(n) && n >= 1 && n <= pageCount;
+    const offsets = modules
+      .filter((m) => valid(m.pdfStart) && printedStart(m) != null)
+      .map((m) => m.pdfStart - printedStart(m))
+      .sort((a, b) => a - b);
+    const offset = offsets.length ? offsets[Math.floor(offsets.length / 2)] : null;
+    return modules.map((m) => {
+      let start = valid(m.pdfStart) ? m.pdfStart : null;
+      let end = valid(m.pdfEnd) ? m.pdfEnd : null;
+      if (start == null && offset != null && printedStart(m) != null) start = printedStart(m) + offset;
+      if (end == null && offset != null && printedEnd(m) != null) end = printedEnd(m) + offset;
+      if (start != null && (end == null || end < start)) end = start + 4;
+      if (start != null && !valid(start)) start = null;
+      return { ...m, pdfStart: start, pdfEnd: start != null ? Math.min(pageCount, end) : null };
+    });
+  }
+
+  /** 1モジュールぶんの詳細抽出。widen>0なら、切り出すページを前後にwidenページずつ広げる */
+  async function readModuleDetail(soul, src, m, content, widen, call, signal, progress) {
+    let files = [];
+    let excerpt = null;
+    if (content.kind === 'pdf') {
+      const doc = m.pdfStart ? await loadPdfDoc(content) : false;
+      if (doc) {
+        const start = Math.max(1, m.pdfStart - PAGE_PAD_BEFORE - widen);
+        const end = Math.min(content.pageCount, (m.pdfEnd || m.pdfStart) + PAGE_PAD_AFTER + widen, start + MAX_SUBSET_PAGES - 1);
+        files = await subsetPdfFiles(content, start, end);
+        excerpt = { start, end };
+      } else {
+        files = await fullPdfFiles(content, src, signal, progress);
+      }
+    }
+    const detail = await call(`詳細 ${m.name}`, () => askGeminiJson({
+      prompt: detailPrompt(soul, src, m, content, excerpt),
+      files,
+      responseSchema: DETAIL_SCHEMA,
+      signal,
+      maxOutputTokens: 8192,
+      timeoutMs: DECOMPOSE_TIMEOUT_MS,
+      label: `詳細 ${m.name}${excerpt ? ` p${excerpt.start}-${excerpt.end}` : ''}`,
+    }));
+    return detail.params || [];
+  }
+
+  /**
+   * 一時的な失敗なら、待ってからやり直す:
+   *   - 503(「This model is currently experiencing high demand」、2026-09-25に実機で発生)・500:
+   *     Google側の一時的な混雑。20秒→40秒→60秒と間を空けて3回まで
+   *   - 429(1分あたりの上限): 65秒待って1回
+   *   - 429のうち「1日あたり」の上限(PerDay)は待っても無駄なので、そのまま止める
+   * どの場合も、止まったら「続きから解体」で再開できる。
+   */
+  async function withRateLimitRetry(label, fn, progress, signal) {
+    const waits = [];
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (signal.aborted) throw err;
+        const busy = err.status === 503 || err.status === 500;
+        const perMinute = err.status === 429 && !err.perDay;
+        if (busy && attempt < 3) waits.push((attempt + 1) * 20000);
+        else if (perMinute && attempt < 1) waits.push(65000);
+        else throw err;
+        const ms = waits[waits.length - 1];
+        debugLog(`解体: ${label}で${err.status}のため、${ms / 1000}秒待って再試行(${attempt + 1}回目)`);
+        progress(busy
+          ? `Geminiが混み合っているので、${ms / 1000}秒待ってやり直します…(${label})`
+          : `無料枠の1分あたりの上限に触れたので、1分ほど待っています…(${label})`);
+        await sleep(ms);
+        if (signal.aborted) throw err;
+      }
     }
   }
 
@@ -535,15 +724,16 @@ ${subjectLine(soul)}
 ルール:
 - 名前は資料での表記(英語のパラメータ名は英語のまま)に合わせる
 - 説明文は書かない。名前の一覧だけ
-- pagesには、そのモジュールが載っているページ範囲(例: "p.30-38")を分かる範囲で書く
-- 資料に載っていないものを推測で足さない${contentBlock(content)}`;
+- pagesには、そのモジュールの説明が載っているページ範囲を、紙面に印刷されたページ番号で書く(例: "p.30-38")
+${content.pageCount ? `- pdfStart・pdfEndには、同じ範囲をPDFファイル上の通しページ番号で書く(表紙を1とする。このPDFは全${content.pageCount}ページ。紙面の番号とはずれていることが多いので注意)
+` : ''}- 資料に載っていないものを推測で足さない${contentBlock(content)}`;
   }
 
-  function detailPrompt(soul, src, m, content) {
+  function detailPrompt(soul, src, m, content, excerpt) {
     const w = unitWords(soul);
     return `あなたは音楽制作の資料を読み解いて体系化するアシスタントです。
 ${subjectLine(soul)}
-資料: ${src.title}
+資料: ${src.title}${excerpt ? `(添付はこの資料のPDF ${excerpt.start}〜${excerpt.end}ページ目の抜粋)` : ''}
 モジュール: ${m.name}${m.pages ? `(${m.pages})` : ''}
 
 添付の資料から、このモジュールの次の${w.param}について、それぞれ以下を抽出してください:

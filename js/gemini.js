@@ -95,12 +95,14 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
     // 解体パイプラインのように短時間に複数回呼ぶと、無料枠の分あたりの上限(RPM)に
     // 触れて429になることがある(日あたりの上限とは別の枠)。原因が分かるよう明示する。
     if (res.status === 429) {
-      throw new Error(
+      debugLog(`Gemini${label ? `[${label}]` : ''}: 429 ${bodyText.slice(0, 400)}`);
+      throw Object.assign(new Error(
         `Gemini APIの利用上限(429)に達しました。無料枠は1分あたり・1日あたりそれぞれ上限があるため、` +
         `短時間に連続で呼び出すと起きることがあります。少し間隔を空けてから再試行してください。詳細: ${bodyText}`
-      );
+      ), { status: 429, perDay: /PerDay/i.test(bodyText) });
     }
-    throw new Error(`Gemini API error ${res.status}: ${bodyText}`);
+    debugLog(`Gemini${label ? `[${label}]` : ''}: ${res.status} ${bodyText.slice(0, 300)}`);
+    throw Object.assign(new Error(`Gemini API error ${res.status}: ${bodyText}`), { status: res.status });
   }
   const data = await res.json();
   // 2026-09-25: Serum2マニュアルの解体が90秒でタイムアウトした件で、どこに時間がかかっているか
