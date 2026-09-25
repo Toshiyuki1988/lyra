@@ -527,6 +527,10 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card-hex-strut--listen,
 .star-card-hex-strut--sketch { display: none; }
 
+/* 気づき⇔課題の入れ替え(2026-09-25): カードの左下の外側(ASTRの左隣) */
+.star-card-hex--swap { left: 0; top: 100%; transform: translate(-45%, 14px); background: #7d6f58; font-size: 10.5px; }
+.star-card-hex-strut--swap { display: none; }
+
 /* ---------- モーダル(設定・選択ダイアログ共通) ---------- */
 
 .modal-overlay {

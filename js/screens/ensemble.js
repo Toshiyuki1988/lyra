@@ -129,7 +129,10 @@
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') : '';
       // 気づきカードには上に「感想」(Geminiなどの話し手に一言もらう)
       const noteTools = card.type === 'text' ? hexHtml('comment', '感想') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools;
+      // 気づき⇔課題の入れ替え(左下)。アプリからの課題は理由・対象のパラメータを持つので入れ替えない
+      const swap = card.type === 'text' || (card.type === 'task' && card.origin !== 'app')
+        ? hexHtml('swap', card.type === 'text' ? '→課題' : '→気づき') : '';
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + swap;
     },
 
     onHexAction(action, card, el) {
@@ -143,6 +146,7 @@
       else if (action === 'listen') listenFromTask(card);
       else if (action === 'sketch') sketchFromTask(card);
       else if (action === 'comment') commentOnNote(card, el);
+      else if (action === 'swap') swapNoteTask(card);
     },
 
     onCardTap(card) {
@@ -1376,6 +1380,23 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     const el = renderCard(card);
     scheduleAutoSave();
     return { card, el };
+  }
+
+  /** 気づき⇔課題(あなたから)を入れ替える(2026-09-25、ユーザー要望)。文・位置・線はそのまま */
+  function swapNoteTask(card) {
+    if (card.type === 'text') {
+      card.type = 'task';
+      card.origin = 'user';
+    } else if (card.type === 'task' && card.origin !== 'app') {
+      card.type = 'text';
+      delete card.origin;
+    } else {
+      return;
+    }
+    rerenderCard(card);
+    renderMembers();
+    scheduleAutoSave();
+    setStatus(card.type === 'task' ? '課題にしました(上の「聴く」「鳴らす」が使えます)' : '気づきにしました(上の「感想」が使えます)');
   }
 
   function addTextCard() {
