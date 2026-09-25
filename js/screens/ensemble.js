@@ -445,7 +445,7 @@
     const groups = soul.modules
       .map((m) => {
         const params = soul.params.filter((p) => p.moduleId === m.id);
-        return params.length ? `   [${m.name}]\n${params.map(line).join('\n')}` : '';
+        return params.length ? `   [${modulePath(m)}]\n${params.map(line).join('\n')}` : '';
       })
       .filter(Boolean);
     const notes = soul.notes.slice(-5).map((n) => `   - ${n.text}`).join('\n');
@@ -492,7 +492,7 @@ ${soulBlocks}
 3. STAGE は「この部屋(${stage.name})で鳴らす前提」での助言をする
 4. voices の speaker には上の角括弧の記号(${[...speakers.map((s) => s.key), 'STAGE', THEORY_ID].join(', ')})だけを使う。1人1回、各${VOICE_MAX - 30}字以内。互いの発言に反応してよい。全員が話す必要はない
 5. chain は「楽曲コンセプト・文脈(concept) → 星図の構造語彙(structure: 密度・明度・動き・空間・緊張・滲み・間・揺らぎ などで) → 具体的な音色・操作(operations)」の3段階
-6. recipe は、MIDIで表せない離散選択式のパラメータやマクロの設定を value と一言の intent で。soul にはそのパラメータを持つソウルの記号(S1 など)、module には手持ちの知識の [ ] 内のモジュール名、param にはその下のパラメータ名を、どちらも一字一句そのまま書く。手持ちの知識に載っていない名前(フィルターの種類名など)を param にしない。選択肢の値は value に書く(例: param「FILTER TYPE」value「LPF」)。無ければ空の配列
+6. recipe は、MIDIで表せない離散選択式のパラメータやマクロの設定を value と一言の intent で。soul にはそのパラメータを持つソウルの記号(S1 など)、module には手持ちの知識の [ ] 内の表記、param にはその下のパラメータ名を、どちらも一字一句そのまま書く。発言の中でパラメータに触れる時も「FXタブのUTILITY」のように場所を添える。手持ちの知識に載っていない名前(フィルターの種類名など)を param にしない。選択肢の値は value に書く(例: param「FILTER TYPE」value「LPF」)。無ければ空の配列
 7. 資料の文章を長く引用しない。自分の言葉で短く`;
     return { prompt, speakers };
   }
@@ -583,13 +583,18 @@ ${soulBlocks}
     const pool = souls.length ? souls : candidates;
     const key = normalizeKey(item.param);
     const moduleKey = normalizeKey(item.module);
+    // module は「FXタブ › UTILITY」の形でも「UTILITY」だけでも来うるので、どちらでも一致とみなす
+    const sameModule = (m) => {
+      const name = normalizeKey(m.name);
+      return name === moduleKey || normalizeKey(modulePath(m)) === moduleKey || (moduleKey && moduleKey.endsWith(name));
+    };
     let hit = null;
     for (const s of pool) {
       const matches = s.params.filter((p) => normalizeKey(p.name) === key);
       if (!matches.length) continue;
       const inModule = matches.find((p) => {
         const m = s.modules.find((x) => x.id === p.moduleId);
-        return m && normalizeKey(m.name) === moduleKey;
+        return m && sameModule(m);
       });
       hit = { soul: s, param: inModule || matches[0] };
       break;
@@ -599,7 +604,7 @@ ${soulBlocks}
       param: String(item.param || ''),
       value: String(item.value || ''),
       intent: String(item.intent || ''),
-      moduleName: hitModule ? hitModule.name : String(item.module || ''),
+      moduleName: hitModule ? modulePath(hitModule) : String(item.module || ''),
       soulId: hit ? hit.soul.id : soulId && soulId !== THEORY_ID ? soulId : null,
       paramId: hit ? hit.param.id : null,
     };
@@ -608,7 +613,14 @@ ${soulBlocks}
   /** 古い発言カード(ソウル・モジュールを持たないレシピ)は、表示の時に招集メンバーから探し直す */
   function recipeItems(card) {
     const members = (card.memberIds || []).map((id) => getSoul(id)).filter(Boolean);
-    return (card.recipe || []).map((r) => (r.paramId || r.moduleName ? r : resolveRecipeItem(r, r.soulId || null, members)));
+    return (card.recipe || []).map((r) => {
+      if (!r.paramId && !r.moduleName) return resolveRecipeItem(r, r.soulId || null, members);
+      // 一致済みの行は、今のモジュールの場所(あとから整理されたUI上の場所)で表示し直す
+      const s = r.soulId ? getSoul(r.soulId) : null;
+      const p = s && r.paramId ? s.params.find((x) => x.id === r.paramId) : null;
+      const m = p ? s.modules.find((x) => x.id === p.moduleId) : null;
+      return m ? { ...r, moduleName: modulePath(m) } : r;
+    });
   }
 
   function recipeLine(r) {
@@ -735,7 +747,7 @@ ${soulBlocks}
       if (!p) return;
       const m = owner.modules.find((x) => x.id === p.moduleId);
       soulLink = `#/soul/${encodeURIComponent(owner.id)}/${encodeURIComponent(p.moduleId)}`;
-      html = head(escapeHtml(p.name), `${escapeHtml(owner.name)} · ${escapeHtml(m ? m.name : '')}${p.range ? ` · ${escapeHtml(p.range)}` : ''}`) +
+      html = head(escapeHtml(p.name), `${escapeHtml(owner.name)} · ${escapeHtml(m ? modulePath(m) : '')}${p.range ? ` · ${escapeHtml(p.range)}` : ''}`) +
         p.readings.map((r) => `<div class="panel-section">` +
           (p.readings.length > 1 ? `<div class="reading-source">${escapeHtml(sourceTitle(owner, r))}</div>` : '') +
           `<div class="panel-label">音響的効果</div><div class="panel-readonly">${escapeHtml(r.effect || '(未記入)')}</div>` +

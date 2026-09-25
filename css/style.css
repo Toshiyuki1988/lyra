@@ -1458,3 +1458,33 @@ a.btn-secondary { display: block; }
 .recipe-value { font-size: 12px; color: var(--accent-deep); font-family: var(--mono); text-align: right; }
 .recipe-intent { font-size: 11px; color: #6d6455; line-height: 1.6; margin-top: 2px; }
 .recipe-miss { font-size: 10px; color: var(--rust); margin-top: 3px; line-height: 1.5; }
+
+/* ---------- モジュールのUI上の場所(左タブの小見出し・概要パネルの入力欄) ---------- */
+
+.module-group-label {
+  flex: none;
+  width: 52px;
+  margin-top: 6px;
+  padding: 2px 4px 0;
+  border-top: 1px solid var(--line);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--faint);
+  text-align: center;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.panel-inline-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px dashed var(--line-strong);
+  background: transparent;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+}
+.panel-inline-input:focus { border-bottom-color: var(--accent-line); }

@@ -60,6 +60,7 @@
       };
       setCrumbs([
         { label: `${soul.name}のソウル`, hash: soulHash(soul, null) },
+        ...(module && module.location ? [{ label: module.location }] : []),
         ...(module ? [{ label: module.name }] : []),
       ]);
       buildOverlay();
@@ -188,15 +189,29 @@
   function renderTabs() {
     const wrap = els.overlay.querySelector('.module-tabs');
     if (!wrap) return;
+    // UI上の場所(タブ名など)ごとにまとめ、場所の小見出しを付けて並べる。場所の順番は最初に出てきた順
+    const groups = [];
+    soul.modules.forEach((m) => {
+      const loc = m.location || '';
+      let g = groups.find((x) => x.loc === loc);
+      if (!g) {
+        g = { loc, modules: [] };
+        groups.push(g);
+      }
+      g.modules.push(m);
+    });
+    groups.sort((a, b) => (a.loc ? 1 : 0) - (b.loc ? 1 : 0)); // 場所が分からないものを先頭に
+    const tab = (m) => {
+      const cls = ['module-tab'];
+      if (module && m.id === module.id) cls.push('module-tab--active');
+      if (!m.screenshot) cls.push('module-tab--noshot');
+      return `<a class="${cls.join(' ')}" href="${soulHash(soul, m)}" title="${escapeHtml(modulePath(m))}">` +
+        `<span class="module-tab-dot"></span><span class="module-tab-label">${escapeHtml(m.name)}</span></a>`;
+    };
     wrap.innerHTML =
-      soul.modules
-        .map((m) => {
-          const cls = ['module-tab'];
-          if (module && m.id === module.id) cls.push('module-tab--active');
-          if (!m.screenshot) cls.push('module-tab--noshot');
-          return `<a class="${cls.join(' ')}" href="${soulHash(soul, m)}" title="${escapeHtml(m.name)}">` +
-            `<span class="module-tab-dot"></span><span class="module-tab-label">${escapeHtml(m.name)}</span></a>`;
-        })
+      groups
+        .map((g) => (g.loc ? `<div class="module-group-label" title="${escapeHtml(g.loc)}">${escapeHtml(g.loc.replace(/タブ$/, ''))}</div>` : '') +
+          g.modules.map(tab).join(''))
         .join('') +
       `<button type="button" class="module-tab-add" title="モジュール(ページ)を追加">＋</button>`;
     wrap.querySelector('.module-tab-add').addEventListener('click', addModule);
@@ -569,7 +584,7 @@
     const panel = openSidePanel(
       `<div class="panel-head"><div class="panel-title-wrap">` +
       `<input class="panel-title-input" data-param-field="name" value="${escapeHtml(p.name)}">` +
-      `<div class="panel-sub">${escapeHtml(m ? m.name : '')} · <input class="panel-range-input" data-param-field="range" value="${escapeHtml(p.range || '')}" placeholder="値の範囲"></div>` +
+      `<div class="panel-sub">${escapeHtml(m ? modulePath(m) : '')} · <input class="panel-range-input" data-param-field="range" value="${escapeHtml(p.range || '')}" placeholder="値の範囲"></div>` +
       `</div><span class="panel-state-dot${p.verified ? ' panel-state-dot--verified' : ''}" title="${p.verified ? '確認済み' : '未確認'}"></span>` +
       `<button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       readingsHtml +
@@ -701,6 +716,8 @@
       : '<div class="panel-empty">まだパラメータがありません。下の「パラメータ」で足すか、「資料」から解体してください。</div>';
     const panel = openSidePanel(
       panelHeader(`<div class="panel-title">${escapeHtml(module.name)}</div>`, `${escapeHtml(soul.name)}のソウル · 確認済み ${verified} / ${params.length}`) +
+      `<div class="panel-section"><div class="panel-label">UI上の場所(タブなど)</div>` +
+      `<input class="panel-inline-input" data-module-field="location" value="${escapeHtml(module.location || '')}" placeholder="${soul.category === 'plugin' ? '例: FXタブ' : '例: 第2章 奏法'}"></div>` +
       `<div class="panel-section"><div class="panel-label">スクリーンショット</div>` +
       (module.screenshot
         ? `<div class="panel-shot-row"><span class="panel-source">🖼 ${escapeHtml(module.screenshot.name || '')} · ${formatDate(module.screenshot.addedAt)}</span></div>` +
@@ -719,6 +736,17 @@
       `</div>`
     );
     bindPanelClose(panel);
+    const locationInput = panel.querySelector('[data-module-field="location"]');
+    locationInput.addEventListener('change', () => {
+      module.location = locationInput.value.trim();
+      scheduleAutoSave();
+      renderTabs();
+      setCrumbs([
+        { label: `${soul.name}のソウル`, hash: soulHash(soul, null) },
+        ...(module.location ? [{ label: module.location }] : []),
+        { label: module.name },
+      ]);
+    });
     panel.querySelectorAll('[data-param]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const p = soul.params.find((x) => x.id === btn.dataset.param);

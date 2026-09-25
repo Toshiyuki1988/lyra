@@ -240,8 +240,18 @@ function makeSoul({ name, category, color, x, y, isDefaultStage }) {
   };
 }
 
-function makeModule(name) {
-  return { id: newId(), name, x: -70, y: -70, screenshot: null, createdAt: new Date().toISOString() };
+/**
+ * モジュール。locationは「UI上の場所」(プラグインなら上部のタブ名など。例: "FXタブ")。
+ * 2026-09-25: Serum2の解体で「UTILITY」がどこにあるか分かりにくい(FXタブの中)という指摘を受けて追加。
+ */
+function makeModule(name, location) {
+  return { id: newId(), name, location: location || '', x: -70, y: -70, screenshot: null, createdAt: new Date().toISOString() };
+}
+
+/** モジュールの表示名。UI上の場所があれば「FXタブ › UTILITY」の形にする */
+function modulePath(m) {
+  if (!m) return '';
+  return m.location ? `${m.location} › ${m.name}` : m.name;
 }
 
 /**

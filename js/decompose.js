@@ -47,6 +47,7 @@
           type: 'OBJECT',
           properties: {
             name: { type: 'STRING' },
+            location: { type: 'STRING' },
             pages: { type: 'STRING' },
             pdfStart: { type: 'INTEGER' },
             pdfEnd: { type: 'INTEGER' },
@@ -93,6 +94,21 @@
       },
     },
     required: ['vocabulary'],
+  };
+
+  const LOCATION_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      modules: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { name: { type: 'STRING' }, location: { type: 'STRING' } },
+          required: ['name', 'location'],
+        },
+      },
+    },
+    required: ['modules'],
   };
 
   const SHOT_SCHEMA = {
@@ -164,6 +180,7 @@
       `<button type="button" class="btn-small" data-action="add-pdf"${busy ? ' disabled' : ''}>＋ PDF</button>` +
       `<button type="button" class="btn-small" data-action="add-web"${busy ? ' disabled' : ''}>＋ Web記事</button>` +
       `<button type="button" class="btn-small" data-action="add-youtube">＋ YouTube</button></div>` +
+      locationSectionHtml(soul, busy) +
       `<div class="panel-section panel-section--soul"><div class="panel-label">共通語彙への変換表</div>` +
       `<div class="panel-empty" style="margin-bottom:8px">星図の構造語彙(${VOCAB_TERMS.join('・')})で、このソウルが何を指すか。アンサンブルでの発言の橋渡しに使います。</div>` +
       `${vocab}` +
@@ -182,6 +199,8 @@
     panel.querySelector('[data-action="add-pdf"]').addEventListener('click', () => addPdf(soul, callbacks, rerender));
     panel.querySelector('[data-action="add-web"]').addEventListener('click', () => addWeb(soul, callbacks, rerender));
     panel.querySelector('[data-action="add-youtube"]').addEventListener('click', () => addYoutube(soul, rerender));
+    const locBtn = panel.querySelector('[data-action="locations"]');
+    if (locBtn) locBtn.addEventListener('click', () => organizeLocations(soul, callbacks, rerender));
     const vocabBtn = panel.querySelector('[data-action="vocab"]');
     if (vocabBtn) vocabBtn.addEventListener('click', () => rebuildVocabulary(soul, rerender));
 
@@ -429,6 +448,7 @@
             (structure.modules || [])
               .map((m) => ({
                 name: clip(m.name, 40),
+                location: clip(m.location, 30),
                 pages: clip(m.pages, 40),
                 pdfStart: Number.isInteger(m.pdfStart) ? m.pdfStart : null,
                 pdfEnd: Number.isInteger(m.pdfEnd) ? m.pdfEnd : null,
@@ -548,12 +568,20 @@
   /** PDF全体をGeminiに渡せる形(Files APIのURI、だめならインライン)にする。1回の解体で1度だけ */
   async function fullPdfFiles(content, src, signal, progress) {
     if (content.full) return content.full;
+    // Files APIに上げたファイルはGoogle側で48時間残るので、期限まで10分以上あれば使い回す
+    const cached = src.geminiFile;
+    if (cached && cached.fileUri && cached.expiresAt && Date.parse(cached.expiresAt) - Date.now() > 10 * 60 * 1000) {
+      debugLog('解体: Files APIに上げ済みのPDFを使い回す');
+      content.full = [{ fileUri: cached.fileUri, mimeType: cached.mimeType }];
+      return content.full;
+    }
     progress('PDFをGeminiに渡しています…');
     try {
       const t0 = Date.now();
       const uploaded = await uploadGeminiFile(content.blob, src.title, signal);
       debugLog(`解体: Files APIへのアップロード成功(${((Date.now() - t0) / 1000).toFixed(1)}秒)`);
       content.full = [{ fileUri: uploaded.fileUri, mimeType: uploaded.mimeType }];
+      if (uploaded.expiresAt) src.geminiFile = { fileUri: uploaded.fileUri, mimeType: uploaded.mimeType, expiresAt: uploaded.expiresAt };
     } catch (err) {
       if (signal.aborted) throw err;
       debugLog(`Files APIが使えなかったためインライン送信に切り替え: ${err.message}`);
@@ -724,6 +752,9 @@ ${subjectLine(soul)}
 ルール:
 - 名前は資料での表記(英語のパラメータ名は英語のまま)に合わせる
 - 説明文は書かない。名前の一覧だけ
+- locationには、${soul.category === 'plugin'
+      ? 'そのモジュールがプラグインの画面上のどこにあるか(上部のタブ名など。例: "OSCタブ"、"FXタブ"、"MATRIXタブ")'
+      : 'そのモジュールが資料のどの章・分類に属するか'}を書く。同じ場所のモジュールは同じ表記にそろえる
 - pagesには、そのモジュールの説明が載っているページ範囲を、紙面に印刷されたページ番号で書く(例: "p.30-38")
 ${content.pageCount ? `- pdfStart・pdfEndには、同じ範囲をPDFファイル上の通しページ番号で書く(表紙を1とする。このPDFは全${content.pageCount}ページ。紙面の番号とはずれていることが多いので注意)
 ` : ''}- 資料に載っていないものを推測で足さない${contentBlock(content)}`;
@@ -753,8 +784,10 @@ ${m.params.map((p) => `- ${p}`).join('\n')}
   function mergeDetail(soul, src, m, params) {
     let module = soul.modules.find((x) => normalizeName(x.name) === normalizeName(m.name));
     if (!module) {
-      module = makeModule(m.name);
+      module = makeModule(m.name, m.location);
       soul.modules.push(module);
+    } else if (!module.location && m.location) {
+      module.location = m.location;
     }
     let count = 0;
     params.forEach((item) => {
@@ -840,6 +873,94 @@ term には上の${VOCAB_TERMS.length}語をそのまま、この順で入れて
     } finally {
       running = null;
       rerender();
+    }
+  }
+
+  /* ---------------- モジュールのUI上の場所を整理する ---------------- */
+
+  function locationSectionHtml(soul, busy) {
+    if (!soul.modules.length) return '';
+    const known = soul.modules.filter((m) => m.location).length;
+    const hasPdf = soul.sources.some((s) => s.type === 'pdf' && s.fileId);
+    return `<div class="panel-section panel-section--soul"><div class="panel-label">モジュールの場所(タブなど)</div>` +
+      `<div class="panel-empty" style="margin-bottom:8px">場所が分かっているモジュール ${known} / ${soul.modules.length}。` +
+      `場所があると「FXタブ › UTILITY」のように表示され、左のタブも場所ごとにまとまります。各モジュールの概要パネルで手でも直せます。</div>` +
+      (hasPdf ? `<div class="panel-inline-actions"><button type="button" class="btn-small" data-action="locations"${busy ? ' disabled' : ''}>資料から整理する</button></div>` : '') +
+      `</div>`;
+  }
+
+  /**
+   * 解体済みのモジュールに、UI上の場所(プラグインのタブ名など)を資料から付ける。
+   * 場所を出させるようになる前(2026-09-25まで)に解体したソウル向け。PDF全体を1回読ませる。
+   */
+  async function organizeLocations(soul, callbacks, rerender) {
+    if (running) return;
+    const src = [...soul.sources].reverse().find((s) => s.type === 'pdf' && s.fileId);
+    if (!src) return;
+    const choice = await showChoiceDialog({
+      title: 'モジュールの場所を資料から整理しますか?',
+      message: `「${src.title}」全体をGeminiに読ませて、${soul.modules.length}個のモジュールそれぞれが画面のどこ(タブなど)にあるかを付けます。\n` +
+        'Geminiを1回呼びます。大きな資料では1〜2分かかります。手で付けた場所も上書きします。',
+      options: [
+        { label: 'やめる', value: 'cancel', secondary: true },
+        { label: '整理する', value: 'run' },
+      ],
+    });
+    if (choice !== 'run') return;
+    const controller = new AbortController();
+    running = { soulId: soul.id, sourceId: src.id, controller, label: '準備中…' };
+    const progress = (label) => {
+      running.label = label;
+      setStatus(label, { busy: true });
+      const text = els.sidePanel.querySelector('.decompose-running-text');
+      if (text) text.textContent = label;
+    };
+    rerender();
+    try {
+      const content = await prepareContent(src, null);
+      const files = await fullPdfFiles(content, src, controller.signal, progress);
+      progress('モジュールの場所を読み取っています…(大きな資料は1〜2分かかります)');
+      const plugin = soul.category === 'plugin';
+      const result = await withRateLimitRetry('場所の整理', () => askGeminiJson({
+        prompt: `${subjectLine(soul)}
+資料: ${src.title}
+
+次のモジュールそれぞれについて、${plugin ? 'プラグインの画面上のどこにあるか(上部のタブ名など。例: "OSCタブ"、"FXタブ"、"MATRIXタブ")' : '資料のどの章・分類に属するか'}を添付の資料から読み取り、location に書いてください。
+${soul.modules.map((m) => `- ${m.name}`).join('\n')}
+
+ルール:
+- name は上の一覧と一字一句同じにする
+- 同じ場所のモジュールは同じ表記にそろえる
+- 資料から分からないものは location を空にする`,
+        files,
+        responseSchema: LOCATION_SCHEMA,
+        signal: controller.signal,
+        maxOutputTokens: 4096,
+        timeoutMs: DECOMPOSE_TIMEOUT_MS,
+        label: '場所の整理',
+      }), progress, controller.signal);
+      let count = 0;
+      (result.modules || []).forEach((item) => {
+        const m = soul.modules.find((x) => normalizeName(x.name) === normalizeName(item.name));
+        const loc = clip(item.location, 30);
+        if (m && loc) {
+          m.location = loc;
+          count += 1;
+        }
+      });
+      scheduleAutoSave();
+      setStatus(`${count}個のモジュールに場所を付けました`, { important: true });
+    } catch (err) {
+      console.error(err);
+      debugLog(`場所の整理: 停止 ${err.message.slice(0, 300)}`);
+      setStatus(`場所を整理できませんでした: ${err.message}`, { important: true });
+    } finally {
+      running = null;
+      const stillHere = currentRoute && currentRoute.screen === 'soul' && currentRoute.soulId === soul.id;
+      if (stillHere) {
+        callbacks.onDone();
+        setTimeout(rerender, 0);
+      }
     }
   }
 
