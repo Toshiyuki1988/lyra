@@ -142,7 +142,7 @@
   /** つないだMIDIの、そのパートの音(パートの無いMIDIは全部の音をそのパートとして) */
   function sourceNotes(card, part) {
     const all = card.midi.notes;
-    const tagged = all.some((n) => n.part);
+    const tagged = all.some((n) => n.part && PART_ORDER.includes(n.part));
     return (tagged ? all.filter((n) => n.part === part) : all).map((n) => ({ ...n, part }));
   }
 
@@ -459,6 +459,23 @@
 
   async function createFromSpeech(speech, stage) {
     const members = (speech.memberIds || []).map((id) => getSoul(id)).filter(Boolean);
+    const model = await chooseMidiModel('どのモデルでMIDIにしますか?');
+    if (!model) return;
+    if (model === 'mitategura') {
+      return createGesture({
+        stage,
+        souls: members.filter((s) => s.category !== 'stage' && s.category !== 'plugin'),
+        contextText: [
+          ...(speech.voices || []).map((v) => `- ${v.text}`),
+          speech.chain ? `- コンセプト: ${speech.chain.concept} / 構造語彙: ${speech.chain.structure} / 操作: ${(speech.chain.operations || []).join(' / ')}` : '',
+        ].filter(Boolean).join('\n'),
+        memberIds: speech.memberIds || [],
+        speechId: speech.id,
+        fromCardId: speech.id,
+        x: (speech.x || 0) + 30,
+        y: (speech.y || 0) + (speech.height || 280) + 40,
+      });
+    }
     const paramNames = members.flatMap((s) => s.params.slice(0, 30).map((p) => `${s.name} / ${p.name}`));
     const values = await showFormDialog({
       title: 'MIDIにする',
@@ -627,6 +644,7 @@ ${WRITEUP_RULES}`;
    * つないだものがあればコメントは空でもよい。改善版はつないだソウルも memberIds に引き継ぐ。
    * 手で編集したカード(midi.edited)は、実際のノートも渡して尊重させる。 */
   async function reviseMidi(card) {
+    if (card.midi.gesture) return reviseGesture(card);
     const stage = findStageOfCard(card);
     if (!stage) return;
     const m = card.midi;
@@ -1733,6 +1751,9 @@ ${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.im
 
   /** 美学などのソウルから、コード+旋律+ベースの断片を作る(小節数と注文をたずねてから) */
   async function createSketch(opts) {
+    const model = await chooseMidiModel('どのモデルで鳴らしますか?');
+    if (!model) return;
+    if (model === 'mitategura') return createGesture(opts);
     const sources = opts.midiSources || [];
     const values = await showFormDialog({
       title: 'コード+旋律で鳴らす',
@@ -1808,6 +1829,348 @@ ${WRITEUP_RULES}`;
     }
   }
 
+  /* ---------------- MIDI生成モデル(2026-09-26) ----------------
+   * ユーザー構想「MIDI生成モデル」: 生成の方法そのものを「モデル」として並べ、「鳴らす」「MIDIにする」を押した時に
+   * ポップアップで選ぶ。仕様は models/ フォルダのMD。
+   *   - gakuten: 基本の楽典モデル(models/gakuten.md)。従来のコード+旋律など
+   *   - mitategura: 見立て蔵モデル(models/mitategura.md)。自然物由来・無階調。入力をモチーフ(名詞)ごとの要素に分け、
+   *     要素ごとに身振り(gesture)を割り当てて重ねる。Geminiは要素の分解と音高の器(日本音階/コード進行)だけを書き、
+   *     音は js/gesture.js が決まった手順で作る。旋律をGeminiに書かせないので反芻は無く、Geminiは1回
+   * 「ビート」は種類が別(リズム)なので、モデルは選ばない。作り直しは、そのカードを作ったモデルのまま。 */
+  const MIDI_MODELS = [
+    { id: 'gakuten', label: '基本の楽典モデル', text: 'コード進行+旋律+ベースを、起承転結などの時間の設計図に沿って組む(Geminiを2回)' },
+    { id: 'mitategura', label: '見立て蔵モデル(自然物由来・無階調)', text: '画像や言葉のモチーフ(名詞)ごとに、鐘打ち・揺らぎ・装飾粒などの身振りを重ねる。コード進行に圧縮しない。要素ごとに別トラック(Geminiを1回)' },
+  ];
+  const MODEL_KEY = 'lyra.midiModel';
+
+  /** モデルを選ぶポップアップ。やめたら null。前回選んだモデルに「(前回)」を付ける */
+  async function chooseMidiModel(title) {
+    let last = null;
+    try { last = localStorage.getItem(MODEL_KEY); } catch (err) { /* 無くてもよい */ }
+    const id = await showChoiceDialog({
+      title: title || 'どのモデルで作りますか?',
+      message: MIDI_MODELS.map((m) => `■ ${m.label}\n${m.text}`).join('\n\n'),
+      options: [
+        { label: 'やめる', value: null, secondary: true },
+        ...MIDI_MODELS.map((m) => ({ label: `${m.label}${m.id === last ? '(前回)' : ''}`, value: m.id, secondary: m.id !== (last || 'gakuten') })),
+      ],
+    });
+    if (id) {
+      try { localStorage.setItem(MODEL_KEY, id); } catch (err) { /* 保存できなくても続ける */ }
+    }
+    return id;
+  }
+
+  /* ---- 見立て蔵モデル ---- */
+
+  const GESTURE_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      name: { type: 'STRING' },
+      description: { type: 'STRING' },
+      concept: { type: 'STRING' },
+      commentary: { type: 'STRING' },
+      tempo: { type: 'NUMBER' },
+      harmonic_mode: { type: 'STRING' },
+      japanese_scale: { type: 'STRING' },
+      japanese_root: { type: 'STRING' },
+      chords: { type: 'ARRAY', items: { type: 'OBJECT', properties: { symbol: { type: 'STRING' } }, required: ['symbol'] } },
+      gesture_elements: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            element: { type: 'STRING' },
+            gesture_type: { type: 'STRING' },
+            register: { type: 'STRING' },
+            occurrence: { type: 'STRING' },
+            is_primary: { type: 'BOOLEAN' },
+            timbre: { type: 'STRING' },
+            note: { type: 'STRING' },
+          },
+          required: ['element', 'gesture_type', 'register', 'occurrence', 'is_primary', 'note'],
+        },
+      },
+    },
+    required: ['name', 'tempo', 'harmonic_mode', 'gesture_elements'],
+  };
+
+  const GESTURE_PITCH_OPTIONS = [
+    { value: '', label: 'おまかせ(入力に合わせて選ぶ)' },
+    { value: 'in', label: '日本音階・陰音階(都節。艶・密やか・もの寂しい)' },
+    { value: 'ritsu', label: '日本音階・律音階(雅楽的・晴れやか・清澄)' },
+    { value: 'western', label: 'コード進行(西洋の和音)' },
+  ];
+
+  function gestureRules(bars, pitchPref) {
+    const G = window.LyraGesture;
+    const pitchRule = pitchPref === 'in' || pitchPref === 'ritsu'
+      ? `- 音高の器はユーザーの指定: harmonic_mode は japanese、japanese_scale は ${pitchPref}`
+      : pitchPref === 'western'
+        ? '- 音高の器はユーザーの指定: harmonic_mode は western(コード進行)'
+        : '- 音高の器は入力に合わせて選ぶ。和の情景・自然物・静けさなら japanese を基本に、西洋的な情景なら western、どちらの気配もあれば hybrid(日本音階を主に使う)';
+    return `要素の分解(ここがこのモデルの核):
+- 入力に含まれる具体的なモチーフを、名詞単位で3〜6個取り出し、element に短い名前で書く(例: お寺、満月、すすき、金木犀)。1つにまとめた要約を全要素に配らない。要素ごとに、そのモチーフ固有の質感(高さ・動き・止まり方・遠さ・輪郭)から身振りを選ぶ
+- gesture_type は次の10種だけ(これ以外の名前は鳴らない):
+${Object.entries(G.GESTURE_TYPES).map(([id, g]) => `  - ${id}(${g.label}): ${g.text}`).join('\n')}
+- register: low(MIDI 36〜55)/ mid(55〜74)/ high(74〜93)
+- occurrence: continuous(曲全体にずっと)/ periodic(一定間隔で繰り返す)/ sparse(数回まばらに)/ once(一度だけ)
+- バランス: 「地」となる要素(continuous を1〜2個。bell・sustained_open・drone_pulse 向き)と、「図」となる要素(sparse・once。chromatic_flourish・grace_ornament・scatter_stab 向き)を必ず混ぜる。全部 continuous だと騒がしく、全部 once だと空虚になる
+- is_primary: 本当に伝えたい核の要素にだけ true(1〜2個。3個以上にしない)
+- note: なぜその身振りにしたか。主役(is_primary)は具体的に詳しく(120字以内)、脇役は簡潔に(30字以内)
+- timbre: その要素を鳴らしたい楽器・音色の名前(例: 尺八、箏、鈴、チェレスタ、弦のハーモニクス、柔らかいパッド)。Cubaseで要素別のトラックに音源を選ぶ手がかり。主役は奏法やエフェクトまで一言添えてよい
+
+音高の器(音はアプリが器の中から選ぶ):
+${pitchRule}
+- japanese_scale: in(陰音階・都節。半音を含み、艶っぽく密やか、もの寂しい。静けさ・夜・月・秋向き)/ ritsu(律音階。半音を含まず雅楽的で晴れやか。儀礼的・清澄な情景向き)。western なら空に
+- japanese_root: 主音の音名(例: E、D、F#)
+- chords: western の時だけ、1小節に1つずつコードネームを${bars}個(例: Dmaj9、F#m11、Gsus4)。japanese・hybrid なら空の配列
+- tempo: 情景に合う速さ(40〜120。身振りは拍で刻まれるので、ゆったりした情景は遅めに)
+- 長さは${bars}小節(4/4)で、アプリが決める
+
+書き添えること:
+- name は「〜.mid」の形の短い英数字のファイル名、description は、どこがこの入力らしいかを40字以内で
+- concept は、この断片のコンセプト(情景・狙い)を60字以内で
+- commentary は解説。要素ごとの身振りが何を表しているか、Cubaseで要素別のトラックに音源・エフェクトを割り当てる時のヒントを200字以内で。特定の曲名・アーティスト名は出さない
+- 資料の文章を引用しない`;
+  }
+
+  /** 設計図 → カードの midi。seed が同じなら同じ音になる */
+  function renderGestureMidi(design, bars, seed, tempo) {
+    const chords = design.harmonic_mode === 'western'
+      ? design.chords.map((sym) => {
+        const layers = parseLayers(sym);
+        if (!layers) return null;
+        return { pcs: [...new Set(layers.flatMap((ch) => ch.tones.map((t) => (ch.root + t) % 12)))], root: layers[0].root };
+      }).filter(Boolean)
+      : null;
+    const out = window.LyraGesture.render(design, { bars, chords, seed });
+    return {
+      tempo: clampNum(tempo, 40, 160, 72),
+      beatsPerBar: 4,
+      meters: sanitizeMeters([], 4),
+      notes: out.notes.slice(0, MAX_SKETCH_NOTES),
+      cc: [],
+      markers: out.markers,
+      tempoChanges: [],
+      kind: 'gesture',
+      model: 'mitategura',
+      gesture: { ...design, bars, seed },
+      partNames: out.partNames,
+    };
+  }
+
+  /** 主役の要素の音色の名前から、試聴の音色を選ぶ(.midの中身には関係しない) */
+  function voiceFromTimbre(design) {
+    const primary = design.gesture_elements.find((el) => el.is_primary) || design.gesture_elements[0];
+    const t = String((primary && primary.timbre) || '').toLowerCase();
+    const table = [
+      [/ピアノ|piano/, 'piano'], [/エレピ|rhodes|electric piano/, 'epiano'],
+      [/ビブラ|鉄琴|チェレスタ|鈴|ベル|鐘|グロッケン|vibra|celesta|bell|glocken|marimba|マリンバ/, 'vibes'],
+      [/ギター|箏|琴|三味線|ハープ|guitar|koto|harp|shamisen/, 'guitar'],
+      [/弦|ストリングス|チェロ|ヴァイオリン|string|cello|violin/, 'strings'],
+      [/パッド|シンセ|pad|synth|ドローン|drone/, 'pad'],
+      [/フルート|尺八|笛|篠笛|flute|shakuhachi/, 'flute'],
+    ];
+    const hit = table.find(([re]) => re.test(t));
+    return hit ? hit[1] : DEFAULT_VOICE;
+  }
+
+  function gestureName(raw) {
+    let name = String(raw.name || 'lyra_mitate.mid').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
+    if (!/\.mid$/i.test(name)) name += '.mid';
+    return name;
+  }
+
+  /** 見立て蔵モデルで作る(小節数・音高の器・光景をたずねてから) */
+  async function createGesture(opts) {
+    const images = opts.images || [];
+    const values = await showFormDialog({
+      title: '見立て蔵モデルで作る',
+      message: `${[...(images.length ? ['画像'] : []), ...(opts.souls || []).map((s) => s.name)].join('・') || 'つないだカード'}のモチーフを要素に分け、要素ごとの身振りを重ねたMIDIを作ります(要素ごとに別トラック)。Geminiを1回呼びます。`,
+      submitLabel: '作る',
+      fields: [
+        { name: 'bars', label: '長さ(小節数、4/4)', value: '8' },
+        { name: 'pitch', label: '音高の器', type: 'select', value: '', options: GESTURE_PITCH_OPTIONS },
+        { name: 'story', label: 'イメージ元の光景・言葉(任意)', type: 'textarea', value: opts.storyDefault || '', placeholder: '夕暮れの寺、満月、風に揺れるすすき、金木犀の香り など。モチーフ(名詞)が多いほど要素に分けやすい' },
+        { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: 'もっと静かに、低音の地を厚く など' },
+      ],
+    });
+    if (!values) return;
+    await runGesture({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), pitch: values.pitch, story: String(values.story || '').trim().slice(0, 300), hint: values.hint });
+  }
+
+  async function runGesture({ stage, souls, images, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, pitch, story, hint }) {
+    const material = window.LyraSoulMaterial || (() => '');
+    const focus = focusParamIds || new Set();
+    const imgs = images || [];
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
+今回は「見立て蔵モデル(自然物由来・無階調)」で作ります。コード進行とメロディの型に当てはめるのではなく、入力に含まれる具体的なモチーフを要素に分け、要素ごとに固有の身振りを割り当てて重ねます。音そのものはアプリが身振りの型から作るので、あなたが書くのは要素の分解と音高の器だけです。
+
+${imgs.length ? `${imageRule(imgs)}\n\n` : ''}${story ? `イメージ元の光景・言葉(ユーザーが書いたもの。ここからモチーフを取り出す): ${story}\n\n` : ''}${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls && souls.length ? `ソウルと手持ちの知識(モチーフの質感を読むための手がかり):\n${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus, { excludeReferences: true })}`).join('\n\n')}\n\n` : ''}${hint ? `ユーザーの注文: ${hint}\n\n` : ''}${gestureRules(bars, pitch)}`;
+    try {
+      const files = await imageFiles(imgs);
+      setStatus('モチーフを要素に分けています…', { busy: true });
+      const raw = await askGeminiJson({ prompt, files, responseSchema: imgs.length ? withImpressions(GESTURE_SCHEMA) : GESTURE_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '見立て蔵' });
+      if (imgs.length) saveImpressions(imgs, raw);
+      const design = window.LyraGesture.sanitize(raw);
+      if (!design.gesture_elements.length) throw new Error('要素が1つも出てきませんでした');
+      const midi = renderGestureMidi(design, bars, Math.floor(Math.random() * 2 ** 31), raw.tempo);
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした(身振りの型が読めなかった可能性があります)');
+      const name = gestureName(raw);
+      const card = {
+        id: newId(),
+        type: 'midi',
+        name,
+        voice: voiceFromTimbre(design),
+        description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
+        memberIds: memberIds || [],
+        speechId: speechId || null,
+        midi,
+        x: x || 0,
+        y: y || 0,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      placeMidiCard(stage, card, fromCardId);
+      setStatus(`「${name}」を作りました(見立て蔵モデル、${Object.keys(midi.partNames).length}要素)。タップで試聴・書き出しができます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`見立て蔵モデルで作れませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /** 揺らぎを振り直す(Geminiを使わない。設計図はそのまま、乱数のシードだけ変えて同じカードに上書き) */
+  async function rerollGesture(card) {
+    const m = card.midi;
+    if (!m.gesture) return;
+    if (m.edited) {
+      const ok = await showChoiceDialog({
+        title: '手で編集した音を上書きしますか?',
+        message: 'このMIDIは編集画面で手を入れています。揺らぎを振り直すと、編集した音は設計図から作り直した音に置き換わります。',
+        options: [
+          { label: 'やめる', value: false, secondary: true },
+          { label: '振り直す', value: true, danger: true },
+        ],
+      });
+      if (!ok) return;
+    }
+    const next = renderGestureMidi(m.gesture, m.gesture.bars, Math.floor(Math.random() * 2 ** 31), m.tempo);
+    stopAll();
+    card.midi = { ...next, tempo: m.tempo };
+    delete card.selection;
+    refreshEnsembleCard(card);
+    if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
+    refreshMini();
+    scheduleAutoSave();
+    setStatus('揺らぎを振り直しました(設計図はそのまま)');
+  }
+
+  /** 見立て蔵モデルのカードの作り直し(前回の設計図とコメント・つないだカードから、Geminiを1回) */
+  async function reviseGesture(card) {
+    const stage = findStageOfCard(card);
+    if (!stage) return;
+    const m = card.midi;
+    const g = m.gesture;
+    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: true }) : null;
+    const linkSouls = links ? links.souls.filter((s) => s.category !== 'plugin') : [];
+    const prevPitch = g.harmonic_mode === 'western' ? 'western' : g.japanese_scale || '';
+    const values = await showFormDialog({
+      title: `「${card.name}」を作り直す(見立て蔵モデル)`,
+      message: `どう変えたいかを書いてください。前回の要素の分解を踏まえた改善版を右隣に線でつないで置きます(Geminiを1回)。` +
+        (links ? `ASTRでつないだもの(${links.names.join('・')})も取り入れます。コメントは空でもかまいません。` : '') +
+        '音の並びだけを変えたい時は、パネルの「揺らぎを振り直す」(Geminiを使いません)を使ってください。',
+      submitLabel: '作り直す',
+      fields: [
+        { name: 'comment', label: 'コメント', type: 'textarea', placeholder: '鐘をもっと遠くに、虫の音を足して、主役を満月に など' },
+        { name: 'bars', label: '長さ(小節数、4/4)', value: String(g.bars || 8) },
+        { name: 'pitch', label: '音高の器', type: 'select', value: prevPitch, options: GESTURE_PITCH_OPTIONS },
+      ],
+    });
+    if (!values) return;
+    const comment = String(values.comment || '').trim();
+    if (!comment && !links) {
+      setStatus('コメントを書くか、ASTRでカードをつないでから作り直してください', { important: true });
+      return;
+    }
+    const bars = Math.round(clampNum(values.bars, 2, 32, g.bars || 8));
+    const material = window.LyraSoulMaterial || (() => '');
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。「見立て蔵モデル(自然物由来・無階調)」で前に作った要素の分解を、ユーザーのコメントに沿って作り直してください。音そのものはアプリが身振りの型から作ります。
+今回のコメント: ${comment || '(なし。つないだカード・ソウルを取り入れる)'}
+${links && links.lines.length ? `\nASTRでこのMIDIにつないだカード(取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n')}\n` : ''}${linkSouls.length ? `\nつないだソウルと手持ちの知識:\n${linkSouls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, links.focusParamIds, { excludeReferences: true })}`).join('\n\n')}\n` : ''}
+前回の設計図(JSON):
+${JSON.stringify({ tempo: m.tempo, harmonic_mode: g.harmonic_mode, japanese_scale: g.japanese_scale, japanese_root: g.japanese_root, chords: g.chords, gesture_elements: g.gesture_elements })}
+
+コメントで触れていない要素は、なるべく前回を保つ(全部を作り替えない)。
+
+${gestureRules(bars, values.pitch)}
+- description は、前回から何を変えたかを40字以内で`;
+    setStatus('要素の分解を作り直しています…', { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: GESTURE_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '見立て蔵の作り直し' });
+      const design = window.LyraGesture.sanitize(raw);
+      if (!design.gesture_elements.length) throw new Error('要素が1つも出てきませんでした');
+      const midi = renderGestureMidi(design, bars, Math.floor(Math.random() * 2 ** 31), raw.tempo);
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
+      const version = (card.version || 1) + 1;
+      const next = {
+        id: newId(),
+        type: 'midi',
+        name: `${baseName(card.name)}_v${version}.mid`,
+        voice: card.voice,
+        description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
+        comment: comment.slice(0, 200),
+        linkedNames: links ? links.names.slice(0, 6) : [],
+        version,
+        revisionOf: card.id,
+        memberIds: [...new Set([...(card.memberIds || []), ...linkSouls.map((s) => s.id)])],
+        speechId: card.speechId || null,
+        midi,
+        x: (card.x || 0) + (card.width || 210) + 70,
+        y: (card.y || 0) + 10,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      placeMidiCard(stage, next, card.id);
+      setStatus(`「${next.name}」を作りました(見立て蔵モデル)`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`作り直せませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  function gestureModeLabel(g) {
+    const G = window.LyraGesture;
+    if (g.harmonic_mode === 'western') return `コード進行 ${g.chords.slice(0, 4).join(' → ')}${g.chords.length > 4 ? ' …' : ''}`;
+    return `${(G.SCALES[g.japanese_scale] || G.SCALES.in).label} ${g.japanese_root}`;
+  }
+
+  function gestureElementsLine(m, max) {
+    const G = window.LyraGesture;
+    return m.gesture.gesture_elements.slice(0, max).map((el) => `${el.is_primary ? '★' : ''}${el.element}(${(G.GESTURE_TYPES[el.gesture_type] || { label: '鳴らない型' }).label})`).join(' · ');
+  }
+
+  function gesturePanelHtml(m) {
+    const G = window.LyraGesture;
+    const g = m.gesture;
+    const rows = g.gesture_elements.map((el, i) => {
+      const type = G.GESTURE_TYPES[el.gesture_type];
+      const part = `g${i + 1}`;
+      return `<div class="gesture-row${el.is_primary ? ' gesture-row--primary' : ''}">` +
+        `<div class="gesture-name"><span class="roll-legend-${part}"></span>${el.is_primary ? '★ ' : ''}${escapeHtml(el.element)}` +
+        `<span class="gesture-type">${type ? escapeHtml(type.label) : `「${escapeHtml(el.gesture_type)}」は鳴らない型`}</span></div>` +
+        `<div class="panel-source">${escapeHtml([el.register ? `音域: ${G.REGISTER_LABELS[el.register]}` : '', el.occurrence ? G.OCCURRENCES[el.occurrence] : '', el.timbre ? `音色: ${el.timbre}` : ''].filter(Boolean).join(' · '))}</div>` +
+        (el.note ? `<div class="midi-writeup">${escapeHtml(el.note)}</div>` : '') + `</div>`;
+    }).join('');
+    return `<div class="panel-section"><div class="panel-label">見立て蔵モデル · ${escapeHtml(gestureModeLabel(g))}</div>` +
+      `<div class="panel-source">要素ごとに別トラック(「パート別」で書き出すと、要素の名前のトラックになります)</div>${rows}` +
+      `<button type="button" class="btn-small" data-midi-action="reroll">揺らぎを振り直す(Geminiを使いません)</button></div>`;
+  }
+
   /* ---------------- カード・パネル ---------------- */
 
   /** ピアノロール風の小さな図(SVG)。sel があれば選んだ範囲を枠で示す */
@@ -1850,6 +2213,7 @@ ${WRITEUP_RULES}`;
     const owner = members.find((s) => !s.isDefaultStage && s.category !== 'stage') || members[0];
     el.innerHTML =
       `<div class="midi-head"><span class="midi-icon">${card.midi.kind === 'beat' ? '◉' : '♪'}</span><span class="ens-card-kind ens-card-kind--accent">${card.midi.kind === 'beat' ? 'BEAT' : 'MIDI'}${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
+      (card.midi.gesture ? `<div class="ens-card-sub midi-chords">見立て蔵 · ${escapeHtml(gestureModeLabel(card.midi.gesture))}</div>` : '') +
       (card.midi.beat ? `<div class="ens-card-sub midi-chords">${escapeHtml(card.midi.beat.genre)} · ${Math.round(card.midi.tempo)} BPM${card.midi.beat.swing > 0.01 ? ` · ハネ${Math.round(card.midi.beat.swing * 100)}%` : ''}</div>` : '') +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
@@ -1858,8 +2222,9 @@ ${WRITEUP_RULES}`;
       (card.description ? `<div class="ens-card-sub ens-card-sub--accent">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="ens-card-sub midi-concept">${escapeHtml(card.concept)}</div>` : '') +
       (card.midi.sketch ? `<div class="ens-card-sub midi-chords">${escapeHtml(chordLine(card.midi.sketch, 6))}</div>` : '') +
+      (card.midi.gesture ? `<div class="ens-card-sub midi-comment">${escapeHtml(gestureElementsLine(card.midi, 6))}</div>` : '') +
       (card.midi.sketch && card.midi.sketch.arc ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.midi.sketch.arc.form)}${card.midi.sketch.arc.climaxBar ? ` · 頂点 ${card.midi.sketch.arc.climaxBar}小節` : ''}</div>` : '') +
-      (card.midi.fixedFrom ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.midi.fixedFrom.map((x) => `「${x.name}」の${x.parts.map((p) => PART_LABELS[p]).join('・')}`).join('、'))}を使用</div>` : '') +
+      (card.midi.fixedFrom ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.midi.fixedFrom.map((x) => `「${x.name}」の${x.parts.map((p) => partLabel(null, p)).join('・')}`).join('、'))}を使用</div>` : '') +
       (techniquesOf(card.midi).length ? `<div class="ens-card-sub midi-comment">技法: ${escapeHtml(techniquesOf(card.midi).map((t) => t.technique).join('・'))}</div>` : '') +
       (metersOf(card.midi).length > 1 ? `<div class="ens-card-sub midi-comment">拍子: ${escapeHtml(meterLabel(card.midi))}</div>` : '') +
       pianoRollSvg(card.midi, 180, 36) +
@@ -1889,6 +2254,12 @@ ${WRITEUP_RULES}`;
         (b.references.length ? `、参照 ${b.references.map((r) => r.title).join(' / ')}` : '') +
         (b.signature.length ? `、仕掛け ${b.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') +
         (card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : '');
+    }
+    if (m.gesture) {
+      const g = m.gesture;
+      return `[MIDI · 見立て蔵モデル] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${g.bars}小節、音高の器 ${gestureModeLabel(g)}、要素 ` +
+        g.gesture_elements.map((el) => `${el.is_primary ? '★' : ''}${el.element}=${el.gesture_type}(${el.register || '-'}・${el.occurrence || '-'})`).join(' / ') +
+        (m.edited ? '(ユーザーが手で編集済み)' : '');
     }
     const sk = m.sketch;
     return `[MIDI] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${card.midi.edited ? '(ユーザーが手で編集済み)' : ''}: テンポ${Math.round(m.tempo)}、${m.notes.length}音` +
@@ -1969,15 +2340,16 @@ ${WRITEUP_RULES}`;
       `<div data-midi-export>${dragOutHtml(card)}</div>` +
       (rumination(m) ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rumination(m).check)}` +
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
-      `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch ? 140 : 90, card.selection)}</div>` +
-      (m.sketch ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${PART_LABELS[p]}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      `<div class="panel-roll${m.sketch || m.gesture ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch || m.gesture ? 140 : 90, card.selection)}</div>` +
+      (m.sketch || m.gesture ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${escapeHtml(partLabel(m, p))}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      (m.gesture ? gesturePanelHtml(m) : '') +
       (m.beat ? beatPanelHtml(m.beat) : '') +
       (m.sketch && m.sketch.arc ? arcPanelHtml(m.sketch.arc) : '') +
-      (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.map((p) => PART_LABELS[p]).join('・'))}</div>`).join('')}</div>` : '') +
+      (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.map((p) => partLabel(null, p)).join('・'))}</div>`).join('')}</div>` : '') +
       techniquesPanelHtml(m) +
       (m.sketch ? sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
-      (m.sketch && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
+      ((m.sketch || m.gesture) && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
       (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${beatLabel(t.beat, m)} → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
@@ -2010,6 +2382,8 @@ ${WRITEUP_RULES}`;
     panel.querySelector('[data-midi-action="edit"]').addEventListener('click', () => openMidiEditor(card));
     panel.querySelector('[data-midi-action="wav"]').addEventListener('click', () => exportWav(card));
     panel.querySelector('[data-midi-action="revise"]').addEventListener('click', () => reviseMidi(card));
+    const reroll = panel.querySelector('[data-midi-action="reroll"]');
+    if (reroll) reroll.addEventListener('click', () => rerollGesture(card));
     const box = panel.querySelector('[data-midi-export]');
     if (box) bindExportBox(box, card, panel);
   }
@@ -2039,12 +2413,20 @@ ${WRITEUP_RULES}`;
   const PART_LABELS = { melody: '旋律', counter: '対旋律', chords: 'コード', bass: 'ベース', drums: 'ドラム' };
 
   function partsOf(m) {
-    return PART_ORDER.filter((part) => m.notes.some((n) => n.part === part));
+    const fixed = PART_ORDER.filter((part) => m.notes.some((n) => n.part === part));
+    // 見立て蔵モデルは要素ごとのパート(g1, g2…)
+    const gestures = Object.keys(m.partNames || {}).filter((part) => m.notes.some((n) => n.part === part));
+    return [...fixed, ...gestures];
   }
+
+  /** パートの表示名(見立て蔵モデルは要素の名前) */
+  const partLabel = (m, part) => (m && m.partNames && m.partNames[part]) || PART_LABELS[part] || part;
+  /** .mid のトラック名・ファイル名に使う名前 */
+  const partTrackName = (m, part) => (m && m.partNames && m.partNames[part]) || PART_NAMES[part] || part;
 
   function midiFileName(card, part) {
     const base = String(card.name || 'lyra').replace(/\.mid$/i, '').replace(/[\\/:*?"<>|]/g, '') || 'lyra';
-    const suffix = !part || part === 'merged' ? '' : part === 'split' ? '_parts' : `_${PART_NAMES[part]}`;
+    const suffix = !part || part === 'merged' ? '' : part === 'split' ? '_parts' : `_${String(partTrackName(card.midi, part)).replace(/[\\/:*?"<>|\s]/g, '')}`;
     return `${base}${suffix}.mid`;
   }
 
@@ -2053,7 +2435,7 @@ ${WRITEUP_RULES}`;
     const chip = (part, label) => `<span class="midi-drag" draggable="true" role="button" tabindex="0" data-drag-part="${part}" title="クリックで書き出し先フォルダへ保存(ドラッグならデスクトップ・エクスプローラーへ)">⇩ ${escapeHtml(label)}</span>`;
     if (parts.length <= 1) return `<div class="midi-drags">${chip('', 'MIDI')}</div>`;
     return `<div class="midi-drags">${chip('merged', '1トラックで')}${chip('split', `パート別${parts.length}トラック`)}` +
-      `${parts.map((p) => chip(p, PART_LABELS[p])).join('')}</div>`;
+      `${parts.map((p) => chip(p, partLabel(card.midi, p))).join('')}</div>`;
   }
 
   function dragOutHtml(card) {
@@ -2218,7 +2600,7 @@ ${WRITEUP_RULES}`;
     const cLabels = [];
     for (let p = lo; p <= hi; p++) if (p % 12 === 0) cLabels.push(`<span style="top:${(yOf(p) / H) * 100}%;height:${(rowH / H) * 100}%">${midiToNoteName(p)}</span>`);
     const partSelect = parts.length > 1
-      ? `<label class="re-field">足す音のパート<select data-re-part>${parts.map((p) => `<option value="${p}">${PART_LABELS[p]}</option>`).join('')}</select></label>`
+      ? `<label class="re-field">足す音のパート<select data-re-part>${parts.map((p) => `<option value="${p}">${escapeHtml(partLabel(m, p))}</option>`).join('')}</select></label>`
       : '';
 
     /* スケールでリスケール(2026-09-25、js/scales.js)。元のスケールは設計図のキー・スケール名から、読めなければ音から推定する */
@@ -2237,7 +2619,7 @@ ${WRITEUP_RULES}`;
     };
     const scaleParts = [
       `<option value="">全部のパート</option>`,
-      ...(parts.length > 1 ? parts.map((p) => `<option value="${p}">${PART_LABELS[p]}だけ</option>`) : []),
+      ...(parts.length > 1 ? parts.map((p) => `<option value="${p}">${escapeHtml(partLabel(m, p))}だけ</option>`) : []),
       ...(parts.includes('bass') && parts.length > 1 ? [`<option value="-bass">ベース以外</option>`] : []),
     ].join('');
     const scaleTools =
@@ -2335,7 +2717,7 @@ ${WRITEUP_RULES}`;
       const n = notes[picked];
       const range = sel ? selectionLabel({ ...card, midi: draftMidi(), selection: sel }).replace('書き出す範囲', '範囲') : '書き出す範囲: 全体';
       info.textContent = `${notes.length}音${dirty || tempoChanged() ? '(未保存の変更あり)' : ''} · テンポ ${Math.round(tempo)} · ${range}` +
-        (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, m)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${PART_LABELS[n.part]}` : ''})` : '');
+        (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, m)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${partLabel(m, n.part)}` : ''})` : '');
       playBtn.textContent = preview ? '■ 停止' : sel ? '▶ 範囲を試聴' : '▶ 試聴';
     };
     const setMode = (next) => {
@@ -2783,7 +3165,7 @@ ${WRITEUP_RULES}`;
       byPart[part].set(key, slot);
     });
     return Object.entries(byPart)
-      .map(([part, map]) => `${PART_LABELS[part] || '音'}: ${[...map.values()].slice(0, 160).map((s) => `${Math.round(s.start * 100) / 100}拍 ${s.names.join('+')}(${Math.round(s.duration * 100) / 100})`).join(' / ')}`)
+      .map(([part, map]) => `${m.partNames && m.partNames[part] ? m.partNames[part] : PART_LABELS[part] || '音'}: ${[...map.values()].slice(0, 160).map((s) => `${Math.round(s.start * 100) / 100}拍 ${s.names.join('+')}(${Math.round(s.duration * 100) / 100})`).join(' / ')}`)
       .join('\n');
   }
 
@@ -2994,7 +3376,7 @@ ${WRITEUP_RULES}`;
     // ドラム(BEAT)はGMの約束どおり10ch(0始まりで9)に置く。ドラムだけのMIDIは1トラックにまとめても10ch
     const allDrums = m.notes.length > 0 && m.notes.every((n) => n.part === 'drums');
     const tracks = parts.length
-      ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), part === 'drums' ? 9 : ch, PART_NAMES[part], ch === 0))
+      ? parts.map((part, ch) => noteTrack(m.notes.filter((n) => n.part === part), part === 'drums' ? 9 : ch >= 9 ? ch + 1 : ch, partTrackName(m, part), ch === 0))
       : [noteTrack(m.notes, allDrums ? 9 : 0, mode === 'merged' ? midiFileName(card, null).replace(/\.mid$/i, '') : 'LYRA', true)];
     const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1 + tracks.length, (PPQ >> 8) & 255, PPQ & 255];
     return new Uint8Array([...header, ...trackChunk(conductor), ...tracks.flatMap((ev) => trackChunk(ev))]);
@@ -3138,7 +3520,7 @@ ${WRITEUP_RULES}`;
       const t0 = startAt + toSec(n.start);
       const t1 = startAt + toSec(n.start + n.duration);
       // コード+旋律の断片は、旋律を前に出し(のこぎり波)、和音は数が多いぶん小さく鳴らす
-      const amp = (n.velocity / 127) * 0.5 * (PART_GAIN[n.part] || 1);
+      const amp = (n.velocity / 127) * 0.5 * (PART_GAIN[n.part] || (/^g\d/.test(n.part || '') ? 0.45 : 1));
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, t0);
       if (isDrum) {
@@ -3155,7 +3537,7 @@ ${WRITEUP_RULES}`;
         src.connect(env);
         // 明るさのCC(CC74)がある時だけローパスを通す。無ければ音色そのままで
         env.connect(cutoff ? filter : out);
-        const level = (n.velocity / 127) * 1.6 * (SAMPLE_GAIN[n.part] || 1);
+        const level = (n.velocity / 127) * 1.6 * (SAMPLE_GAIN[n.part] || (/^g\d/.test(n.part || '') ? 0.6 : 1));
         env.gain.linearRampToValueAtTime(level, t0 + 0.005);
         env.gain.setValueAtTime(level, Math.max(t0 + 0.005, t1));
         env.gain.linearRampToValueAtTime(0, t1 + 0.3); // 離した後の余韻
