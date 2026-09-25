@@ -32,7 +32,7 @@ function withTimeoutSignal(externalSignal, ms) {
 }
 
 /**
- * @param {{prompt: string, files?: {base64: string, mimeType: string}[],
+ * @param {{prompt: string, files?: ({base64: string, mimeType: string}|{fileUri: string, mimeType: string})[],
  *   responseSchema?: object, signal?: AbortSignal, maxOutputTokens?: number}} params
  *   files: PDF(application/pdf)・画像などをインラインで添付する。マニュアルPDFの解体は
  *     GeminiのPDFネイティブ入力をそのまま使う(ハンドオフ7節)。
@@ -47,7 +47,8 @@ function withTimeoutSignal(externalSignal, ms) {
 async function askGemini({ prompt, files, responseSchema, signal, maxOutputTokens }) {
   const parts = [{ text: prompt }];
   (files || []).forEach((f) => {
-    if (f && f.base64) parts.push({ inline_data: { mime_type: f.mimeType, data: f.base64 } });
+    if (f && f.fileUri) parts.push({ file_data: { mime_type: f.mimeType, file_uri: f.fileUri } });
+    else if (f && f.base64) parts.push({ inline_data: { mime_type: f.mimeType, data: f.base64 } });
   });
 
   const body = { contents: [{ parts }] };
@@ -111,6 +112,56 @@ async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputT
   const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens });
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   return JSON.parse(cleaned);
+}
+
+/**
+ * Gemini Files APIへファイル(マニュアルPDFなど)をアップロードし、{fileUri, mimeType} を返す。
+ * インライン送信(base64)はリクエスト全体でおよそ20MBまでで、解体パイプラインのように同じPDFを
+ * 何度も送る(構造把握→モジュールごとの詳細抽出)と通信量も増えるため、一度アップロードして
+ * URIを使い回す。アップロードしたファイルはGoogle側で48時間後に自動で消える(無料で使える)。
+ * ブラウザからの呼び出しがCORS等で失敗した場合は例外を投げるので、呼び出し側でインライン送信に
+ * 切り替えること。
+ */
+async function uploadGeminiFile(blob, displayName, signal) {
+  const mimeType = blob.type || 'application/pdf';
+  const startRes = await fetch(`${GEMINI_API.replace('/v1beta', '')}/upload/v1beta/files`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': CONFIG.GEMINI_API_KEY,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(blob.size),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file: { display_name: displayName } }),
+    signal,
+  });
+  if (!startRes.ok) throw new Error(`Files APIの開始に失敗 ${startRes.status}: ${await startRes.text()}`);
+  const uploadUrl = startRes.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Files APIのアップロード先URLを受け取れませんでした');
+
+  const upRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: blob,
+    signal,
+  });
+  if (!upRes.ok) throw new Error(`Files APIのアップロードに失敗 ${upRes.status}: ${await upRes.text()}`);
+  let file = (await upRes.json()).file;
+
+  // PDFはGoogle側の処理が終わる(state: ACTIVE)まで使えないため待つ
+  for (let i = 0; i < 30 && file.state === 'PROCESSING'; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`${GEMINI_API}/${file.name}`, { headers: { 'x-goog-api-key': CONFIG.GEMINI_API_KEY }, signal });
+    if (!res.ok) throw new Error(`Files APIの状態確認に失敗 ${res.status}`);
+    file = await res.json();
+  }
+  if (file.state === 'FAILED') throw new Error('Files API側でファイルの処理に失敗しました');
+  return { fileUri: file.uri, mimeType: file.mimeType || mimeType, expiresAt: file.expirationTime || null };
 }
 
 function blobToBase64(blob) {

@@ -721,7 +721,7 @@ a.crumb:hover { color: var(--accent-ink); }
 }
 .home-search input:focus { border-color: var(--accent-line); }
 
-.home-daily-slot { position: absolute; top: 22px; left: 24px; width: min(300px, calc(100% - 48px)); }
+.home-daily-slot { position: absolute; top: 22px; left: max(24px, calc(50% - 360px)); width: min(300px, calc(100% - 48px)); }
 .home-daily-slot:empty { display: none; }
 
 .home-new-soul {
@@ -1178,8 +1178,10 @@ a.crumb:hover { color: var(--accent-ink); }
 .star-card--param:not(.star-card--verified) .param-name { color: #6d6455; }
 .param-hint {
   position: absolute;
-  left: 0;
-  top: calc(100% + 4px);
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
   font-size: 9px;
   color: #ffffffd0;
   background: #201f24b0;
@@ -1187,7 +1189,8 @@ a.crumb:hover { color: var(--accent-ink); }
   border-radius: 5px;
   pointer-events: none;
 }
-.star-card--param.star-card--edit-guide .param-hint { display: none; }
+.star-card--param.star-card--edit-guide .param-hint,
+.star-card--param:not(.star-card--first-unpinned) .param-hint { display: none; }
 
 @media (max-width: 640px) {
   .soul-topbar { left: 70px; right: 12px; top: 8px; }
@@ -1205,3 +1208,223 @@ a.crumb:hover { color: var(--accent-ink); }
 .ens-card-soulhead { display: flex; align-items: center; gap: 6px; font-size: 10px; color: color-mix(in srgb, var(--soul-color) 70%, #000); margin-bottom: 3px; }
 .ens-card-soulhead svg { flex: none; }
 .star-card--ens-soul .ens-card-title { font-size: 13px; }
+
+/* ---------- 資料パネル(解体パイプライン) ---------- */
+
+.source-list { display: flex; flex-direction: column; gap: 12px; }
+.source-row { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fffdf9; }
+.source-title { font-size: 12px; color: var(--ink); line-height: 1.5; }
+.source-url {
+  display: block;
+  font-size: 10px;
+  color: var(--accent-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.source-state { font-size: 10px; color: var(--faint); margin-top: 3px; }
+.btn-small--accent { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-bg); }
+.btn-small:disabled { opacity: 0.45; cursor: default; }
+
+.decompose-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.decompose-running-text { flex: 1; font-size: 11px; color: var(--accent-deep); line-height: 1.6; }
+.decompose-running-text::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: decompose-pulse 1.2s ease-in-out infinite;
+}
+@keyframes decompose-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.vocab-row { display: flex; gap: 10px; align-items: flex-start; }
+.vocab-term {
+  flex: none;
+  width: 44px;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--accent-deep);
+  line-height: 1.7;
+}
+.vocab-row .panel-text { margin-bottom: 6px; }
+
+/* アンサンブルの出典カード */
+.star-card--ens-source .ens-card-title { font-size: 12px; }
+.ens-card-sub { font-size: 11px; color: #6d6455; margin-top: 2px; line-height: 1.5; }
+
+/* ---------- アンサンブル: 招集パネル・発言カード ---------- */
+
+.ens-members {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: min(300px, calc(100% - 48px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 1px 3px rgba(60, 50, 20, 0.05);
+}
+.ens-members-label { font-size: 11px; color: var(--faint); margin-bottom: 8px; letter-spacing: 0.05em; }
+.ens-members-text { font-size: 12px; color: var(--text); line-height: 1.7; }
+.ens-member-list { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 12px; }
+.ens-member { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink); }
+.ens-member svg { flex: none; }
+.ens-member--stage { color: var(--muted); }
+.ens-member-theory-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #cfc6b3;
+  background: radial-gradient(circle, transparent 0 4px, #cfc6b3 4px 5px, transparent 5px);
+}
+.ens-member--theory { color: var(--muted); }
+.ens-listen { width: 100%; }
+
+@media (max-width: 640px) {
+  .ens-members { right: 12px; bottom: 12px; width: calc(100% - 24px); padding: 10px 14px; }
+  .ens-members-text { font-size: 11px; }
+  .ens-heading { top: 12px; left: 14px; }
+}
+
+/* 招集中のまとまりに含まれるカード */
+.star-card--ens.star-card--in-focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 2px 8px rgba(184, 134, 59, 0.14);
+}
+
+.ens-card-kind--accent { color: var(--accent-ink); }
+.star-card--ens-task-app {
+  background: var(--accent-bg);
+  border: 1px dashed var(--accent-line);
+}
+.star-card--ens-task-app .ens-card-title { color: #5c4c26; }
+.ens-dot-unverified {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  border: 1.4px dashed var(--accent);
+  vertical-align: 1px;
+}
+
+.star-card--ens-speech {
+  border: 1px solid var(--accent-line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 10px 30px rgba(60, 50, 20, 0.14);
+  gap: 8px;
+  z-index: 3;
+}
+.speech-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--accent-ink); letter-spacing: 0.04em; margin-bottom: 2px; }
+.speech-avatars { display: flex; flex: none; }
+.speech-avatars svg { border-radius: 50%; box-shadow: 0 0 0 2px #fff; }
+.speech-avatars svg + svg { margin-left: -8px; }
+.speech-voice { font-size: 12px; color: var(--text); line-height: 1.7; }
+.speech-speaker { font-weight: 500; }
+.speech-chain {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-size: 11px;
+  color: #5c4c26;
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.speech-chain-label {
+  display: inline-block;
+  min-width: 58px;
+  margin-right: 6px;
+  font-size: 10px;
+  color: var(--faint);
+}
+.speech-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.speech-feedback { font-size: 10px; color: var(--faint); }
+.speech-feedback--worked { color: #4f7a3f; }
+.speech-feedback--not { color: var(--rust); }
+
+.panel-readonly { font-size: 12px; color: var(--text); line-height: 1.7; margin-bottom: 12px; white-space: pre-wrap; }
+.analog-box .panel-readonly { color: #5c4c26; }
+.yt-embed { position: relative; width: 100%; aspect-ratio: 16 / 9; margin-bottom: 12px; border-radius: 8px; overflow: hidden; background: #000; }
+.yt-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+a.btn-secondary { display: block; }
+
+/* ---------- MIDI・オーディオのカード ---------- */
+
+.star-card--ens-midi {
+  background: #fffdf7;
+  border: 1px solid var(--accent-line);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(184, 134, 59, 0.12);
+}
+.midi-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.midi-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-line);
+  color: var(--accent-ink);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ens-card-sub--accent { color: var(--accent-ink); }
+.piano-roll { display: block; height: 36px; margin-top: 6px; background: #f7f2e7; border-radius: 4px; }
+.panel-roll .piano-roll { height: 90px; }
+.roll-notes rect { fill: var(--accent); }
+.roll-bars line { stroke: #e4ddd0; stroke-width: 0.6; }
+.roll-marker { stroke: var(--accent-deep); stroke-width: 0.8; stroke-dasharray: 2 2; }
+.waveform { display: block; height: 28px; margin-top: 6px; }
+.waveform rect { fill: #b3a98f; }
+.panel-roll { margin-bottom: 14px; }
+.panel-roll .waveform { height: 60px; }
+.audio-duration { font-size: 10px; color: var(--faint); align-self: center; margin-left: auto; font-family: var(--mono); }
+
+/* ---------- 入口画面の今日の課題 ---------- */
+
+.home-daily {
+  border: 1px solid #e6d5ab;
+  background: var(--accent-bg);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+.home-daily-label { font-size: 10px; color: var(--accent-ink); letter-spacing: 0.08em; margin-bottom: 5px; }
+.home-daily-text { font-size: 13px; color: #3a3327; line-height: 1.6; }
+.home-daily-reason { font-size: 11px; color: #6d6455; line-height: 1.6; margin-top: 4px; }
+.home-daily-link { display: inline-block; margin-top: 8px; font-size: 12px; color: #8a611c; text-decoration: none; }
+.home-daily-link:hover { color: var(--accent-deep); }
+
+/* ---------- 設定ダイアログのチェック欄 ---------- */
+
+.modal .modal-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+  margin: 4px 0 14px;
+}
+.modal .modal-check[hidden] { display: none; }
+.modal .modal-check input { width: auto; margin: 3px 0 0; display: inline-block; }

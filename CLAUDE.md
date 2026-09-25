@@ -91,11 +91,49 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 - 開発は段階ごとにpushし、実機確認を挟みながら最後まで進める
   (1.入口画面 2.ソウル画面 3.解体パイプライン 4.アンサンブル 5.出力(MIDI/WAV/レシピ) 6.日次課題)
 
+## 画面とファイルの構成(2026-09-25、段階1〜6を実装)
+
+| ファイル | 役割 |
+|---|---|
+| `js/app.js` | 中核。データモデル(`state.souls` / `state.ensembles` / `prefs` / `daily`、version 2)と旧形式からの移行、ハッシュでの画面切り替え(`#/`・`#/soul/<id>/<moduleId>`・`#/ensemble/<stageId>`)、カード描画とASTRの共通処理、右パネル、`showChoiceDialog()`/`showFormDialog()` |
+| `js/screens/home.js` | 入口画面(ソウルの星・進行度リング・検索・新しいソウル・今日の課題) |
+| `js/screens/soul.js` | ソウル画面(左のモジュールタブ、スクショへのピン留め、右のパラメータ詳細) |
+| `js/screens/ensemble.js` | アンサンブル画面(カード各種、自動招集、「アンサンブルを聴く」、効いた/効かなかったの書き戻し) |
+| `js/decompose.js` | 資料パネルと解体パイプライン、共通語彙の変換表、スクショからのパラメータ読み取り |
+| `js/midi.js` | MIDIカード(発言→MIDI、SMF書き出し、簡易シンセ試聴、OfflineAudioContextでのWAV書き出し) |
+| `js/audio.js` | オーディオカード(Opus/Oggへの圧縮+peaks、Drive保存、Web Audioで再生) |
+| `js/daily.js` | 日次課題(1日1回、未確認パラメータから選んでコンサートホールのアンサンブルへ) |
+
+- **画面の仕組み**: `applyRoute()`が画面モジュール(`LYRA.screens.*`)の`enter(route)`を呼ぶ。画面は
+  `scope = { cards, connections }`に「今のキャンバスに載せるカード配列・線の配列」を渡すだけで、
+  `js/canvas.js`由来の`getCardById()`・`createAstrConnection()`などはscopeに対して働く。
+  画面側は`buildCard / cardHexes / onHexAction / onCardTap / onCardMoved / onConnectionsChanged /
+  afterRender / leave`だけを実装する。`connections: null`の画面(入口画面)ではASTRを出さない
+- **scopeの配列は元データそのものを渡す**(入口=`state.souls`、アンサンブル=`ensemble.cards`、
+  ソウル画面の線=`soul.connections`)。削除は`removeCardFromScope()`がspliceで行うので、
+  **scopeに渡した配列を`filter()`で作り直さない**(参照が切れて保存されなくなる)。ソウル画面のcardsだけは
+  `[module, ...そのモジュールのparams]`の派生配列なので、パラメータ削除時は`soul.params`側も別途外す
+- 画面ファイル・機能ファイルはすべて`(function () { ... })();`で包み、外へ出す関数は`window.*`か
+  `LYRA.screens.*`に明示的に置く(全JSがグローバルスコープを共有するため)
+- **解体パイプライン**: 構造把握(モジュール名+パラメータ名だけ)→モジュールごと(20件ずつ)の詳細抽出
+  →共通語彙の変換表、の順。呼び出しの間は4.5秒空ける(無料枠のRPM対策)。途中で止まったら
+  `source.pending`に進み具合が残り「続きから解体」で再開できる。PDFはGemini Files APIへ1回上げて
+  URIを使い回し、Files APIがブラウザから使えなかった時だけ18MBまでのインライン送信に切り替える
+  (**Files APIのブラウザからの動作は実機未確認**。失敗時は`?debug`のログに理由が出る)
+- 著作権ゲート: Web記事の本文は解体にだけ使い保存しない。抽出した説明は160字・140字で切り詰める。
+  出典・テキストに書き出し機能は無い。書き出せるのはアプリが生成したMIDI(.mid)・WAV・パラメータレシピだけ
+- アンサンブルの招集は「線でつながったカードのまとまり」単位。最後にタップ/移動したカードの
+  まとまり(無ければ最後に結んだ線のまとまり)が対象で、そのカードに金色の枠が付く。ホームの舞台は
+  毎回「場(STAGE)」として参加し、汎用ペルソナ「楽典」も毎回参加する
+- オーディオは既定でOpus/Ogg(約96kbps)に圧縮して保存(WebCodecsのAudioEncoder+自前のOggの
+  カプセル化)。AudioEncoderが無いブラウザではモノラル22.05kHzのWAV。「元の音質のまま」は取り込み時の選択のみ
+
 ## 現在の状態
 
-- 共通基盤の土台のみ(テキストカード1種類を置いて線で結べる最小構成)
+- 段階1〜6(入口画面・ソウル画面・解体パイプライン・アンサンブル・MIDI/WAV/レシピ・日次課題)を実装済み。
+  Drive・サインイン・GeminiをモックにしたローカルのテストページでPCのChromeで動作確認した。
+  **実機(本物のGemini・Drive・スマホ)ではまだ確認していない**
 - GCPプロジェクト`LYRA`・OAuthクライアント・Gemini APIキーの発行、GitHub Pages公開まで完了(2026-09-25)。
-  公開URLでサインインし、Driveに`LYRA/lyra-data.json`が作られることを実機確認済み。
-  OAuth同意画面は**本番環境**(「テスト」ではテストユーザーが保存されず403になった。README.md手順4参照)。
-  Gemini APIキーはまだどの機能からも呼んでいないため未検証
-- 次に着手するもの: ハンドオフ4.1節の入口画面(全ソウルを星として自由配置で俯瞰)から、優先順位をユーザーと相談して決める
+  OAuth同意画面は**本番環境**(「テスト」ではテストユーザーが保存されず403になった。README.md手順4参照)
+- 実機で確かめたいこと: PDFの解体(Files API)、スマホでの右パネル(下からのシート)とモジュールタブ、
+  長押しでのパラメータのピン留め、Oggの再生(iPhoneのSafari)、MIDI書き出しをCubaseで読めるか

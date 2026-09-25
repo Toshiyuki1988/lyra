@@ -65,7 +65,6 @@
         { id: 'overview', label: '概要', icon: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', onClick: () => showPanel('module') },
       ]);
       renderScreenshot();
-      layoutUnpinned();
       document.addEventListener('paste', handlePaste);
       if (window.matchMedia('(min-width: 900px)').matches) showPanel('module');
       return true;
@@ -109,6 +108,10 @@
       }
     },
 
+    afterRender() {
+      layoutUnpinned();
+    },
+
     onCardTap(card) {
       if (card === module) showPanel('module');
       else selectParam(card.id);
@@ -118,6 +121,7 @@
       if (card === module) return;
       if (!card.pinned) {
         card.pinned = true;
+        delete card.suggested;
         card.updatedAt = new Date().toISOString();
         el.classList.remove('star-card--unpinned');
         const hint = el.querySelector('.param-hint');
@@ -222,17 +226,19 @@
     const startY = module.screenshot ? 20 : 70;
     let row = 0;
     paramsOf(module)
-      .filter((p) => !p.pinned)
+      .filter((p) => !p.pinned && !p.suggested)
       .forEach((p) => {
         p.x = startX;
         p.y = startY + row * UNPINNED_ROW_HEIGHT;
-        row += 1;
         const el = cardElById(p.id);
         if (el) {
           el.dataset.x = p.x;
           el.dataset.y = p.y;
           applyCardTransform(el);
+          // 「長押しでつかんで…」のヒントは列の先頭の1つにだけ出す(全部に出すと重なって読めない)
+          el.classList.toggle('star-card--first-unpinned', row === 0);
         }
+        row += 1;
       });
     redrawAsterismLines();
   }
@@ -318,6 +324,32 @@
     showPanel('module');
   }
 
+  /** スクショに写っているパラメータ名と位置をGeminiに読み取らせ、候補の位置に置く(js/decompose.js) */
+  async function readFromScreenshot(btn) {
+    const choice = await showChoiceDialog({
+      title: 'スクショからパラメータを読み取りますか?',
+      message: 'Geminiにこのページのスクショを見せて、ラベルと位置を読み取らせます(1回呼び出します)。\n' +
+        '読み取った位置は候補なので、点線のまま置かれます。ずれていたら長押しで動かして合わせてください。人が合わせた位置は上書きしません。',
+      options: [
+        { label: 'やめる', value: 'cancel', secondary: true },
+        { label: '読み取る', value: 'read' },
+      ],
+    });
+    if (choice !== 'read') return;
+    btn.disabled = true;
+    const targetModule = module;
+    setStatus('スクショを読み取っています…', { busy: true });
+    try {
+      const count = await readParamsFromScreenshot(soul, targetModule);
+      setStatus(`${count}件のパラメータを候補の位置に置きました`, { important: true });
+      if (module === targetModule) applyRoute();
+    } catch (err) {
+      console.error(err);
+      setStatus(`読み取れませんでした: ${err.message}`, { important: true });
+      btn.disabled = false;
+    }
+  }
+
   /* ---------------- モジュール ---------------- */
 
   async function addModule() {
@@ -336,7 +368,7 @@
   }
 
   function createModule(name) {
-    const m = { id: newId(), name, x: -70, y: -70, screenshot: null, createdAt: new Date().toISOString() };
+    const m = makeModule(name);
     soul.modules.push(m);
     return m;
   }
@@ -372,26 +404,6 @@
   }
 
   /* ---------------- パラメータ ---------------- */
-
-  function makeParam(moduleId, fields) {
-    const now = new Date().toISOString();
-    return {
-      id: newId(),
-      moduleId,
-      name: fields.name,
-      range: fields.range || '',
-      readings: fields.readings || [{ id: newId(), sourceId: null, page: '', effect: '', intent: '' }],
-      analog: fields.analog || '',
-      x: 0,
-      y: 0,
-      pinned: false,
-      verified: false,
-      notes: [],
-      links: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-  }
 
   async function addParamManually() {
     if (!module) {
@@ -675,7 +687,8 @@
       (module.screenshot
         ? `<div class="panel-shot-row"><span class="panel-source">🖼 ${escapeHtml(module.screenshot.name || '')} · ${formatDate(module.screenshot.addedAt)}</span></div>` +
           `<div class="panel-inline-actions"><button type="button" class="btn-small" data-action="shot">差し替える</button>` +
-          `<button type="button" class="btn-small" data-action="detach">外す</button></div>`
+          `<button type="button" class="btn-small" data-action="detach">外す</button>` +
+          `<button type="button" class="btn-small btn-small--accent" data-action="read-shot">スクショからパラメータを読み取る</button></div>`
         : `<div class="panel-empty">${soul.category === 'plugin' ? 'このページのUIのスクショを貼ると、パラメータを実際の位置にピン留めできます。画像を選ぶか、Ctrl+Vで貼り付け。' : 'スクショは任意です(UIを持たない対象は、カードを自由に並べるだけで大丈夫です)。'}</div>` +
           `<div class="panel-inline-actions"><button type="button" class="btn-small" data-action="shot">スクショを貼る</button></div>`) +
       `</div>` +
@@ -702,6 +715,8 @@
     panel.querySelectorAll('[data-action="shot"]').forEach((b) => b.addEventListener('click', pickScreenshot));
     const detach = panel.querySelector('[data-action="detach"]');
     if (detach) detach.addEventListener('click', detachScreenshot);
+    const readShot = panel.querySelector('[data-action="read-shot"]');
+    if (readShot) readShot.addEventListener('click', () => readFromScreenshot(readShot));
     panel.querySelector('[data-action="add-param"]').addEventListener('click', addParamManually);
     panel.querySelector('[data-action="rename"]').addEventListener('click', renameModule);
     panel.querySelector('[data-action="delete-module"]').addEventListener('click', confirmDeleteModule);

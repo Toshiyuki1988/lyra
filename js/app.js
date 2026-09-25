@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsError = document.getElementById('settings-error');
   els.settingsSaveBtn = document.getElementById('settings-save-btn');
   els.settingsCancelBtn = document.getElementById('settings-cancel-btn');
+  els.settingsDaily = document.getElementById('settings-daily');
+  els.settingsDailyRow = document.getElementById('settings-daily-row');
   els.ensembleNavBtn = document.getElementById('ensemble-nav-btn');
   els.ensembleMenu = document.getElementById('ensemble-menu');
 
@@ -124,6 +126,9 @@ function openSettings() {
   els.settingsApiKey.value = CONFIG.GEMINI_API_KEY;
   els.settingsError.hidden = true;
   els.settingsCancelBtn.hidden = !isConfigured(); // 初回の必須設定中は閉じる手段を出さない
+  // 日次課題のオン/オフはDriveのデータ(state.prefs)に保存するため、読み込み後だけ出す
+  els.settingsDailyRow.hidden = !dataLoaded;
+  els.settingsDaily.checked = Boolean(state.prefs.dailyTask);
   els.settingsModal.classList.add('visible');
 }
 
@@ -141,6 +146,12 @@ function handleSaveSettings() {
   }
   saveUserConfig({ clientId, apiKey });
   closeSettings();
+  if (dataLoaded && state.prefs.dailyTask !== els.settingsDaily.checked) {
+    state.prefs.dailyTask = els.settingsDaily.checked;
+    scheduleAutoSave();
+    if (state.prefs.dailyTask && typeof runDailyTask === 'function') runDailyTask();
+    if (currentRoute && currentRoute.screen === 'home') applyRoute();
+  }
   whenGisReady(() => initAuth(onSignedIn, onSignInFailed));
   if (!dataLoaded) {
     els.signInBtn.hidden = false;
@@ -197,6 +208,7 @@ async function onSignedIn() {
     applyRoute();
     setStatus('読み込みました');
     if (migrated) scheduleAutoSave();
+    if (typeof runDailyTask === 'function') runDailyTask();
   } catch (err) {
     console.error(err);
     setStatus(`読み込みに失敗しました: ${err.message}`, { important: true });
@@ -224,6 +236,35 @@ function makeSoul({ name, category, color, x, y, isDefaultStage }) {
     sources: [], // 出典(PDF・Web記事・YouTube・スクショ)
     connections: [], // ソウル画面での手動Asterism
     notes: [], // ソウル全体への気づき
+    vocabulary: [], // 共通語彙への変換表
+  };
+}
+
+function makeModule(name) {
+  return { id: newId(), name, x: -70, y: -70, screenshot: null, createdAt: new Date().toISOString() };
+}
+
+/**
+ * パラメータ(ソウル画面の葉)を作る。readingsは資料ごとの説明で、同じパラメータの説明が資料ごとに
+ * 食い違っても上書きせず併記する(2026-09-25決定)。sourceIdがnullのreadingは手入力。
+ */
+function makeParam(moduleId, fields) {
+  const now = new Date().toISOString();
+  return {
+    id: newId(),
+    moduleId,
+    name: fields.name,
+    range: fields.range || '',
+    readings: fields.readings || [{ id: newId(), sourceId: null, page: '', effect: '', intent: '' }],
+    analog: fields.analog || '',
+    x: 0,
+    y: 0,
+    pinned: false,
+    verified: false,
+    notes: [],
+    links: [],
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -234,6 +275,7 @@ function normalizeSoul(soul) {
   soul.sources = soul.sources || [];
   soul.connections = soul.connections || [];
   soul.notes = soul.notes || [];
+  soul.vocabulary = soul.vocabulary || []; // 共通語彙(密度・明度・動き…)への変換表(js/decompose.js)
   if (!soul.color) soul.color = SOUL_COLORS[0];
   return soul;
 }
@@ -395,6 +437,7 @@ function applyRoute() {
   if (ok === false) return; // 画面側が別のルートへ飛ばした(存在しないソウル等)
 
   renderAllCards();
+  if (screen.afterRender) screen.afterRender();
   const memory = viewportMemory[routeKey(route)];
   if (memory) setViewportSnapshot(memory);
   else requestAnimationFrame(() => fitAllCardsToScreen());

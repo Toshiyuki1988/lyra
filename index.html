@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260925a">
+<link rel="stylesheet" href="css/style.css?v=20260925b">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
@@ -101,6 +101,10 @@
         Gemini APIキー(Auth Key)
         <input type="text" id="settings-api-key" placeholder="AQ.Ab8..." autocomplete="off">
       </label>
+      <label id="settings-daily-row" class="modal-check" hidden>
+        <input type="checkbox" id="settings-daily">
+        毎日の課題(アプリから)をアンサンブル in コンサートホールに出す
+      </label>
       <p id="settings-error" class="modal-error" hidden></p>
       <div class="modal-actions">
         <button id="settings-cancel-btn" class="secondary" hidden>キャンセル</button>
@@ -117,12 +121,16 @@
   <script src="js/config.js?v=20260924a"></script>
   <script src="js/auth.js?v=20260924a"></script>
   <script src="js/drive.js?v=20260924a"></script>
-  <script src="js/gemini.js?v=20260924a"></script>
+  <script src="js/gemini.js?v=20260925b"></script>
   <script src="js/sound.js?v=20260924a"></script>
   <script src="js/canvas.js?v=20260925a"></script>
-  <script src="js/app.js?v=20260925a"></script>
-  <script src="js/screens/home.js?v=20260925a"></script>
-  <script src="js/screens/soul.js?v=20260925a"></script>
-  <script src="js/screens/ensemble.js?v=20260925a"></script>
+  <script src="js/app.js?v=20260925b"></script>
+  <script src="js/decompose.js?v=20260925b"></script>
+  <script src="js/midi.js?v=20260925b"></script>
+  <script src="js/audio.js?v=20260925b"></script>
+  <script src="js/daily.js?v=20260925b"></script>
+  <script src="js/screens/home.js?v=20260925b"></script>
+  <script src="js/screens/soul.js?v=20260925b"></script>
+  <script src="js/screens/ensemble.js?v=20260925b"></script>
 </body>
 </html>

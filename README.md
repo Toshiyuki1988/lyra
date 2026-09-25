@@ -26,13 +26,22 @@ lyra/
     ├── config.js        … アプリの既定設定(秘密情報は含まない)
     ├── auth.js          … Google Identity Services によるOAuth(CONSTELLATIONから流用)
     ├── drive.js         … Drive API v3 ラッパー(CONSTELLATIONから流用)
-    ├── gemini.js        … Gemini API ラッパー(PDF入力・responseSchema対応)
+    ├── gemini.js        … Gemini API ラッパー(PDF入力・Files API・responseSchema対応)
     ├── sound.js         … 操作音(CONSTELLATIONから共通部分のみ流用)
     ├── canvas.js        … キャンバス操作・編集ガイド・ASTRジェスチャー(CONSTELLATIONから流用)
-    └── app.js           … 画面のエントリーポイント
+    ├── app.js           … 中核(データ・画面切り替え・カードとASTRの共通処理・ダイアログ)
+    ├── decompose.js     … 資料の解体パイプライン
+    ├── midi.js          … MIDIの生成・試聴・.mid/WAV書き出し
+    ├── audio.js         … オーディオの圧縮・保存・再生
+    ├── daily.js         … 日次課題
+    └── screens/
+        ├── home.js      … 入口画面(ソウルの星図)
+        ├── soul.js      … ソウル画面(モジュール・パラメータ)
+        └── ensemble.js  … アンサンブル画面
 ```
 
-データは各ユーザー自身のGoogle Driveのマイドライブ直下に作成される `LYRA` フォルダに保存される。
+データは各ユーザー自身のGoogle Driveのマイドライブ直下に作成される `LYRA` フォルダに保存される
+(`lyra-data.json` と、`screenshots/`・`sources/`・`audio/` サブフォルダ)。
 
 ## CONSTELLATIONとの分離(重要)
 
