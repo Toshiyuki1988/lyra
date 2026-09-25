@@ -1894,6 +1894,8 @@ ${WRITEUP_RULES}`;
       `<button type="button" class="re-mode" data-re-mode="note">ノートを直す</button>` +
       `<button type="button" class="re-mode" data-re-mode="range">書き出す範囲を囲む</button></div>` +
       `<label class="re-field">音色<select data-re-voice>${VOICES.map((v) => `<option value="${v.id}"${v.id === voiceOf(card).id ? ' selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}</select></label>` +
+      `<label class="re-field">テンポ<input type="number" data-re-tempo min="20" max="300" step="1" value="${Math.round(m.tempo)}"><small>BPM</small></label>` +
+      `<label class="re-field">試聴の音量<input type="range" data-re-volume min="0" max="100" step="1" value="${previewVolume()}"><small data-re-volume-out>${previewVolume()}</small></label>` +
       `<label class="re-field">細かさ<select data-re-snap><option value="1">1拍</option><option value="0.5">8分</option><option value="0.25" selected>16分</option></select></label>` +
       partSelect +
       `<button type="button" class="btn-small" data-re="delete">選んだ音を消す</button>` +
@@ -1925,6 +1927,8 @@ ${WRITEUP_RULES}`;
     let anchor = null;
     let preview = null;
     let dirty = false;
+    let tempo = m.tempo; // テンポ(BPM)。保存すると midi.tempo(と途中のテンポ変化・設計図のテンポ)に書き戻す
+    const tempoChanged = () => Math.abs(tempo - m.tempo) > 0.01;
     let lastDown = null; // ダブルクリックの見分け用 { i, t }
     const undoStack = [];
 
@@ -1945,7 +1949,13 @@ ${WRITEUP_RULES}`;
         `x="${xOf(n.start).toFixed(1)}" y="${(yOf(n.pitch) + 0.5).toFixed(1)}" width="${Math.max(2, xOf(n.duration) - 1).toFixed(1)}" height="${Math.max(2, rowH - 1).toFixed(1)}" rx="1.5"/>`).join('');
       drawSel();
     };
-    const draftMidi = () => ({ ...m, notes: notes.slice().sort((a, b) => a.start - b.start) });
+    const draftMidi = () => ({
+      ...m,
+      tempo,
+      // 途中のテンポ変化も同じ比率で動かす
+      tempoChanges: m.tempoChanges.map((t) => ({ ...t, bpm: Math.round(t.bpm * (tempo / m.tempo) * 10) / 10 })),
+      notes: notes.slice().sort((a, b) => a.start - b.start),
+    });
     const drawSel = () => {
       if (!sel) {
         selEl.setAttribute('visibility', 'hidden');
@@ -1960,7 +1970,7 @@ ${WRITEUP_RULES}`;
       noteLayer.querySelectorAll('.re-note').forEach((el) => el.classList.toggle('re-note--out', Boolean(inSel) && !inSel.has(Number(el.dataset.i))));
       const n = notes[picked];
       const range = sel ? selectionLabel({ ...card, midi: draftMidi(), selection: sel }).replace('書き出す範囲', '範囲') : '書き出す範囲: 全体';
-      info.textContent = `${notes.length}音${dirty ? '(未保存の変更あり)' : ''} · ${range}` +
+      info.textContent = `${notes.length}音${dirty || tempoChanged() ? '(未保存の変更あり)' : ''} · テンポ ${Math.round(tempo)} · ${range}` +
         (n ? ` · 選んだ音: ${midiToNoteName(n.pitch)}(${beatLabel(n.start, m)}から${Math.round(n.duration * 100) / 100}拍${n.part ? `・${PART_LABELS[n.part]}` : ''})` : '');
       playBtn.textContent = preview ? '■ 停止' : sel ? '▶ 範囲を試聴' : '▶ 試聴';
     };
@@ -2109,10 +2119,10 @@ ${WRITEUP_RULES}`;
       document.removeEventListener('keydown', onKey, true);
     };
     const tryClose = async () => {
-      if (dirty) {
+      if (dirty || tempoChanged()) {
         const choice = await showChoiceDialog({
           title: '編集した内容を捨てますか?',
-          message: '保存していないノートの変更があります。',
+          message: '保存していないノート・テンポの変更があります。',
           options: [
             { label: '編集に戻る', value: 'back', secondary: true },
             { label: '捨てて閉じる', value: 'discard', danger: true },
@@ -2124,7 +2134,7 @@ ${WRITEUP_RULES}`;
     };
     const onKey = (event) => {
       if (document.querySelectorAll('.modal-overlay').length > 1) return; // 確認ダイアログを出している間
-      if (event.target && event.target.tagName === 'SELECT') return;
+      if (event.target && (event.target.tagName === 'SELECT' || event.target.tagName === 'INPUT')) return; // テンポの数字などを打っている間
       // カードの編集ガイドのキー(Delete=カードの削除、E=編集)に届かないよう、編集画面を開いている間は止める
       event.stopPropagation();
       if (event.key === 'Escape') {
@@ -2194,6 +2204,12 @@ ${WRITEUP_RULES}`;
         return;
       }
       if (dirty) applyEdit(card, draft.notes);
+      const tempoSaved = tempoChanged();
+      if (tempoSaved) {
+        card.midi.tempo = draft.tempo;
+        card.midi.tempoChanges = draft.tempoChanges;
+        if (card.midi.sketch) card.midi.sketch.tempo = draft.tempo;
+      }
       if (dirty && rescaled) {
         // リスケールしたら、作り直しやアンサンブルへの説明で使うキー・スケール名も合わせる
         const shortName = rescaled.label.split(/ \/ | \(|（/)[0];
@@ -2208,12 +2224,34 @@ ${WRITEUP_RULES}`;
       close();
       if (window.refreshEnsembleCard) window.refreshEnsembleCard(card);
       refreshMini();
-      setStatus(dirty
-        ? `「${card.name}」を保存しました。ASTRでソウルやカードをつないで「作り直す」と、それを踏まえてブラッシュアップします`
+      setStatus(dirty || tempoSaved
+        ? `「${card.name}」を保存しました${tempoSaved ? `(テンポ ${Math.round(draft.tempo)})` : ''}。ASTRでソウルやカードをつないで「作り直す」と、それを踏まえてブラッシュアップします`
         : card.selection ? `${selectionLabel(card)}。⇩のチップでこの範囲だけを書き出します` : '書き出す範囲を全体にしました');
       if (opts.onDone) opts.onDone();
       else if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
     });
+    /* ---- テンポと試聴の音量 ---- */
+    const tempoEl = overlay.querySelector('[data-re-tempo]');
+    const applyTempo = () => {
+      const v = Number(tempoEl.value);
+      if (!Number.isFinite(v) || v < 20 || v > 300) return;
+      tempo = v;
+      drawSel();
+      // 試聴中なら新しいテンポで頭から鳴らし直す
+      if (preview) {
+        stopPreview();
+        playBtn.click();
+      }
+    };
+    tempoEl.addEventListener('change', applyTempo);
+    tempoEl.addEventListener('keydown', (event) => { if (event.key === 'Enter') applyTempo(); });
+    const volEl = overlay.querySelector('[data-re-volume]');
+    volEl.addEventListener('input', () => {
+      setPreviewVolume(Number(volEl.value));
+      overlay.querySelector('[data-re-volume-out]').textContent = volEl.value;
+    });
+    volEl.addEventListener('change', () => scheduleAutoSave());
+
     /* ---- スケールでリスケール ---- */
     const scEl = (name) => overlay.querySelector(`[data-sc-${name}]`);
     let rescaled = null; // 保存時に設計図のキー・スケール名を書き換えるため
@@ -2715,7 +2753,8 @@ ${WRITEUP_RULES}`;
     filter.frequency.value = 3200;
     filter.Q.value = 0.7;
     filter.connect(out);
-    out.connect(ctx.destination);
+    // 試聴(本体のAudioContext)は音量のつまみ(previewMaster)を通す。WAVの書き出し(OfflineAudioContext)は通さない
+    out.connect(typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext ? ctx.destination : previewMaster(ctx));
 
     const lane = (num) => m.cc.find((l) => l.controller === num);
     const cutoff = lane(74);
@@ -2816,6 +2855,30 @@ ${WRITEUP_RULES}`;
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     return buf;
+  }
+
+  /* ---- 試聴の音量(2026-09-25、ユーザー要望「MIDIエディターで再生速度、音量を調整できるように」) ----
+   * 全カード共通の設定で state.prefs.previewVolume(0〜100、既定80=これまでの音量)。試聴の音は必ずこの
+   * ゲインを通るので、再生中につまみを動かしてもすぐ効く。書き出すMIDI・WAVには影響しない。 */
+  let masterGain = null;
+
+  function previewVolume() {
+    const v = state.prefs && Number(state.prefs.previewVolume);
+    return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 80;
+  }
+
+  function previewMaster(ctx) {
+    if (!masterGain || masterGain.context !== ctx) {
+      masterGain = ctx.createGain();
+      masterGain.connect(ctx.destination);
+    }
+    masterGain.gain.value = previewVolume() / 80;
+    return masterGain;
+  }
+
+  function setPreviewVolume(v) {
+    state.prefs.previewVolume = Math.round(Math.min(100, Math.max(0, v)));
+    if (masterGain) masterGain.gain.setTargetAtTime(previewVolume() / 80, masterGain.context.currentTime, 0.02);
   }
 
   let playing = null; // { cardId, handle, timer }

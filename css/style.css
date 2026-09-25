@@ -1621,3 +1621,5 @@ a.btn-secondary { display: block; }
   100% { box-shadow: 0 0 0 26px rgba(184, 134, 59, 0); }
 }
 .star-card--born { animation: card-born 0.9s ease-out 2; }
+.re-field input[type="number"][data-re-tempo] { width: 4.2em; font-size: 12px; padding: 3px 4px; }
+.re-field input[type="range"][data-re-volume] { width: 90px; accent-color: var(--accent); }
