@@ -821,7 +821,7 @@ function showChoiceDialog({ title, message, options }) {
 /**
  * 入力欄つきの汎用ダイアログ。背景タップ・キャンセルでnull、送信で {name: value} を返す。
  * @param {{title: string, message?: string, submitLabel?: string, fields: {
- *   name: string, label: string, type?: 'text'|'textarea'|'select'|'color', value?: string,
+ *   name: string, label: string, type?: 'text'|'textarea'|'select'|'color'|'range', value?: string,
  *   placeholder?: string, options?: {value: string, label: string}[], required?: boolean}[]}} params
  *   type 'color' は SOUL_COLORS のスウォッチから選ぶ
  * @returns {Promise<object|null>}
@@ -840,6 +840,11 @@ function showFormDialog({ title, message, submitLabel, fields }) {
       `<div class="modal-actions"><button type="button" class="secondary" data-cancel>キャンセル</button>` +
       `<button type="submit">${escapeHtml(submitLabel || '保存')}</button></div>`;
     overlay.appendChild(form);
+
+    form.querySelectorAll('.modal-range input[type="range"]').forEach((input) => {
+      const out = input.closest('.modal-range').querySelector('output');
+      input.addEventListener('input', () => { out.textContent = input.value; });
+    });
 
     form.querySelectorAll('.swatches').forEach((group) => {
       group.addEventListener('click', (event) => {
@@ -888,6 +893,15 @@ function formFieldHtml(f) {
   }
   if (f.type === 'textarea') {
     return `<label>${label}<textarea data-field="${f.name}" rows="4" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(value)}</textarea></label>`;
+  }
+  if (f.type === 'range') {
+    // ゲージ(スライダー)。ends: 左右の端の言葉、hint: 下に出す補足
+    const [left, right] = f.ends || ['', ''];
+    return `<div class="modal-field modal-range"><span class="modal-field-label">${label} <output>${escapeHtml(value)}</output></span>` +
+      `<div class="modal-range-row"><span>${escapeHtml(left)}</span>` +
+      `<input type="range" data-field="${f.name}" min="${f.min ?? 0}" max="${f.max ?? 100}" step="${f.step ?? 1}" value="${escapeHtml(value)}">` +
+      `<span>${escapeHtml(right)}</span></div>` +
+      (f.hint ? `<div class="modal-range-hint">${escapeHtml(f.hint)}</div>` : '') + `</div>`;
   }
   if (f.type === 'color') {
     const swatches = SOUL_COLORS

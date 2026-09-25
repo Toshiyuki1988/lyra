@@ -648,6 +648,13 @@ a.crumb:hover { color: var(--accent-ink); }
 .modal textarea { resize: vertical; line-height: 1.6; }
 .modal-field { margin-bottom: 12px; }
 .modal-field-label { margin-bottom: 6px; }
+.modal-range { margin-bottom: 10px; }
+.modal-range output { color: var(--accent-deep); font-weight: 600; margin-left: 4px; }
+.modal-range-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--faint); }
+.modal-range-row span { flex: none; width: 5.5em; }
+.modal-range-row span:last-child { text-align: right; }
+.modal-range-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.modal-range-hint { font-size: 10.5px; color: var(--faint); margin-top: 2px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .modal .swatch {
   width: 28px;
