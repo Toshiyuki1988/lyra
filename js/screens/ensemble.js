@@ -435,7 +435,7 @@
     }
     focusCardId = card.id;
     renderMembers();
-    makeSketch(comp);
+    makeSketch(comp, card.id);
   }
 
   /* ---- コード+旋律で鳴らす ----
@@ -448,7 +448,8 @@
     return souls.filter((s) => ['aesthetic', 'genre', 'composer'].includes(s.category));
   }
 
-  function makeSketch(compIds) {
+  /** fromCardId: 「鳴らす」を押した課題カード(できたMIDIカードをここから線でつなぐ) */
+  function makeSketch(compIds, fromCardId) {
     if (!window.LyraMidi) {
       setStatus('MIDIの機能を読み込めていません');
       return;
@@ -470,6 +471,7 @@
       // つないだMIDIのパートは差し替えに使える。気づき・課題カードの文は「光景・物語」の初期値にする(ダイアログで直せる)
       midiSources: placed.filter((c) => c.type === 'midi').slice(0, 3),
       storyDefault: userTexts(placed).join(' / '),
+      fromCardId,
       stage,
       // 音色のソウル(プラグイン)の知識はコードと旋律には効かないので渡さない
       souls: souls.filter((s) => s.category !== 'plugin' && s.category !== 'stage'),
@@ -1541,6 +1543,30 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     };
   }
 
+  /**
+   * 新しく置いたカードを見つけやすくする: 画面の外(または端)にあれば、そのカードが真ん中に来るよう画面を動かし、
+   * しばらく光らせる(2026-09-25、「どこに生成されたかわからない時がある」への対応)
+   */
+  function revealEnsembleCard(card) {
+    if (!currentRoute || currentRoute.screen !== 'ensemble') return;
+    const el = cardElById(card.id);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const v = els.viewport.getBoundingClientRect();
+    const margin = 40;
+    const visible = r.left >= v.left + margin && r.right <= v.right - margin && r.top >= v.top + margin && r.bottom <= v.bottom - margin;
+    if (!visible) {
+      const cx = (parseFloat(el.dataset.x) || 0) + el.offsetWidth / 2;
+      const cy = (parseFloat(el.dataset.y) || 0) + el.offsetHeight / 2;
+      animateViewportTo(cx, cy);
+    }
+    el.classList.remove('star-card--born');
+    void el.offsetWidth; // アニメーションをやり直すため
+    el.classList.add('star-card--born');
+    setTimeout(() => el.classList.remove('star-card--born'), 2200);
+  }
+
+  window.revealEnsembleCard = revealEnsembleCard;
   window.LyraMidiLinks = midiLinks;
   window.refreshEnsemblePanel = refreshEnsemblePanel;
   window.addCardToEnsemble = addCardToEnsemble;

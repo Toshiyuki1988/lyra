@@ -503,6 +503,7 @@
         ].filter(Boolean).join('\n'),
         memberIds: speech.memberIds || [],
         speechId: speech.id,
+        fromCardId: speech.id,
         x: (speech.x || 0) + 30,
         y: (speech.y || 0) + (speech.height || 280) + 40,
         bars: Math.max(2, bars),
@@ -564,8 +565,7 @@ ${WRITEUP_RULES}`;
         tilt: Math.round((Math.random() * 4 - 2) * 10) / 10,
         createdAt: new Date().toISOString(),
       };
-      addCardToEnsemble(stage, card);
-      refreshMini();
+      placeMidiCard(stage, card, speech.id);
       setStatus(`「${name}」を作りました。タップで試聴・書き出しができます`);
     } catch (err) {
       console.error(err);
@@ -577,6 +577,20 @@ ${WRITEUP_RULES}`;
    * 2026-09-25追加(ユーザー要望): MIDIカードにコメントすると、前のMIDIとコメントを踏まえた改善版を
    * Geminiが作り、元のカードの右隣に置いて Asterism の線で自動的につなぐ(_v2.mid, _v3.mid…)。
    * 線は原則ユーザーが手で結ぶものだが、改善の系譜を辿れるようにするため、ここだけは自動で結ぶ。 */
+
+  /**
+   * できたMIDIカードを置く共通の手順(2026-09-25、ユーザー要望「生成されたMIDIカードは課題カードからアステリズムでつなげて。
+   * どこに生成されたかわからない時がある。生成音も」)。
+   * 生んだカード(鳴らす=課題カード、MIDIにする=発言カード、作り直す=元のMIDIカード)から線を自動で結び
+   * (MIDIの系譜と同じ例外。connection.auto)、生成音を鳴らし、画面の外に置かれた時はそこまで画面を動かして光らせる。
+   */
+  function placeMidiCard(stage, card, fromCardId) {
+    addCardToEnsemble(stage, card);
+    if (fromCardId) connectEnsembleCards(stage, fromCardId, card.id);
+    refreshMini();
+    if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+    if (window.revealEnsembleCard) window.revealEnsembleCard(card);
+  }
 
   function findStageOfCard(card) {
     const stageId = Object.keys(state.ensembles).find((id) => (state.ensembles[id].cards || []).some((c) => c.id === card.id));
@@ -715,9 +729,7 @@ ${WRITEUP_RULES}(今回の版に合わせて書き直す)`;
         tilt: Math.round((Math.random() * 4 - 2) * 10) / 10,
         createdAt: new Date().toISOString(),
       };
-      addCardToEnsemble(stage, next);
-      refreshMini();
-      connectEnsembleCards(stage, card.id, next.id);
+      placeMidiCard(stage, next, card.id);
       setStatus(isSketch ? sketchStatus(midi, next.name) : `「${next.name}」を作りました`);
     } catch (err) {
       console.error(err);
@@ -1388,7 +1400,7 @@ ${ORIGINALITY_RULE}`;
     await runSketch({ ...opts, bars: Math.round(clampNum(values.bars, 2, 32, 8)), hint: values.hint, style: String(values.style || '').trim().slice(0, 120), gauges: readGauges(values), narrative: readNarrative(values, sources) });
   }
 
-  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, x, y, bars, hint, style, gauges, narrative }) {
+  async function runSketch({ stage, souls, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, hint, style, gauges, narrative }) {
     const material = window.LyraSoulMaterial || (() => '');
     const focus = focusParamIds || new Set();
     const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
@@ -1433,8 +1445,7 @@ ${WRITEUP_RULES}`;
         tilt: Math.round((Math.random() * 4 - 2) * 10) / 10,
         createdAt: new Date().toISOString(),
       };
-      addCardToEnsemble(stage, card);
-      refreshMini();
+      placeMidiCard(stage, card, fromCardId);
       setStatus(`${sketchStatus(midi, name)}。タップで試聴・書き出しができます`);
     } catch (err) {
       console.error(err);

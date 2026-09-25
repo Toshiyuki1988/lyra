@@ -8,6 +8,7 @@
 //   playAstrPressSound()       ASTR長押し確定(線を引き始めた)時の「フィヨン・・・」
 //   playAstrConnectSound()     ASTRで線が繋がった時の「ピーン」
 //   playCardMoveTickSound()    カード移動中の1回ぶんの「ピ」
+//   playMidiCreatedSound()     MIDIカードができた時の「ポロロン」(2026-09-25、LYRA独自)
 
 let soundCtx = null;
 function soundAudioCtx() {
@@ -191,3 +192,35 @@ function playCardMoveTickSound() {
   osc.stop(now + 0.08);
 }
 
+/** MIDIカードができた時の「ポロロン」: 長3和音+9度を上へ分散させ、リバーブで少し残す(2026-09-25、ユーザー要望) */
+function playMidiCreatedSound() {
+  const c = soundAudioCtx();
+  const now = c.currentTime;
+  const highpass = c.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = 500;
+  const dryGain = c.createGain();
+  dryGain.gain.value = 0.7;
+  const wetGain = c.createGain();
+  wetGain.gain.value = 0.5;
+  const convolver = c.createConvolver();
+  convolver.buffer = getSoundReverbImpulse(c);
+  highpass.connect(dryGain).connect(c.destination);
+  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+
+  // C6・E6・G6・D7(ドミソ+9度)を70msずつずらして上へ
+  [1046.5, 1318.5, 1568.0, 2349.3].forEach((freq, i) => {
+    const t = now + i * 0.07;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const peak = i === 3 ? 0.1 : 0.14;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    osc.connect(gain).connect(highpass);
+    osc.start(t);
+    osc.stop(t + 0.6);
+  });
+}
