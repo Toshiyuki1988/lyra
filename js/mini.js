@@ -36,6 +36,7 @@
     .dir button { font-size: 10px; padding: 1px 7px; }
     .flash { font-size: 10px; color: #8a4c1e; margin-top: 5px; line-height: 1.5; }
     .flash.hidden { display: none; }
+    .sel { font-size: 10px; color: #8a4c1e; margin-top: 4px; }
   `;
 
   let win = null;
@@ -69,6 +70,7 @@
           (card.concept || card.description ? `<div class="concept">${escapeHtml(card.concept || card.description)}</div>` : '') +
           (sk ? `<div class="chords">${escapeHtml(M.chordLine(sk, 8))}</div>` : '') +
           (card.commentary ? `<details><summary>解説</summary><div class="commentary">${escapeHtml(card.commentary)}</div></details>` : '') +
+          (card.selection ? `<div class="sel">${escapeHtml(M.selectionLabel(card))}</div>` : '') +
           `<div class="actions"><button type="button" data-play class="${M.isPlaying(card.id) ? 'playing' : ''}">${M.isPlaying(card.id) ? '■ 停止' : '▶ 試聴'}</button>` +
           `${M.dragChipsHtml(card)}</div></div>`;
       }).join('') : '<div class="empty">まだMIDIカードがありません。アンサンブルで「コード+旋律で鳴らす」や、発言の「MIDIにする」で作ると、ここに並びます。</div>'}</main>`;

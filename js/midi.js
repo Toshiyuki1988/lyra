@@ -904,8 +904,8 @@ ${WRITEUP_RULES}`;
 
   /* ---------------- カード・パネル ---------------- */
 
-  /** ピアノロール風の小さな図(SVG) */
-  function pianoRollSvg(midi, width, height) {
+  /** ピアノロール風の小さな図(SVG)。sel があれば選んだ範囲を枠で示す */
+  function pianoRollSvg(midi, width, height, sel) {
     if (!midi || !midi.notes.length) return '';
     const beats = totalBeats(midi);
     let lo = 127;
@@ -929,8 +929,15 @@ ${WRITEUP_RULES}`;
     const markers = midi.markers
       .map((m) => `<line class="roll-marker" x1="${((m.beat / beats) * width).toFixed(1)}" y1="0" x2="${((m.beat / beats) * width).toFixed(1)}" y2="${height}"/>`)
       .join('');
+    let selRect = '';
+    if (sel) {
+      const y1 = height - (Math.min(sel.high, hi) - lo + 1) * rowH;
+      const y2 = height - (Math.max(sel.low, lo) - lo) * rowH;
+      selRect = `<rect class="roll-sel" x="${((sel.start / beats) * width).toFixed(1)}" y="${Math.max(0, y1).toFixed(1)}" ` +
+        `width="${(((sel.end - sel.start) / beats) * width).toFixed(1)}" height="${Math.max(2, Math.min(height, y2) - Math.max(0, y1)).toFixed(1)}"/>`;
+    }
     return `<svg class="piano-roll" viewBox="0 0 ${width} ${height}" width="100%" preserveAspectRatio="none">` +
-      `<g class="roll-bars">${bars.join('')}</g>${markers}<g class="roll-notes">${rects}</g></svg>`;
+      `<g class="roll-bars">${bars.join('')}</g>${markers}<g class="roll-notes">${rects}</g>${selRect}</svg>`;
   }
 
   function buildCard(card, el) {
@@ -1010,10 +1017,10 @@ ${WRITEUP_RULES}`;
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
       (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
       (card.commentary ? `<div class="panel-section"><div class="panel-label">解説</div><div class="midi-writeup">${escapeHtml(card.commentary)}</div></div>` : '') +
-      dragOutHtml(card) +
+      `<div data-midi-export>${dragOutHtml(card)}</div>` +
       (rumination(m) ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rumination(m).check)}` +
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
-      `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}">${pianoRollSvg(m, 300, m.sketch ? 140 : 90)}</div>` +
+      `<div class="panel-roll${m.sketch ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch ? 140 : 90, card.selection)}</div>` +
       (m.sketch ? `<div class="roll-legend"><span class="roll-legend-melody">旋律</span><span class="roll-legend-chords">コード</span><span class="roll-legend-bass">ベース</span>(.midでは別トラック)</div>` + sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
       (m.sketch && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
@@ -1047,7 +1054,8 @@ ${WRITEUP_RULES}`;
     });
     panel.querySelector('[data-midi-action="wav"]').addEventListener('click', () => exportWav(card));
     panel.querySelector('[data-midi-action="revise"]').addEventListener('click', () => reviseMidi(card));
-    bindDragOut(panel, card);
+    const box = panel.querySelector('[data-midi-export]');
+    if (box) bindExportBox(box, card, panel);
   }
 
   function downloadBlob(blob, filename) {
@@ -1093,8 +1101,246 @@ ${WRITEUP_RULES}`;
   }
 
   function dragOutHtml(card) {
-    return `<div class="panel-section"><div class="panel-label">Cubaseへ持ち込む</div>${dragChipsHtml(card)}` +
+    return `<div class="panel-section"><div class="panel-label">Cubaseへ持ち込む</div>` +
+      `<div class="midi-sel-line">${escapeHtml(selectionLabel(card))}` +
+      `<button type="button" class="btn-small" data-midi-select>範囲を選ぶ</button>` +
+      (card.selection ? `<button type="button" class="btn-small" data-midi-select-clear>全体に戻す</button>` : '') + `</div>` +
+      `${dragChipsHtml(card)}` +
       `<div class="midi-drag-hint">クリックで書き出し先フォルダへ保存します(初回だけフォルダを選びます)。そのフォルダをCubaseのMediaBayかエクスプローラーで開いて、トラックへドラッグしてください</div></div>`;
+  }
+
+  /* ---- 範囲を選んで書き出す ----
+   * 2026-09-25追加(ユーザー要望「MIDIの一部分のいい感じのところだけを囲ってインポートしたい」)。
+   * 大きなピアノロールで時間(拍単位、Shiftで小節単位)×音域の四角を囲み、card.selection = {start, end, low, high}
+   * (拍・音番号。endは含まない)に残す。書き出し(⇩のチップ・ドラッグ)は選んだ範囲だけを、範囲の頭を0拍目にずらして
+   * 出す。範囲の頭をまたいで鳴っている音(伸ばした和音など)は、範囲の中の部分だけを切り出す。 */
+
+  /** 選んだ範囲だけのmidi(範囲の頭を0拍目に)。範囲が無ければそのまま */
+  function sliceMidi(m, sel) {
+    if (!sel) return m;
+    const notes = m.notes
+      .filter((n) => n.pitch >= sel.low && n.pitch <= sel.high && n.start < sel.end - EPS && n.start + n.duration > sel.start + EPS)
+      .map((n) => {
+        const start = Math.max(n.start, sel.start);
+        const end = Math.min(n.start + n.duration, sel.end);
+        return { ...n, start: start - sel.start, duration: end - start };
+      })
+      .filter((n) => n.duration >= 0.125 - EPS); // 範囲の端でほんの少しだけかかった音は捨てる
+    let tempo = m.tempo;
+    m.tempoChanges.forEach((t) => { if (t.beat <= sel.start + EPS) tempo = t.bpm; });
+    const within = (beat) => beat >= sel.start - EPS && beat < sel.end - EPS;
+    return {
+      ...m,
+      tempo,
+      notes,
+      cc: m.cc.map((l) => ({ ...l, points: l.points.filter((p) => within(p.beat)).map((p) => ({ ...p, beat: p.beat - sel.start })) })).filter((l) => l.points.length),
+      markers: m.markers.filter((x) => within(x.beat)).map((x) => ({ ...x, beat: x.beat - sel.start })),
+      tempoChanges: m.tempoChanges.filter((t) => t.beat > sel.start + EPS && t.beat < sel.end - EPS).map((t) => ({ ...t, beat: t.beat - sel.start })),
+    };
+  }
+
+  /** 書き出し用のカード(選んだ範囲だけ・ファイル名に小節を添える) */
+  function exportCard(card) {
+    if (!card.selection) return card;
+    const sel = card.selection;
+    const bpb = card.midi.beatsPerBar;
+    const base = String(card.name || 'lyra').replace(/\.mid$/i, '');
+    const from = Math.floor(sel.start / bpb) + 1;
+    const to = Math.ceil(sel.end / bpb - EPS);
+    return { ...card, name: `${base}_bars${from}${to > from ? `-${to}` : ''}.mid`, midi: sliceMidi(card.midi, sel) };
+  }
+
+  function beatLabel(beat, bpb) {
+    const bar = Math.floor(beat / bpb + EPS) + 1;
+    const inBar = Math.round((beat - (bar - 1) * bpb) * 100) / 100;
+    return inBar ? `${bar}小節${inBar + 1}拍目` : `${bar}小節目`;
+  }
+
+  function selectionLabel(card) {
+    const sel = card.selection;
+    if (!sel) return '書き出す範囲: 全体';
+    const bpb = card.midi.beatsPerBar;
+    const onBars = Math.abs(sel.start % bpb) < EPS && Math.abs(sel.end % bpb) < EPS;
+    const span = onBars
+      ? `${sel.start / bpb + 1}〜${sel.end / bpb}小節`
+      : `${beatLabel(sel.start, bpb)}〜${beatLabel(sel.end, bpb)}の手前`;
+    const count = sliceMidi(card.midi, sel).notes.length;
+    return `書き出す範囲: ${span}・${midiToNoteName(sel.low)}〜${midiToNoteName(sel.high)}(${count}音)`;
+  }
+
+  /** パネルの書き出し欄とロールを、選んだ範囲に合わせて描き直す */
+  function refreshExportUi(panel, card) {
+    const box = panel.querySelector('[data-midi-export]');
+    if (box) {
+      box.innerHTML = dragOutHtml(card);
+      bindExportBox(box, card, panel);
+    }
+    const roll = panel.querySelector('[data-midi-roll]');
+    if (roll) roll.innerHTML = pianoRollSvg(card.midi, 300, card.midi.sketch ? 140 : 90, card.selection);
+    refreshMini();
+  }
+
+  function bindExportBox(box, card, panel) {
+    bindDragOut(box, card);
+    const pick = box.querySelector('[data-midi-select]');
+    if (pick) pick.addEventListener('click', () => openRangeEditor(card, () => refreshExportUi(panel, card)));
+    const clear = box.querySelector('[data-midi-select-clear]');
+    if (clear) clear.addEventListener('click', () => {
+      card.selection = null;
+      scheduleAutoSave();
+      refreshExportUi(panel, card);
+    });
+  }
+
+  /** 大きなピアノロールで範囲を囲む画面 */
+  function openRangeEditor(card, onDone) {
+    const m = card.midi;
+    if (!m.notes.length) return;
+    const bpb = m.beatsPerBar;
+    const beats = Math.ceil(totalBeats(m) / bpb - EPS) * bpb;
+    let lo = 127;
+    let hi = 0;
+    m.notes.forEach((n) => { lo = Math.min(lo, n.pitch); hi = Math.max(hi, n.pitch); });
+    lo = Math.max(0, lo - 1);
+    hi = Math.min(127, hi + 1);
+    const rows = hi - lo + 1;
+    const W = 1000;
+    const H = 520;
+    const rowH = H / rows;
+    const xOf = (beat) => (beat / beats) * W;
+    const yOf = (pitch) => H - (pitch - lo + 1) * rowH; // その音の行の上端
+
+    const black = [1, 3, 6, 8, 10];
+    const rowBg = [];
+    for (let p = lo; p <= hi; p++) {
+      if (black.includes(p % 12)) rowBg.push(`<rect class="re-black" x="0" y="${yOf(p).toFixed(1)}" width="${W}" height="${rowH.toFixed(1)}"/>`);
+      if (p % 12 === 0) rowBg.push(`<line class="re-c" x1="0" y1="${(yOf(p) + rowH).toFixed(1)}" x2="${W}" y2="${(yOf(p) + rowH).toFixed(1)}"/>`);
+    }
+    const grid = [];
+    for (let b = 0; b <= beats; b++) grid.push(`<line class="${b % bpb === 0 ? 're-bar' : 're-beat'}" x1="${xOf(b).toFixed(1)}" y1="0" x2="${xOf(b).toFixed(1)}" y2="${H}"/>`);
+    const noteEls = m.notes.map((n, i) => `<rect data-i="${i}" class="re-note${n.part ? ` roll-${n.part}` : ''}" x="${xOf(n.start).toFixed(1)}" y="${(yOf(n.pitch) + 0.5).toFixed(1)}" ` +
+      `width="${Math.max(2, xOf(n.duration) - 1).toFixed(1)}" height="${Math.max(2, rowH - 1).toFixed(1)}" rx="1.5"/>`).join('');
+    const barNums = [];
+    for (let b = 0; b < beats; b += bpb) barNums.push(`<span style="left:${(b / beats) * 100}%">${b / bpb + 1}</span>`);
+    const cLabels = [];
+    for (let p = lo; p <= hi; p++) if (p % 12 === 0) cLabels.push(`<span style="top:${(yOf(p) / H) * 100}%;height:${(rowH / H) * 100}%">${midiToNoteName(p)}</span>`);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible';
+    overlay.innerHTML =
+      `<div class="modal range-editor"><h2>範囲を選んで書き出す · ${escapeHtml(card.name)}</h2>` +
+      `<p class="modal-desc">ドラッグで四角く囲むと、その範囲の音だけを書き出します(拍単位。Shiftを押しながらだと小節単位)。</p>` +
+      `<div class="re-wrap"><div class="re-keys">${cLabels.join('')}</div><div class="re-main"><div class="re-bars">${barNums.join('')}</div>` +
+      `<svg class="re-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g>${rowBg.join('')}</g><g>${grid.join('')}</g><g>${noteEls}</g>` +
+      `<rect class="re-sel" x="0" y="0" width="0" height="0" visibility="hidden"/></svg></div></div>` +
+      `<div class="re-info" data-re-info></div>` +
+      `<div class="modal-actions"><button type="button" class="secondary" data-re="play">▶ 範囲を試聴</button>` +
+      `<button type="button" class="secondary" data-re="all">全体</button>` +
+      `<button type="button" class="secondary" data-re="cancel">やめる</button>` +
+      `<button type="button" data-re="ok">この範囲にする</button></div></div>`;
+    document.body.appendChild(overlay);
+
+    const svg = overlay.querySelector('.re-svg');
+    const selEl = overlay.querySelector('.re-sel');
+    const info = overlay.querySelector('[data-re-info]');
+    const playBtn = overlay.querySelector('[data-re="play"]');
+    let sel = card.selection ? { ...card.selection } : null;
+    let anchor = null;
+    let preview = null;
+
+    const draw = () => {
+      if (!sel) {
+        selEl.setAttribute('visibility', 'hidden');
+        info.textContent = '範囲: 全体(まだ囲んでいません)';
+      } else {
+        selEl.setAttribute('visibility', 'visible');
+        selEl.setAttribute('x', xOf(sel.start).toFixed(1));
+        selEl.setAttribute('width', (xOf(sel.end) - xOf(sel.start)).toFixed(1));
+        selEl.setAttribute('y', yOf(sel.high).toFixed(1));
+        selEl.setAttribute('height', (yOf(sel.low) + rowH - yOf(sel.high)).toFixed(1));
+        info.textContent = selectionLabel({ ...card, selection: sel }).replace('書き出す範囲', '範囲');
+      }
+      const inSel = sel ? new Set(sliceMidi({ ...m, notes: m.notes.map((n, i) => ({ ...n, i })) }, sel).notes.map((n) => n.i)) : null;
+      svg.querySelectorAll('.re-note').forEach((el) => el.classList.toggle('re-note--out', Boolean(inSel) && !inSel.has(Number(el.dataset.i))));
+    };
+
+    const point = (event) => {
+      const r = svg.getBoundingClientRect();
+      const fx = Math.min(1, Math.max(0, (event.clientX - r.left) / r.width));
+      const fy = Math.min(0.9999, Math.max(0, (event.clientY - r.top) / r.height));
+      return { beat: fx * beats, pitch: hi - Math.floor(fy * rows) };
+    };
+    const update = (event) => {
+      const a = anchor;
+      const b = point(event);
+      const q = event.shiftKey ? bpb : 1;
+      let start = Math.floor(Math.min(a.beat, b.beat) / q) * q;
+      let end = Math.ceil(Math.max(a.beat, b.beat) / q) * q;
+      if (end - start < q) end = start + q;
+      end = Math.min(end, beats);
+      start = Math.min(start, end - q);
+      sel = { start, end, low: Math.min(a.pitch, b.pitch), high: Math.max(a.pitch, b.pitch) };
+      draw();
+    };
+    svg.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      svg.setPointerCapture(event.pointerId);
+      anchor = point(event);
+      update(event);
+    });
+    svg.addEventListener('pointermove', (event) => { if (anchor) update(event); });
+    svg.addEventListener('pointerup', () => { anchor = null; });
+    svg.addEventListener('pointercancel', () => { anchor = null; });
+
+    const stopPreview = () => {
+      if (preview) {
+        preview.handle.stop();
+        clearTimeout(preview.timer);
+        preview = null;
+      }
+      playBtn.textContent = '▶ 範囲を試聴';
+    };
+    const close = () => {
+      stopPreview();
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    attachBackgroundTapToClose(overlay, close);
+    overlay.querySelector('[data-re="cancel"]').addEventListener('click', close);
+    overlay.querySelector('[data-re="all"]').addEventListener('click', () => {
+      sel = null;
+      draw();
+    });
+    playBtn.addEventListener('click', () => {
+      if (preview) {
+        stopPreview();
+        return;
+      }
+      stopAll();
+      const ctx = soundAudioCtx();
+      const handle = scheduleSynth(ctx, { midi: sliceMidi(m, sel) }, ctx.currentTime + 0.05);
+      preview = { handle, timer: setTimeout(stopPreview, handle.duration * 1000 + 200) };
+      playBtn.textContent = '■ 停止';
+    });
+    overlay.querySelector('[data-re="ok"]').addEventListener('click', () => {
+      if (sel && !sliceMidi(m, sel).notes.length) {
+        info.textContent = 'この範囲には音がありません。囲み直してください';
+        return;
+      }
+      card.selection = sel;
+      scheduleAutoSave();
+      close();
+      setStatus(card.selection ? `${selectionLabel(card)}。⇩のチップでこの範囲だけを書き出します` : '書き出す範囲を全体に戻しました');
+      if (onDone) onDone();
+    });
+    draw();
   }
 
   /* ---- 書き出し先フォルダ(ハンドルをIndexedDBに保存) ---- */
@@ -1167,7 +1413,8 @@ ${WRITEUP_RULES}`;
     return `${stem}_${Date.now()}.mid`;
   }
 
-  async function saveToFolder(card, part) {
+  async function saveToFolder(source, part) {
+    const card = exportCard(source); // 範囲を選んであれば、その範囲だけ
     const blob = new Blob([buildSmf(card, part)], { type: 'audio/midi' });
     const filename = midiFileName(card, part);
     if (!window.showDirectoryPicker) {
@@ -1215,8 +1462,9 @@ ${WRITEUP_RULES}`;
         }
       });
       el.addEventListener('dragstart', (event) => {
-        const url = URL.createObjectURL(new Blob([buildSmf(card, part)], { type: 'audio/midi' }));
-        const filename = midiFileName(card, part);
+        const out = exportCard(card); // 範囲を選んであれば、その範囲だけ
+        const url = URL.createObjectURL(new Blob([buildSmf(out, part)], { type: 'audio/midi' }));
+        const filename = midiFileName(out, part);
         event.dataTransfer.effectAllowed = 'copy';
         event.dataTransfer.setData('DownloadURL', `audio/midi:${filename}:${url}`);
         event.dataTransfer.setData('text/plain', filename);
@@ -1516,5 +1764,5 @@ ${WRITEUP_RULES}`;
 
   const isPlaying = (cardId) => Boolean(playing && playing.cardId === cardId);
 
-  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
+  window.LyraMidi = { createFromSpeech, createSketch, togglePlay, isPlaying, chordLine, dragChipsHtml, bindDragOut, selectionLabel, getExportDir, exportDirName, buildCard, describe, panelHtml, bindPanel, stopAll, buildSmf, encodeWav };
 })();
