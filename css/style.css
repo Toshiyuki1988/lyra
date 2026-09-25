@@ -1564,3 +1564,13 @@ a.btn-secondary { display: block; }
 .arc-tension { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .arc-tension i { display: block; height: 100%; background: var(--accent); }
 .arc-text { color: var(--muted); line-height: 1.5; }
+
+/* ---------- MIDIの編集画面のスケール(js/scales.js) ---------- */
+.re-scale-tools { padding: 6px 8px; margin-top: 6px; background: var(--accent-bg, #faf3e6); border-radius: 6px; }
+.re-tools-label { font-size: 11px; font-weight: 600; color: var(--accent-deep); letter-spacing: 0.05em; }
+.re-scale-tools .re-field select + select { margin-left: 4px; }
+.re-field select.re-scale-select { max-width: 230px; }
+.re-field small { font-size: 10px; color: var(--faint); margin-left: 4px; }
+.re-field--off { opacity: 0.4; }
+.re-scale-row { fill: rgba(184, 134, 59, 0.10); }
+.re-scale-root { fill: rgba(184, 134, 59, 0.22); }

@@ -1521,6 +1521,7 @@ ${WRITEUP_RULES}`;
       (sk ? `、${sk.key}${sk.scale ? ` ${sk.scale}` : ''}、コード ${chordLine(sk, 12)}、伴奏 ${SKETCH_LABELS[sk.comping]}・${SKETCH_LABELS[sk.voicing]}` +
         (sk.signature.length ? `、仕掛け ${sk.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') : '') +
       (metersOf(m).length > 1 || metersOf(m)[0].den !== 4 ? `、拍子 ${meterLabel(m)}` : '') +
+      (m.rescaledTo ? `、ユーザーが ${m.rescaledTo} にリスケール済み` : '') +
       (gaugesOf(m) ? `、ゲージ ${gaugeLabel(gaugesOf(m))}` : '') +
       (m.sketch && m.sketch.arc ? `、時間の設計図 ${arcSummary(m.sketch.arc)}` : '') +
       (techniquesOf(m).length ? `、引用した技法 ${techniquesOf(m).map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''}`).join(' / ')}` : '') +
@@ -1845,6 +1846,33 @@ ${WRITEUP_RULES}`;
       ? `<label class="re-field">足す音のパート<select data-re-part>${parts.map((p) => `<option value="${p}">${PART_LABELS[p]}</option>`).join('')}</select></label>`
       : '';
 
+    /* スケールでリスケール(2026-09-25、js/scales.js)。元のスケールは設計図のキー・スケール名から、読めなければ音から推定する */
+    const S = window.LyraScales;
+    const sk0 = m.sketch;
+    const keyRoot = sk0 && parseChord(String(sk0.key || '').split('|')[0]);
+    const namedScale = sk0 && S.findByName(sk0.scale);
+    const guess = keyRoot && namedScale ? { root: keyRoot.root, id: namedScale.id, from: '設計図から' } : { ...S.estimate(m.notes), from: '音から推定' };
+    const rootOptions = (sel) => S.NOTE_NAMES.map((name, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${name}</option>`).join('');
+    const scaleOptions = (sel, withAsk) => {
+      const groups = {};
+      S.all().forEach((x) => { (groups[x.group] = groups[x.group] || []).push(x); });
+      return Object.entries(groups).map(([g, list]) => `<optgroup label="${escapeHtml(g)}">` +
+        list.map((x) => `<option value="${escapeHtml(x.id)}"${x.id === sel ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('') + `</optgroup>`).join('') +
+        (withAsk ? `<option value="__ask">一覧に無いスケールをGeminiにたずねる…</option>` : '');
+    };
+    const scaleParts = [
+      `<option value="">全部のパート</option>`,
+      ...(parts.length > 1 ? parts.map((p) => `<option value="${p}">${PART_LABELS[p]}だけ</option>`) : []),
+      ...(parts.includes('bass') && parts.length > 1 ? [`<option value="-bass">ベース以外</option>`] : []),
+    ].join('');
+    const scaleTools =
+      `<div class="re-tools re-scale-tools"><span class="re-tools-label">スケール</span>` +
+      `<label class="re-field">方法<select data-sc-method><option value="snap">近い音にそろえる</option><option value="degree">度数を保って移す</option></select></label>` +
+      `<label class="re-field" data-sc-src-wrap>元<select data-sc-src-root>${rootOptions(guess.root)}</select><select data-sc-src-id class="re-scale-select">${scaleOptions(guess.id, false)}</select><small data-sc-from>${guess.from}</small></label>` +
+      `<label class="re-field">新しい<select data-sc-root>${rootOptions(guess.root)}</select><select data-sc-id class="re-scale-select">${scaleOptions(guess.id, true)}</select></label>` +
+      `<label class="re-field">対象<select data-sc-parts>${scaleParts}</select></label>` +
+      `<button type="button" class="btn-small btn-small--accent" data-sc-apply>リスケール</button></div>`;
+
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML =
@@ -1857,9 +1885,10 @@ ${WRITEUP_RULES}`;
       partSelect +
       `<button type="button" class="btn-small" data-re="delete">選んだ音を消す</button>` +
       `<button type="button" class="btn-small" data-re="undo">元に戻す</button></div>` +
+      scaleTools +
       `<p class="modal-desc" data-re-help></p>` +
       `<div class="re-wrap"><div class="re-keys">${cLabels.join('')}</div><div class="re-main"><div class="re-bars">${barNums.join('')}</div>` +
-      `<svg class="re-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g>${rowBg.join('')}</g><g>${grid.join('')}</g><g data-re-notes></g>` +
+      `<svg class="re-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g>${rowBg.join('')}</g><g data-re-scale></g><g>${grid.join('')}</g><g data-re-notes></g>` +
       `<rect class="re-sel" x="0" y="0" width="0" height="0" visibility="hidden"/></svg></div></div>` +
       `<div class="re-info" data-re-info></div>` +
       `<div class="modal-actions"><button type="button" class="secondary" data-re="play">▶ 試聴</button>` +
@@ -2152,6 +2181,15 @@ ${WRITEUP_RULES}`;
         return;
       }
       if (dirty) applyEdit(card, draft.notes);
+      if (dirty && rescaled) {
+        // リスケールしたら、作り直しやアンサンブルへの説明で使うキー・スケール名も合わせる
+        const shortName = rescaled.label.split(/ \/ | \(|（/)[0];
+        if (card.midi.sketch) {
+          card.midi.sketch.key = window.LyraScales.NOTE_NAMES[rescaled.root];
+          card.midi.sketch.scale = shortName.slice(0, 20);
+        }
+        card.midi.rescaledTo = `${window.LyraScales.NOTE_NAMES[rescaled.root]} ${shortName}`;
+      }
       card.selection = sel;
       scheduleAutoSave();
       close();
@@ -2163,6 +2201,94 @@ ${WRITEUP_RULES}`;
       if (opts.onDone) opts.onDone();
       else if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
     });
+    /* ---- スケールでリスケール ---- */
+    const scEl = (name) => overlay.querySelector(`[data-sc-${name}]`);
+    let rescaled = null; // 保存時に設計図のキー・スケール名を書き換えるため
+    let lastScaleId = guess.id;
+    const drawScaleRows = () => {
+      const scale = S.byId(scEl('id').value);
+      const root = Number(scEl('root').value);
+      const rowsHtml = [];
+      if (scale) {
+        for (let p = lo; p <= hi; p++) {
+          const pc = (((p - root) % 12) + 12) % 12;
+          if (scale.intervals.includes(pc)) rowsHtml.push(`<rect class="${pc === 0 ? 're-scale-root' : 're-scale-row'}" x="0" y="${yOf(p).toFixed(1)}" width="${W}" height="${rowH.toFixed(1)}"/>`);
+        }
+      }
+      overlay.querySelector('[data-re-scale]').innerHTML = rowsHtml.join('');
+    };
+    const syncMethod = () => {
+      const degree = scEl('method').value === 'degree';
+      scEl('src-wrap').classList.toggle('re-field--off', !degree);
+      scEl('src-root').disabled = !degree;
+      scEl('src-id').disabled = !degree;
+    };
+    const refillScaleSelects = (selId) => {
+      scEl('src-id').innerHTML = scaleOptions(scEl('src-id').value, false);
+      scEl('id').innerHTML = scaleOptions(selId, true);
+    };
+    scEl('method').addEventListener('change', syncMethod);
+    scEl('root').addEventListener('change', drawScaleRows);
+    scEl('id').addEventListener('change', async () => {
+      if (scEl('id').value !== '__ask') {
+        lastScaleId = scEl('id').value;
+        drawScaleRows();
+        return;
+      }
+      scEl('id').value = lastScaleId;
+      const asked = await showFormDialog({
+        title: 'スケールをGeminiにたずねる',
+        message: '名前を書くと、構成音(ルートからの半音の並び)をGeminiに1回たずねて一覧に足します。微分音は12平均律の近い半音に丸めます。足したスケールは次からも一覧に出ます。',
+        submitLabel: 'たずねる',
+        fields: [{ name: 'name', label: 'スケールの名前', required: true, placeholder: 'マカーム・バヤーティー、ラーガ・ヤマン、ロマの音階 など' }],
+      });
+      if (!asked) return;
+      try {
+        setStatus(`「${asked.name}」をGeminiにたずねています…`, { busy: true });
+        const added = await S.askGemini(asked.name);
+        refillScaleSelects(added.id);
+        lastScaleId = added.id;
+        drawScaleRows();
+        setStatus(`「${added.label}」を一覧に足しました(${added.intervals.map((i) => S.NOTE_NAMES[i]).join(' ')}、Cをルートにした時)`);
+      } catch (err) {
+        console.error(err);
+        setStatus(`スケールをたずねられませんでした: ${err.message}`, { important: true });
+      }
+    });
+    scEl('apply').addEventListener('click', () => {
+      const id = scEl('id').value;
+      const scale = S.byId(id);
+      if (!scale) return;
+      const root = Number(scEl('root').value);
+      const partValue = scEl('parts').value;
+      const targetParts = partValue === '' ? null : partValue === '-bass' ? new Set(parts.filter((x) => x !== 'bass')) : new Set([partValue]);
+      const next = S.rescale(notes, {
+        method: scEl('method').value,
+        root,
+        id,
+        srcRoot: Number(scEl('src-root').value),
+        srcId: scEl('src-id').value,
+        parts: targetParts,
+      });
+      const moved = next.filter((n, i) => notes[i] && (n.pitch !== notes[i].pitch)).length + (notes.length - next.length);
+      if (!moved && next.length === notes.length && next.every((n, i) => n.pitch === notes[i].pitch)) {
+        info.textContent = `${S.NOTE_NAMES[root]} ${scale.label}: 動かす音はありませんでした(もうそのスケールに収まっています)`;
+        return;
+      }
+      pushUndo();
+      notes = next;
+      picked = -1;
+      rescaled = { root, id, label: scale.label };
+      // 続けて別のスケールへ移せるよう、「元」を今のスケールにそろえる
+      scEl('src-root').value = String(root);
+      scEl('src-id').value = id;
+      scEl('from').textContent = 'リスケール後';
+      drawNotes();
+      info.textContent = `${S.NOTE_NAMES[root]} ${scale.label}にリスケールしました(${scEl('method').value === 'degree' ? '度数を保って移す' : '近い音にそろえる'})。気に入らなければ「元に戻す」、よければ「保存」`;
+    });
+    syncMethod();
+    drawScaleRows();
+
     setMode(mode);
     drawNotes();
   }
