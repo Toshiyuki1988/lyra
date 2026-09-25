@@ -461,8 +461,8 @@
     const members = (speech.memberIds || []).map((id) => getSoul(id)).filter(Boolean);
     const model = await chooseMidiModel('どのモデルでMIDIにしますか?');
     if (!model) return;
-    if (model === 'mitategura') {
-      return createGesture({
+    if (model === 'mitategura' || model === 'process') {
+      return (model === 'process' ? createProcess : createGesture)({
         stage,
         souls: members.filter((s) => s.category !== 'stage' && s.category !== 'plugin'),
         contextText: [
@@ -645,6 +645,7 @@ ${WRITEUP_RULES}`;
    * 手で編集したカード(midi.edited)は、実際のノートも渡して尊重させる。 */
   async function reviseMidi(card) {
     if (card.midi.gesture) return reviseGesture(card);
+    if (card.midi.process) return reviseProcess(card);
     const stage = findStageOfCard(card);
     if (!stage) return;
     const m = card.midi;
@@ -1754,6 +1755,7 @@ ${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.im
     const model = await chooseMidiModel('どのモデルで鳴らしますか?');
     if (!model) return;
     if (model === 'mitategura') return createGesture(opts);
+    if (model === 'process') return createProcess(opts);
     const sources = opts.midiSources || [];
     const values = await showFormDialog({
       title: 'コード+旋律で鳴らす',
@@ -1840,6 +1842,7 @@ ${WRITEUP_RULES}`;
   const MIDI_MODELS = [
     { id: 'gakuten', label: '基本の楽典モデル', text: 'コード進行+旋律+ベースを、起承転結などの時間の設計図に沿って組む(Geminiを2回)' },
     { id: 'mitategura', label: '見立て蔵モデル(自然物由来・無階調)', text: '画像や言葉のモチーフ(名詞)ごとに、鐘打ち・揺らぎ・装飾粒などの身振りを重ねる。コード進行に圧縮しない。要素ごとに別トラック(Geminiを1回)' },
+    { id: 'process', label: '漸進プロセスモデル', text: '短い音の細胞に規則(フェイズのずれ・加算・イソリズム・カノン・ティンティナブリ・転調鳴鐘)を掛け、時間とともに少しずつ変化させる。層ごとに別トラック(Geminiを1回)' },
   ];
   const MODEL_KEY = 'lyra.midiModel';
 
@@ -2143,6 +2146,270 @@ ${gestureRules(bars, values.pitch)}
     }
   }
 
+  /* ---- 漸進プロセスモデル(2026-09-26、models/process.md) ----
+   * 時間を「過程」として扱う。短い細胞と規則(と規則のパラメータ)だけをGeminiに書かせ、展開は js/process.js が行う。
+   * 細胞が短いので既存曲に似るおそれは小さく、反芻はしない(Geminiは1回)。層(最大3)の声部ごとにパート g1〜g6。 */
+
+  const PROCESS_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      name: { type: 'STRING' },
+      description: { type: 'STRING' },
+      concept: { type: 'STRING' },
+      commentary: { type: 'STRING' },
+      tempo: { type: 'NUMBER' },
+      layers: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            process: { type: 'STRING' },
+            register: { type: 'STRING' },
+            why: { type: 'STRING' },
+            notes: {
+              type: 'ARRAY',
+              items: { type: 'OBJECT', properties: { note: { type: 'STRING' }, duration: { type: 'NUMBER' } }, required: ['note'] },
+            },
+            step: { type: 'NUMBER' },
+            repeats: { type: 'INTEGER' },
+            shift_every: { type: 'INTEGER' },
+            voices: { type: 'INTEGER' },
+            delay: { type: 'NUMBER' },
+            transpose: { type: 'ARRAY', items: { type: 'INTEGER' } },
+            speeds: { type: 'ARRAY', items: { type: 'NUMBER' } },
+            talea: { type: 'ARRAY', items: { type: 'NUMBER' } },
+            triad: { type: 'STRING' },
+            position: { type: 'STRING' },
+            hold: { type: 'NUMBER' },
+          },
+          required: ['name', 'process', 'register', 'notes', 'why'],
+        },
+      },
+    },
+    required: ['name', 'tempo', 'layers'],
+  };
+
+  function processRuleOptions() {
+    return [{ value: '', label: 'おまかせ(入力に合わせて選ぶ)' }, ...Object.entries(window.LyraProcess.PROCESSES).filter(([id]) => id !== 'drone').map(([id, x]) => ({ value: id, label: x.label }))];
+  }
+
+  function processRules(bars, pref) {
+    const P = window.LyraProcess;
+    return `層と規則(ここがこのモデルの核):
+- 層は1〜3。主役の層を1つ決め、必要なら地の層(drone など)や、別の規則の層を足す。層が多すぎると規則が聞き取れなくなる
+${pref ? `- 主役の層の規則はユーザーの指定: ${pref}(${P.PROCESSES[pref].label})\n` : ''}- process は次の7種だけ(これ以外の名前は鳴らない):
+${Object.entries(P.PROCESSES).map(([id, x]) => `  - ${id}(${x.label}): ${x.text}`).join('\n')}
+- 規則ごとに使う項目(notes の note は音名+オクターブ、C4が中央のド。duration は拍):
+  - phase: notes に8〜12音(等分の刻みで鳴るので duration は不要)、step(1音の長さ。0.25=16分)、shift_every(何回繰り返すごとに2声目が1音ずれるか。2〜8)
+  - additive: notes に4〜8音(duration 付き)、repeats(各段を何回繰り返すか。1〜4)
+  - isorhythm: notes に音高の並び(カラー。4〜9音)、talea にリズムの並び(拍の数の配列。負の値は休み)。カラーとタレアの長さは必ず違える(例: 7音と5つ)
+  - canon: notes に旋律(4〜12音、duration 付き)、voices(2〜4)、delay(何拍遅れて次の声が入るか)、transpose(声ごとの移調、半音。例 [0, -5, -12])、speeds(声ごとの音価の倍率。1=同じ、2=半分の速さ、0.5=倍の速さ)
+  - tintinnabuli: notes に M声部(順次進行を中心にした旋律。4〜12音、duration 付き)、triad(主和音。例 Am、C、F#m)、position(above / below / alternate)
+  - change_ringing: notes に鐘の音を4〜6個(高い順に並べるのが伝統)、step(1打の長さ)
+  - drone: notes に保つ音を1つ(低めに)、hold(打ち直す間隔、拍)
+- 細胞は短く素朴でよい(主役は規則)。規則が耳で追えるように、音の数・音域を絞る
+- 音高は、入力の気分に合う調・旋法の中で選ぶ(ドリアン、リディアン、五音音階、陰音階、全音音階など自由に)。層どうしで同じ調・旋法にそろえる
+- register: low / mid / high(アプリが細胞をオクターブ単位で動かしてその音域に合わせる)
+- name: 層の短い名前(例: 水面、鐘、祈り)。why: その層になぜその規則を選んだか(主役の層は60字以内、ほかは30字以内)
+- tempo: 規則が聞き取れる速さ(40〜180。フェイズや転調鳴鐘は速めでもよい)。長さは${bars}小節(4/4)でアプリが決める
+- 細胞は、既存の曲の旋律・リフ・動機を引用・模倣しない(規則の考え方は、作曲家の技法として自由に使ってよい)
+
+書き添えること:
+- name は「〜.mid」の形の短い英数字のファイル名、description は、どこがこの入力らしいかを40字以内で
+- concept は、この断片のコンセプト(情景・狙い)を60字以内で
+- commentary は解説。規則が時間をどう変えていくか、Cubaseで層ごとのトラックに音色を選ぶ時のヒントを200字以内で。特定の曲名・アーティスト名は出さない
+- 資料の文章を引用しない`;
+  }
+
+  function renderProcessMidi(design, bars, tempo) {
+    const seed = design.seed || Math.floor(Math.random() * 2 ** 31);
+    const out = window.LyraProcess.render(design, { bars, seed });
+    return {
+      tempo: clampNum(tempo, 40, 200, 100),
+      beatsPerBar: 4,
+      meters: sanitizeMeters([], 4),
+      notes: out.notes.slice(0, MAX_SKETCH_NOTES),
+      cc: [],
+      markers: out.markers,
+      tempoChanges: [],
+      kind: 'process',
+      model: 'process',
+      process: { ...design, bars, seed },
+      partNames: out.partNames,
+    };
+  }
+
+  /** 漸進プロセスモデルで作る(長さ・主役の規則・光景をたずねてから) */
+  async function createProcess(opts) {
+    const images = opts.images || [];
+    const values = await showFormDialog({
+      title: '漸進プロセスモデルで作る',
+      message: `${[...(images.length ? ['画像'] : []), ...(opts.souls || []).map((s) => s.name)].join('・') || 'つないだカード'}から、短い音の細胞と、それを少しずつ変えていく規則を選びます。層ごとに別トラック。Geminiを1回呼びます。`,
+      submitLabel: '作る',
+      fields: [
+        { name: 'bars', label: '長さ(小節数、4/4)', value: '16' },
+        { name: 'rule', label: '主役の規則', type: 'select', value: '', options: processRuleOptions() },
+        { name: 'story', label: 'イメージ元の光景・言葉(任意)', type: 'textarea', value: opts.storyDefault || '', placeholder: '水面に映る光が少しずつずれていく、遠くの鐘が順番を変えながら鳴る など' },
+        { name: 'hint', label: '追加の注文(任意)', type: 'textarea', placeholder: '低いドローンを敷いて、主役は高音で など' },
+      ],
+    });
+    if (!values) return;
+    await runProcess({ ...opts, bars: Math.round(clampNum(values.bars, 2, 64, 16)), rule: values.rule, story: String(values.story || '').trim().slice(0, 300), hint: values.hint });
+  }
+
+  async function runProcess({ stage, souls, images, contextText, focusParamIds, memberIds, speechId, fromCardId, x, y, bars, rule, story, hint }) {
+    const material = window.LyraSoulMaterial || (() => '');
+    const focus = focusParamIds || new Set();
+    const imgs = images || [];
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。ユーザーはCubase Pro 15とMax 9で作曲しています。
+今回は「漸進プロセスモデル」で作ります。時間を物語でも情景の重なりでもなく「過程」として扱い、短い音の細胞に規則を掛けて、音楽が規則に従って少しずつ変わっていくようにします(ミニマル音楽や中世の書法の考え方)。展開はアプリが規則どおりに行うので、あなたが書くのは層ごとの細胞と規則の選び方・パラメータだけです。
+入力の気分・動き・質感に最も合う規則を選んでください(例: 揺らめく水面→phase、成長→additive、巡る季節→isorhythm、こだま→canon、祈り→tintinnabuli、鐘→change_ringing)。
+
+${imgs.length ? `${imageRule(imgs)}\n\n` : ''}${story ? `イメージ元の光景・言葉(ユーザーが書いたもの): ${story}\n\n` : ''}${contextText ? `ユーザーがつないだカード・提案:\n${contextText}\n\n` : ''}${souls && souls.length ? `ソウルと手持ちの知識:\n${souls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, focus, { excludeReferences: true })}`).join('\n\n')}\n\n` : ''}${hint ? `ユーザーの注文: ${hint}\n\n` : ''}${processRules(bars, rule)}`;
+    try {
+      const files = await imageFiles(imgs);
+      setStatus('細胞と規則を選んでいます…', { busy: true });
+      const raw = await askGeminiJson({ prompt, files, responseSchema: imgs.length ? withImpressions(PROCESS_SCHEMA) : PROCESS_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '漸進プロセス' });
+      if (imgs.length) saveImpressions(imgs, raw);
+      const design = window.LyraProcess.sanitize(raw);
+      if (!design.layers.length) throw new Error('細胞が1つも読めませんでした');
+      const midi = renderProcessMidi(design, bars, raw.tempo);
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした(規則の名前が読めなかった可能性があります)');
+      const name = gestureName(raw);
+      const card = {
+        id: newId(),
+        type: 'midi',
+        name,
+        voice: 'vibes',
+        description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
+        memberIds: memberIds || [],
+        speechId: speechId || null,
+        midi,
+        x: x || 0,
+        y: y || 0,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      placeMidiCard(stage, card, fromCardId);
+      setStatus(`「${name}」を作りました(漸進プロセスモデル、${processLine(midi.process)})。タップで試聴・書き出しができます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`漸進プロセスモデルで作れませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /** 漸進プロセスモデルのカードの作り直し(前回の層・コメント・つないだカードから、Geminiを1回) */
+  async function reviseProcess(card) {
+    const stage = findStageOfCard(card);
+    if (!stage) return;
+    const m = card.midi;
+    const d = m.process;
+    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: true }) : null;
+    const linkSouls = links ? links.souls.filter((s) => s.category !== 'plugin') : [];
+    const values = await showFormDialog({
+      title: `「${card.name}」を作り直す(漸進プロセスモデル)`,
+      message: `どう変えたいかを書いてください。前回の層と規則を踏まえた改善版を右隣に線でつないで置きます(Geminiを1回)。` +
+        (links ? `ASTRでつないだもの(${links.names.join('・')})も取り入れます。コメントは空でもかまいません。` : ''),
+      submitLabel: '作り直す',
+      fields: [
+        { name: 'comment', label: 'コメント', type: 'textarea', placeholder: 'ずれをもっとゆっくり、鐘の層を足して、カノンを3声に など' },
+        { name: 'bars', label: '長さ(小節数、4/4)', value: String(d.bars || 16) },
+        { name: 'rule', label: '主役の規則', type: 'select', value: '', options: processRuleOptions() },
+      ],
+    });
+    if (!values) return;
+    const comment = String(values.comment || '').trim();
+    if (!comment && !links && !values.rule) {
+      setStatus('コメントか主役の規則を選ぶか、ASTRでカードをつないでから作り直してください', { important: true });
+      return;
+    }
+    const bars = Math.round(clampNum(values.bars, 2, 64, d.bars || 16));
+    const material = window.LyraSoulMaterial || (() => '');
+    const prev = {
+      tempo: m.tempo,
+      layers: d.layers.map((l) => ({ ...l, notes: l.notes.map((n) => ({ note: midiToNoteName(n.pitch), duration: n.duration })) })),
+    };
+    const prompt = `あなたは作曲支援アプリLYRAの作曲担当です。「漸進プロセスモデル」(短い細胞に規則を掛けて少しずつ変える)で前に作った層と規則を、ユーザーのコメントに沿って作り直してください。展開はアプリが規則どおりに行います。
+今回のコメント: ${comment || '(なし。つないだカード・ソウルと、指定の規則を取り入れる)'}
+${links && links.lines.length ? `\nASTRでこのMIDIにつないだカード(取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n')}\n` : ''}${linkSouls.length ? `\nつないだソウルと手持ちの知識:\n${linkSouls.map((s) => `[${s.name}](${categoryLabel(s.category)})\n${material(s, links.focusParamIds, { excludeReferences: true })}`).join('\n\n')}\n` : ''}
+前回の層と規則(JSON):
+${JSON.stringify(prev)}
+
+コメントで触れていない層は、なるべく前回を保つ(全部を作り替えない)。
+
+${processRules(bars, values.rule)}
+- description は、前回から何を変えたかを40字以内で`;
+    setStatus('層と規則を作り直しています…', { busy: true });
+    try {
+      const raw = await askGeminiJson({ prompt, responseSchema: PROCESS_SCHEMA, maxOutputTokens: 4096, timeoutMs: 120000, label: '漸進プロセスの作り直し' });
+      const design = window.LyraProcess.sanitize(raw);
+      if (!design.layers.length) throw new Error('細胞が1つも読めませんでした');
+      const midi = renderProcessMidi(design, bars, raw.tempo);
+      if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
+      const version = (card.version || 1) + 1;
+      const next = {
+        id: newId(),
+        type: 'midi',
+        name: `${baseName(card.name)}_v${version}.mid`,
+        voice: card.voice,
+        description: String(raw.description || '').slice(0, 60),
+        ...writeup(raw),
+        comment: comment.slice(0, 200),
+        linkedNames: links ? links.names.slice(0, 6) : [],
+        version,
+        revisionOf: card.id,
+        memberIds: [...new Set([...(card.memberIds || []), ...linkSouls.map((s) => s.id)])],
+        speechId: card.speechId || null,
+        midi,
+        x: (card.x || 0) + (card.width || 210) + 70,
+        y: (card.y || 0) + 10,
+        width: null,
+        height: null,
+        createdAt: new Date().toISOString(),
+      };
+      placeMidiCard(stage, next, card.id);
+      setStatus(`「${next.name}」を作りました(漸進プロセスモデル)`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`作り直せませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  function processLine(d) {
+    const P = window.LyraProcess;
+    return d.layers.map((l) => `${l.name || ''}(${(P.PROCESSES[l.process] || { label: '鳴らない規則' }).label})`).join(' + ');
+  }
+
+  function processParamText(l) {
+    switch (l.process) {
+      case 'phase': return `1音${l.step}拍・${l.shift_every}回ごとに1音ずれる`;
+      case 'additive': return `各段${l.repeats}回`;
+      case 'isorhythm': return `カラー${l.notes.length}音 × タレア${l.talea.length || l.notes.length}(${(l.talea.length ? l.talea : l.notes.map((n) => n.duration)).join(' ')})`;
+      case 'canon': return `${l.voices}声・${l.delay}拍遅れ${l.transpose.length ? `・移調 ${l.transpose.join('/')}` : ''}${l.speeds.length ? `・速さ ×${l.speeds.join('/')}` : ''}`;
+      case 'tintinnabuli': return `主和音 ${l.triad || '(旋律から)'}・T声部は${{ above: '上', below: '下', alternate: '上下交互' }[l.position]}`;
+      case 'change_ringing': return `${Math.min(6, l.notes.length)}鐘のプレーンハント・1打${l.step}拍`;
+      case 'drone': return `${l.hold}拍ごとに打ち直す`;
+      default: return '';
+    }
+  }
+
+  function processPanelHtml(m) {
+    const P = window.LyraProcess;
+    const rows = m.process.layers.map((l, i) => {
+      const rule = P.PROCESSES[l.process];
+      return `<div class="gesture-row${i === 0 ? ' gesture-row--primary' : ''}">` +
+        `<div class="gesture-name">${escapeHtml(l.name || `層${i + 1}`)}<span class="gesture-type">${rule ? escapeHtml(rule.label) : `「${escapeHtml(l.process)}」は鳴らない規則`}</span></div>` +
+        `<div class="panel-source">${escapeHtml([processParamText(l), l.register ? `音域: ${{ low: '低', mid: '中', high: '高' }[l.register]}` : ''].filter(Boolean).join(' · '))}</div>` +
+        `<div class="panel-source">細胞: ${escapeHtml(l.notes.map((n) => midiToNoteName(n.pitch)).join(' '))}</div>` +
+        (l.why ? `<div class="midi-writeup">${escapeHtml(l.why)}</div>` : '') + `</div>`;
+    }).join('');
+    return `<div class="panel-section"><div class="panel-label">漸進プロセスモデル · ${m.process.layers.length}層</div>` +
+      `<div class="panel-source">層の声部ごとに別トラック(「パート別」で書き出すと層の名前のトラックになります)。細胞の音は、層の音域に合わせてオクターブを動かしています</div>${rows}</div>`;
+  }
+
   function gestureModeLabel(g) {
     const G = window.LyraGesture;
     if (g.harmonic_mode === 'western') return `コード進行 ${g.chords.slice(0, 4).join(' → ')}${g.chords.length > 4 ? ' …' : ''}`;
@@ -2214,6 +2481,7 @@ ${gestureRules(bars, values.pitch)}
     el.innerHTML =
       `<div class="midi-head"><span class="midi-icon">${card.midi.kind === 'beat' ? '◉' : '♪'}</span><span class="ens-card-kind ens-card-kind--accent">${card.midi.kind === 'beat' ? 'BEAT' : 'MIDI'}${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
       (card.midi.gesture ? `<div class="ens-card-sub midi-chords">見立て蔵 · ${escapeHtml(gestureModeLabel(card.midi.gesture))}</div>` : '') +
+      (card.midi.process ? `<div class="ens-card-sub midi-chords">漸進プロセス · ${escapeHtml(processLine(card.midi.process))}</div>` : '') +
       (card.midi.beat ? `<div class="ens-card-sub midi-chords">${escapeHtml(card.midi.beat.genre)} · ${Math.round(card.midi.tempo)} BPM${card.midi.beat.swing > 0.01 ? ` · ハネ${Math.round(card.midi.beat.swing * 100)}%` : ''}</div>` : '') +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
@@ -2254,6 +2522,11 @@ ${gestureRules(bars, values.pitch)}
         (b.references.length ? `、参照 ${b.references.map((r) => r.title).join(' / ')}` : '') +
         (b.signature.length ? `、仕掛け ${b.signature.map((x) => `${x.trait}→${x.device}`).join(' / ')}` : '') +
         (card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : '');
+    }
+    if (m.process) {
+      return `[MIDI · 漸進プロセスモデル] ${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}: テンポ${Math.round(m.tempo)}、${m.process.bars}小節、層 ` +
+        m.process.layers.map((l) => `${l.name}=${l.process}(${processParamText(l)}、細胞 ${l.notes.map((n) => midiToNoteName(n.pitch)).join(' ')})`).join(' / ') +
+        (m.edited ? '(ユーザーが手で編集済み)' : '');
     }
     if (m.gesture) {
       const g = m.gesture;
@@ -2340,16 +2613,17 @@ ${gestureRules(bars, values.pitch)}
       `<div data-midi-export>${dragOutHtml(card)}</div>` +
       (rumination(m) ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rumination(m).check)}` +
         `${rumination(m).changes ? `<div class="midi-rumination">${escapeHtml(rumination(m).changes)}</div>` : ''}</div></div>` : '') +
-      `<div class="panel-roll${m.sketch || m.gesture ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch || m.gesture ? 140 : 90, card.selection)}</div>` +
-      (m.sketch || m.gesture ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${escapeHtml(partLabel(m, p))}</span>`).join('')}(.midでは別トラック)</div>` : '') +
+      `<div class="panel-roll${m.sketch || m.gesture || m.process ? ' panel-roll--sketch' : ''}" data-midi-roll>${pianoRollSvg(m, 300, m.sketch || m.gesture || m.process ? 140 : 90, card.selection)}</div>` +
+      (m.sketch || m.gesture || m.process ? `<div class="roll-legend">${partsOf(m).map((p) => `<span class="roll-legend-${p}">${escapeHtml(partLabel(m, p))}</span>`).join('')}(.midでは別トラック)</div>` : '') +
       (m.gesture ? gesturePanelHtml(m) : '') +
+      (m.process ? processPanelHtml(m) : '') +
       (m.beat ? beatPanelHtml(m.beat) : '') +
       (m.sketch && m.sketch.arc ? arcPanelHtml(m.sketch.arc) : '') +
       (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.map((p) => partLabel(null, p)).join('・'))}</div>`).join('')}</div>` : '') +
       techniquesPanelHtml(m) +
       (m.sketch ? sketchPanelHtml(m.sketch) : '') +
       `<div class="panel-section"><div class="panel-label">マーカー(構造語彙のセクション)</div>${markers}</div>` +
-      ((m.sketch || m.gesture) && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
+      ((m.sketch || m.gesture || m.process) && !m.cc.length ? '' : `<div class="panel-section"><div class="panel-label">CCオートメーション(Serum2のMIDI Learnで割り当て)</div>${cc}</div>`) +
       (m.tempoChanges.length ? `<div class="panel-section"><div class="panel-label">テンポ変化</div>${m.tempoChanges.map((t) => `<div class="panel-source">${beatLabel(t.beat, m)} → ${Math.round(t.bpm)}</div>`).join('')}</div>` : '') +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-primary" data-midi-action="play">${playing && playing.cardId === card.id ? '■ 停止' : '▶ 試聴'}</button>` +
