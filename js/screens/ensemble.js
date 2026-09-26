@@ -204,6 +204,19 @@
       focusCardId = card.id;
       renderMembers();
     },
+
+    /** 矩形選択からのまとめての削除(js/marquee.js。確認は向こうで2段階済み)。1枚ずつの削除と同じ後始末をする */
+    deleteCards(cards) {
+      cards.forEach((card) => {
+        if (focusCardId === card.id) focusCardId = null;
+        if (card.type === 'image') deleteLocalImage(card.id).catch((err) => console.error(err));
+        if (card.type === 'chat' && window.LyraSoulChat) window.LyraSoulChat.forget(card);
+        removeCardFromScope(card);
+      });
+      if (cards.some((c) => c.type === 'midi') && window.LyraMidi) window.LyraMidi.stopAll();
+      if (cards.some((c) => c.id === panelCardId)) closeSidePanel();
+      renderMembers();
+    },
   };
 
   function defaultWidth(card) {

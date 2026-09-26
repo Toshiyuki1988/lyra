@@ -416,10 +416,15 @@ ${voiceRule}
       ],
     });
     if (choice !== 'delete') return false;
+    forget(chat);
+    return true;
+  }
+
+  /** 削除したチャットの覚え書き(入力途中の文など)を捨てる */
+  function forget(chat) {
     drafts.delete(chat.id);
     contexts.delete(chat.id);
     inFlight.delete(chat.id);
-    return true;
   }
 
   /** アンサンブルのまとめ・MIDI生成などに渡す1行(トピックと直近のやり取り) */
@@ -433,5 +438,5 @@ ${voiceRule}
     return `[チャット · ${expertName(host)}] ${chat.topic || ''}${recent ? ` — ${recent.slice(0, 400)}` : '(まだやり取りなし)'}`;
   }
 
-  window.LyraSoulChat = { makeChat, buildCard, send, askNewChat, editTopic, confirmDelete, refreshParticipants, expertName, describe };
+  window.LyraSoulChat = { makeChat, buildCard, send, askNewChat, editTopic, confirmDelete, forget, refreshParticipants, expertName, describe };
 })();

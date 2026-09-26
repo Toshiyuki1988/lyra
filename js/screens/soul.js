@@ -152,6 +152,24 @@
       else selectParam(card.id);
     },
 
+    /** 矩形選択からのまとめての削除(js/marquee.js)。モジュールのハブは消さない(モジュールの削除は右パネルから) */
+    deletableCard(card) {
+      return card !== module;
+    },
+
+    deleteCards(cards) {
+      const ids = new Set(cards.filter((c) => c !== module).map((c) => c.id));
+      cards.filter((c) => ids.has(c.id)).forEach((c) => {
+        if (c.type === 'chat') window.LyraSoulChat.forget(c);
+        removeCardFromScope(c); // scope.connections === soul.connections なので線もここで外れる
+      });
+      soul.params = soul.params.filter((p) => !ids.has(p.id));
+      soul.chats = soul.chats.filter((c) => !ids.has(c.id));
+      if (selectedParamId && ids.has(selectedParamId)) selectedParamId = null;
+      renderProgress();
+      showPanel('module');
+    },
+
     onCardMoved(card, el) {
       if (card === module || card.type === 'chat') return;
       if (!card.pinned) {

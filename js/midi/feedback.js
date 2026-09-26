@@ -64,6 +64,7 @@
     scheduleAutoSave();
     if (window.refreshEnsembleCard) window.refreshEnsembleCard(card);
     if (window.refreshEnsemblePanel) window.refreshEnsemblePanel(card);
+    if (window.LyraMarquee) window.LyraMarquee.refresh(); // 矩形選択中なら「★3以下のMIDIを全削除」の件数を合わせる
     setStatus(next ? `「${card.name}」を★${next}にしました。次に${(P.byId(list[list.length - 1].model) || { short: 'この' }).short}モデルで作る時の手がかりになります` : `「${card.name}」の評価を外しました`);
   }
 
