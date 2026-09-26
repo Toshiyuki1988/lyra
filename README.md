@@ -31,7 +31,11 @@ lyra/
     ├── canvas.js        … キャンバス操作・編集ガイド・ASTRジェスチャー(CONSTELLATIONから流用)
     ├── app.js           … 中核(データ・画面切り替え・カードとASTRの共通処理・ダイアログ)
     ├── decompose.js     … 資料の解体パイプライン
-    ├── midi.js          … MIDIの生成・試聴・.mid/WAV書き出し
+    ├── scales.js        … 音階の一覧とリスケーリング
+    ├── midi/            … MIDI生成一式(仕組みは models/README.md)
+    │   ├── theory.js / engine.js / generators.js … 音楽理論・軸と合成・層の生成器
+    │   ├── design.js / presets.js / compose.js   … 設計図の形・モデル(プリセット)・Geminiとの流れ
+    │   └── play.js / export.js / editor.js / card.js … 試聴とWAV・.midとフォルダへの保存・編集画面・カード
     ├── imagesearch.js   … 画像カードの画像検索(Pixabay API)
     ├── audio.js         … オーディオの圧縮・保存・再生
     ├── daily.js         … 日次課題

@@ -1428,18 +1428,6 @@ a.btn-secondary { display: block; }
 }
 .ens-card-sub--accent { color: var(--accent-ink); }
 .piano-roll { display: block; height: 36px; margin-top: 6px; background: #f7f2e7; border-radius: 4px; }
-.panel-roll .piano-roll { height: 90px; }
-.panel-roll--sketch .piano-roll { height: 140px; }
-.roll-notes rect { fill: var(--accent); }
-.roll-notes rect.roll-chords { fill: #b5a071; }
-.roll-notes rect.roll-bass { fill: #7d6f58; }
-.roll-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--faint); margin: 4px 0 12px; }
-.roll-legend span[class^="roll-legend-"]::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
-.roll-legend-melody::before { background: var(--accent); }
-.roll-legend-chords::before { background: #b5a071; }
-.roll-legend-bass::before { background: #7d6f58; }
-.roll-notes rect.roll-counter, .re-note.roll-counter { fill: #6f8a8a; }
-.roll-legend-counter::before { background: #6f8a8a; }
 .midi-chords { font-size: 11px; letter-spacing: 0.02em; }
 .midi-concept { font-size: 11px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .midi-writeup { font-size: 12px; line-height: 1.8; color: var(--ink); }
@@ -1555,10 +1543,6 @@ a.btn-secondary { display: block; }
 /* レシピで設定し終えた行(小窓のチェック) */
 .recipe-row--done { opacity: 0.5; }
 
-/* 小窓モードはCubaseと並べるデスクトップ用(js/mini.js) */
-@media (max-width: 640px) {
-  #mini-btn { display: none; }
-}
 
 /* Shift+A のソウル一覧(アンサンブル) */
 .soul-picker { width: min(420px, calc(100vw - 32px)); }
@@ -1571,41 +1555,10 @@ a.btn-secondary { display: block; }
 .soul-picker-count { margin-left: auto; font-size: 11px; color: var(--faint); }
 .midi-rumination { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-/* MIDIの範囲を選んで書き出す(js/midi.js の openRangeEditor) */
-.modal.range-editor { max-width: min(1100px, calc(100vw - 32px)); width: 100%; }
-.re-wrap { display: flex; gap: 6px; margin-top: 6px; }
-.re-keys { position: relative; width: 34px; flex: none; margin-top: 18px; height: min(56vh, 520px); font-size: 9px; color: var(--faint); }
-.re-keys span { position: absolute; right: 2px; display: flex; align-items: center; }
-.re-main { flex: 1; min-width: 0; }
-.re-bars { position: relative; height: 18px; font-size: 10px; color: var(--muted); }
-.re-bars span { position: absolute; top: 2px; padding-left: 3px; }
-.re-bars em { font-style: normal; color: var(--accent-deep); margin-left: 3px; }
-.re-svg { display: block; width: 100%; height: min(56vh, 520px); background: #fbf8f1; border: 1px solid var(--line); border-radius: 4px; touch-action: none; cursor: crosshair; user-select: none; }
-.re-black { fill: #f1ebdf; }
-.re-c { stroke: #e0d6c3; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.re-bar { stroke: #cdbfa5; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.re-beat { stroke: #e9e1d2; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.re-note { fill: var(--accent); }
-.re-note.roll-chords { fill: #b5a071; }
-.re-note.roll-bass { fill: #7d6f58; }
-.re-note--out { opacity: 0.22; }
-.re-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1.5; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; pointer-events: none; }
-.re-info { font-size: 12px; color: var(--ink); margin-top: 8px; min-height: 1.5em; }
-.re-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 2px; }
-.re-modes { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.range-editor .re-mode { background: transparent; color: var(--muted); border: 0; border-radius: 0; padding: 6px 12px; font-size: 12px; cursor: pointer; }
-.range-editor .re-mode + .re-mode { border-left: 1px solid var(--line); }
-.range-editor .re-mode--active { background: var(--accent); color: #fff; }
-.re-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.re-field select { font-size: 12px; padding: 3px 4px; width: auto; }
-.re-svg--note { cursor: cell; }
-.re-svg--note .re-note { cursor: grab; }
-.re-note--picked { stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.range-editor .re-tools .btn-small { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 5px 10px; }
 .roll-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
 .midi-sel-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
 
-/* ---------- MIDIの時間の設計図(js/midi.js の arcPanelHtml) ---------- */
+/* ---------- MIDIの時間の設計図(js/midi/card.js の arcHtml) ---------- */
 .arc-row { display: grid; grid-template-columns: 3.2em 4.6em 48px 1fr; align-items: center; gap: 6px; font-size: 11.5px; padding: 3px 0; border-bottom: 1px dotted var(--line); }
 .arc-name { font-weight: 600; color: var(--ink); }
 .arc-bars { color: var(--faint); font-size: 10.5px; }
@@ -1613,17 +1566,6 @@ a.btn-secondary { display: block; }
 .arc-tension i { display: block; height: 100%; background: var(--accent); }
 .arc-text { color: var(--muted); line-height: 1.5; }
 
-/* ---------- MIDIの編集画面のスケール(js/scales.js) ---------- */
-.re-scale-tools { padding: 6px 8px; margin-top: 6px; background: var(--accent-bg, #faf3e6); border-radius: 6px; }
-.re-tools-label { font-size: 11px; font-weight: 600; color: var(--accent-deep); letter-spacing: 0.05em; }
-.re-scale-tools .re-field select + select { margin-left: 4px; }
-.re-field select.re-scale-select { max-width: 230px; }
-.re-field small { font-size: 10px; color: var(--faint); margin-left: 4px; }
-.re-field--off { opacity: 0.4; }
-.re-scale-row { fill: rgba(184, 134, 59, 0.10); }
-.re-scale-root { fill: rgba(184, 134, 59, 0.22); }
-.re-check { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
-.re-check input { width: auto; margin: 0; }
 
 /* ---------- 感想・まとめ(js/screens/ensemble.js。CONSTELLATIONのCrewsに近い) ---------- */
 .star-card-hex--comment { left: 50%; top: 0; background: #5e8a8c; letter-spacing: 0.04em; transform: translate(-50%, calc(-100% - 10px)); }
@@ -1649,10 +1591,8 @@ a.btn-secondary { display: block; }
   100% { box-shadow: 0 0 0 26px rgba(184, 134, 59, 0); }
 }
 .star-card--born { animation: card-born 0.9s ease-out 2; }
-.re-field input[type="number"][data-re-tempo] { width: 4.2em; font-size: 12px; padding: 3px 4px; }
-.re-field input[type="range"][data-re-volume] { width: 90px; accent-color: var(--accent); }
 
-/* ---------- BEAT(js/midi.js の beatPanelHtml) ---------- */
+/* ---------- BEAT のリズム譜(js/midi/card.js の layersHtml) ---------- */
 .beat-section { margin-top: 8px; padding: 6px 8px; background: rgba(109, 90, 138, 0.06); border-radius: 6px; }
 .beat-section-name { font-size: 11px; font-weight: 600; color: #6d5a8a; margin-bottom: 3px; }
 .beat-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 6px; align-items: center; font-size: 11px; }
@@ -1660,8 +1600,6 @@ a.btn-secondary { display: block; }
 .beat-inst { color: var(--muted); }
 .beat-fill-label { font-size: 10px; color: var(--faint); margin-top: 3px; }
 .beat-row--fill code { color: #8a4f3a; }
-.roll-notes rect.roll-drums, .re-note.roll-drums { fill: #6d5a8a; }
-.roll-legend-drums::before { background: #6d5a8a; }
 
 /* ---------- 画像検索(Pixabay、js/imagesearch.js、2026-09-26) ----------
    キャンバスを隠さない浮いたパネル(左上)。開いたままサムネイルを次々クリックして画像カードを入れ替える */
@@ -1720,22 +1658,73 @@ a.btn-secondary { display: block; }
 /* display を指定した要素でも hidden 属性で隠れるように(もっと見る・画像の無いカードの img) */
 .imgsearch [hidden], .ens-image[hidden], .panel-image[hidden] { display: none; }
 
-/* ---------- 見立て蔵モデル(2026-09-26): 要素(g1〜g6)ごとの色と、パネルの要素の一覧 ---------- */
-.roll-notes rect.roll-g1, .re-note.roll-g1 { fill: #b5654a; }
-.roll-notes rect.roll-g2, .re-note.roll-g2 { fill: #4f7a8c; }
-.roll-notes rect.roll-g3, .re-note.roll-g3 { fill: #8a9a4f; }
-.roll-notes rect.roll-g4, .re-note.roll-g4 { fill: #9a6fa0; }
-.roll-notes rect.roll-g5, .re-note.roll-g5 { fill: #c49a3c; }
-.roll-notes rect.roll-g6, .re-note.roll-g6 { fill: #5f6f9f; }
-.roll-legend-g1::before, .gesture-name .roll-legend-g1 { background: #b5654a; }
-.roll-legend-g2::before, .gesture-name .roll-legend-g2 { background: #4f7a8c; }
-.roll-legend-g3::before, .gesture-name .roll-legend-g3 { background: #8a9a4f; }
-.roll-legend-g4::before, .gesture-name .roll-legend-g4 { background: #9a6fa0; }
-.roll-legend-g5::before, .gesture-name .roll-legend-g5 { background: #c49a3c; }
-.roll-legend-g6::before, .gesture-name .roll-legend-g6 { background: #5f6f9f; }
-.gesture-row { border-top: 1px solid var(--line); padding: 8px 0 6px; }
-.gesture-row--primary { background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 6px; padding: 8px 8px 6px; border-top-color: transparent; }
-.gesture-name { font-size: 12.5px; color: var(--ink); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.gesture-name span[class^="roll-legend-"] { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
-.gesture-row--primary .gesture-name { font-weight: 600; }
-.gesture-type { font-size: 11px; color: var(--faint); font-weight: normal; }
+
+/* ---------- MIDIのパネル(js/midi/card.js、2026-09-26): 凡例・層の一覧 ---------- */
+.panel-roll .piano-roll { height: 130px; }
+.roll-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--faint); margin: 4px 0 12px; }
+.roll-legend i, .layer-name i, .me-part i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.roll-sel { fill: rgba(184, 134, 59, 0.12); stroke: var(--accent-deep); stroke-width: 1; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+.layer-row { border-top: 1px solid var(--line); padding: 8px 0 6px; }
+.layer-row--muted { opacity: 0.45; }
+.layer-name { font-size: 12.5px; color: var(--ink); font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.layer-gen { font-size: 11px; color: var(--faint); font-weight: normal; margin-left: 4px; }
+.layer-actions { display: flex; gap: 6px; margin-top: 4px; }
+
+/* ---------- モデルのピッカー(js/midi/compose.js の pickModel) ---------- */
+.modal.model-picker { width: min(720px, calc(100vw - 32px)); max-width: none; }
+.model-group { margin-top: 10px; }
+.model-group-name { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--accent-deep); margin-bottom: 4px; }
+.model-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.model-group-name { grid-column: 1 / -1; }
+.modal .model-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; box-shadow: none; cursor: pointer; font-weight: normal; }
+.modal .model-item:hover, .modal .model-item:focus-visible { border-color: var(--accent); background: var(--accent-bg); color: var(--ink); outline: none; }
+.modal .model-item--last { border-color: var(--accent-line); }
+.model-item-label { font-size: 13px; font-weight: 600; }
+.model-item-label em { font-style: normal; font-size: 10px; font-weight: 500; color: #fff; background: var(--accent); border-radius: 3px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+.model-item-text { font-size: 11px; line-height: 1.6; color: var(--muted); }
+
+/* ---------- MIDIの編集画面(js/midi/editor.js、canvas版) ---------- */
+.modal.midi-editor { width: min(1280px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); display: flex; flex-direction: column; overflow: hidden; }
+.me-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.me-head h2 { margin: 0; }
+.me-info { font-size: 11.5px; color: var(--muted); }
+.me-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.me-bar-label { font-size: 11px; font-weight: 600; color: var(--accent-deep); letter-spacing: 0.05em; }
+.me-ops, .me-scale { padding: 5px 8px; background: var(--accent-bg); border-radius: 6px; gap: 4px 6px; }
+.me-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.midi-editor .me-seg button { background: transparent; color: var(--muted); border: 0; border-radius: 0; padding: 5px 12px; font-size: 12px; box-shadow: none; }
+.midi-editor .me-seg button + button { border-left: 1px solid var(--line); }
+.midi-editor .me-seg button.me-seg--active { background: var(--accent); color: #fff; }
+.modal.midi-editor label.me-field { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); margin: 0; }
+.modal.midi-editor .me-field select, .modal.midi-editor .me-field input { display: inline-block; font-size: 12px; padding: 3px 4px; width: auto; margin: 0; }
+.modal.midi-editor label.me-check { display: inline-flex; margin: 0; }
+.modal.midi-editor .me-check input, .modal.midi-editor input.me-hscroll { display: inline-block; }
+.me-field input[type="number"] { width: 4.2em; }
+.me-field input[type="range"] { width: 80px; accent-color: var(--accent); padding: 0; }
+.me-field small { font-size: 10px; color: var(--faint); }
+.me-field--off { opacity: 0.4; }
+.me-field select.me-scale-select { max-width: 220px; }
+.midi-editor .me-btn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 3px 8px; font-size: 11.5px; box-shadow: none; font-weight: normal; }
+.midi-editor .me-btn:hover { border-color: var(--accent); }
+.midi-editor .me-btn--accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.me-check { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; }
+.me-check input { width: auto; margin: 0; }
+.me-parts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.midi-editor .me-part { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; font-size: 11.5px; box-shadow: none; font-weight: normal; }
+.midi-editor .me-part--off { opacity: 0.4; text-decoration: line-through; }
+.me-stage { position: relative; flex: 1 1 auto; min-height: 280px; height: 62vh; margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #fbf8f1; }
+.me-canvas { display: block; touch-action: none; user-select: none; }
+.me-foot { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.me-hscroll { flex: 1; accent-color: var(--accent); margin: 0; padding: 0; }
+.me-zoom { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.me-help { font-size: 11px !important; margin: 6px 0 0 !important; }
+@media (max-width: 640px) {
+  .me-stage { height: 46vh; }
+  .me-scale { display: none; }
+}
+
+/* ---------- 設定画面の MIDI の書き出し先 ---------- */
+.settings-export-line { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink); }
+.settings-export-line span { flex: 1; word-break: break-all; }
+.settings-export-line button { width: auto; flex: none; }

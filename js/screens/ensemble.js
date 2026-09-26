@@ -18,7 +18,7 @@
 //   source { soulId, sourceId }                 出典
 //   soul   { soulId }                           ソウルそのもの(別の舞台のゲスト参加など)
 //   speech { voices, chain, recipe, memberIds, triggerCardIds, feedback }  アンサンブルの発言
-//   midi   { name, midi, speechId? }            js/midi.js
+//   midi   { name, midi, speechId? }            js/midi/(card.js ほか)
 //   audio  { name, fileId, mimeType, peaks, duration, hqFileId? }  js/audio.js
 
 (function () {
@@ -127,7 +127,7 @@
     },
 
     cardHexes(card) {
-      // MIDIカードのEditは編集画面(js/midi.js の openMidiEditor)を開く(2026-09-25)
+      // MIDIカードのEditは編集画面(js/midi/editor.js の openMidiEditor)を開く(2026-09-25)
       const editable = card.type === 'text' || card.type === 'midi' || card.type === 'image' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
@@ -455,7 +455,7 @@
     listen(comp);
   }
 
-  /* ---- ビート(2026-09-25、js/midi.js の createBeat) ----
+  /* ---- ビート(2026-09-25、js/midi/compose.js の createBeat) ----
    * ソウルカードの「ビート」: そのソウル1体から、つないだカードも添えてすぐ作る。
    * 課題カードの「ビート」: その課題カードのまとまりに招集されたソウル(プラグイン以外)とカードから作る。ソウルが無くても、
    * 課題の文(「ボサノヴァのビート」など)だけで作れる。できたビートはそのカードから線でつながる */
@@ -508,7 +508,7 @@
   /* ---- コード+旋律で鳴らす ----
    * 2026-09-25: 「美学からつないだだけで、その美学を一聴で表すコード+メロディが出てくるように」という要望で追加。
    * 美学・ジャンル・作曲家のソウルが招集されている時に使える。アンサンブルの発言を経ずに、
-   * つないだカードとソウルの知識から直接 js/midi.js の createSketch を呼ぶ。Gemini呼び出しは無料枠保護の
+   * つないだカードとソウルの知識から直接 js/midi/compose.js の createSketch を呼ぶ(2026-09-26からは、モデルを選んでから作る)。Gemini呼び出しは無料枠保護の
    * 決まり(明示操作のみ)に合わせ、線をつないだだけでは呼ばない。 */
 
   function sketchSouls(souls) {
@@ -831,7 +831,7 @@ ${task}
       `  手持ちの知識(各項目は「名前: ${f.effect} / ${f.intent}」。✓は実機で確認済み、それ以外は資料から抽出しただけの未確認):\n${groups.join('\n') || '   (まだ解体した知識がない)'}` +
       (notes ? `\n  このソウルへの気づき:\n${notes}` : '');
   }
-  window.LyraSoulMaterial = soulMaterial; // js/midi.js のコード+旋律でも同じ形で知識を渡す
+  window.LyraSoulMaterial = soulMaterial; // js/midi/compose.js のMIDI生成でも同じ形で知識を渡す
 
   function previousSpeech(compIds) {
     const set = new Set(compIds);
@@ -1711,7 +1711,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     scheduleAutoSave();
   }
 
-  /** 他のファイル(js/midi.js・js/audio.js・js/daily.js)から、今開いているアンサンブルへカードを足すための入口 */
+  /** 他のファイル(js/midi/compose.js・js/audio.js・js/daily.js)から、今開いているアンサンブルへカードを足すための入口 */
   function addCardToEnsemble(targetStage, card) {
     const ens = getEnsemble(targetStage.id);
     ens.cards.push(card);
@@ -1752,7 +1752,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
   }
 
   /**
-   * MIDIカードのブラッシュアップ用に、ASTRでつないだカードとその持ち主のソウルを集める(js/midi.js の reviseMidi)。
+   * MIDIカードのブラッシュアップ用に、ASTRでつないだカードとその持ち主のソウルを集める(js/midi/compose.js の reviseMidi)。
    * 発言カードは数えない。MIDIカードは、改善の系譜(revisionOf でつながる版どうし)の外のものだけを midis に分けて返す
    * (パートの差し替えに使う)。texts は気づき・課題カードの文(光景・物語の初期値)。ほかに何もつながっていなければnull。
    * opts.excludeReferences: アーティスト名・曲名などのパラメータカードを外す(旋律を作る時)

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260926c">
+<link rel="stylesheet" href="css/style.css?v=20260926d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
@@ -63,7 +63,6 @@
     <div class="toolbar-actions">
       <button id="sign-in-btn" hidden>Googleでサインイン</button>
       <button id="sign-out-btn" class="secondary" hidden>サインアウト</button>
-      <button id="mini-btn" class="secondary" title="Cubaseの上に浮かべる小窓(MIDIをドラッグでCubaseへ)">小窓</button>
       <button id="settings-btn" class="secondary icon-btn" title="設定">⚙</button>
     </div>
     <div id="status-progress" class="status-progress" hidden><div id="status-progress-bar" class="status-progress-bar"></div></div>
@@ -104,6 +103,10 @@
         Pixabay APIキー(任意。画像カードの画像検索に使います)
         <input type="text" id="settings-pixabay-key" placeholder="12345678-abcdef..." autocomplete="off">
       </label>
+      <div class="modal-field settings-export" id="settings-export-row">
+        <span class="modal-field-label">MIDIの書き出し先フォルダ(MIDIカードの「⇩ 保存」の保存先。この端末のブラウザにだけ覚えます)</span>
+        <div class="settings-export-line"><span id="settings-export-name">未設定</span><button type="button" id="settings-export-btn" class="secondary">フォルダを選ぶ</button></div>
+      </div>
       <label id="settings-daily-row" class="modal-check" hidden>
         <input type="checkbox" id="settings-daily">
         毎日の課題(アプリから)をアンサンブル in コンサートホールに出す
@@ -127,19 +130,25 @@
   <script src="js/gemini.js?v=20260925j"></script>
   <script src="js/sound.js?v=20260925a"></script>
   <script src="js/canvas.js?v=20260925a"></script>
-  <script src="js/app.js?v=20260926b"></script>
+  <script src="js/app.js?v=20260926c"></script>
   <script src="js/decompose.js?v=20260925l"></script>
-  <script src="js/scales.js?v=20260925b"></script>
-  <script src="js/gesture.js?v=20260926a"></script>
-  <script src="js/process.js?v=20260926a"></script>
-  <script src="js/midi.js?v=20260926c"></script>
+  <script src="js/scales.js?v=20260926a"></script>
+  <script src="js/midi/theory.js?v=20260926a"></script>
+  <script src="js/midi/engine.js?v=20260926a"></script>
+  <script src="js/midi/generators.js?v=20260926a"></script>
+  <script src="js/midi/design.js?v=20260926a"></script>
+  <script src="js/midi/presets.js?v=20260926a"></script>
+  <script src="js/midi/play.js?v=20260926a"></script>
+  <script src="js/midi/export.js?v=20260926a"></script>
+  <script src="js/midi/compose.js?v=20260926a"></script>
+  <script src="js/midi/editor.js?v=20260926a"></script>
+  <script src="js/midi/card.js?v=20260926a"></script>
   <script src="js/imagesearch.js?v=20260926a"></script>
-  <script src="js/mini.js?v=20260925c"></script>
   <script src="js/audio.js?v=20260925b"></script>
   <script src="js/daily.js?v=20260925c"></script>
   <script src="js/screens/home.js?v=20260925h"></script>
   <script src="js/screens/soul.js?v=20260925h"></script>
-  <script src="js/screens/ensemble.js?v=20260926b"></script>
+  <script src="js/screens/ensemble.js?v=20260926c"></script>
   <script src="js/marquee.js?v=20260925a"></script>
 </body>
 </html>

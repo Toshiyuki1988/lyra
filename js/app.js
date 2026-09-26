@@ -73,6 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsCancelBtn = document.getElementById('settings-cancel-btn');
   els.settingsDaily = document.getElementById('settings-daily');
   els.settingsDailyRow = document.getElementById('settings-daily-row');
+  els.settingsExportName = document.getElementById('settings-export-name');
+  els.settingsExportBtn = document.getElementById('settings-export-btn');
   els.ensembleTabs = document.getElementById('ensemble-tabs');
 
   initCanvas(els.viewport, els.content);
@@ -81,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsBtn.addEventListener('click', openSettings);
   els.settingsSaveBtn.addEventListener('click', handleSaveSettings);
   els.settingsCancelBtn.addEventListener('click', closeSettings);
+  els.settingsExportBtn.addEventListener('click', pickMidiExportDir);
   els.signInBtn.addEventListener('click', () => signIn());
   els.signOutBtn.addEventListener('click', () => {
     signOut();
@@ -126,7 +129,31 @@ function openSettings() {
   // 日次課題のオン/オフはDriveのデータ(state.prefs)に保存するため、読み込み後だけ出す
   els.settingsDailyRow.hidden = !dataLoaded;
   els.settingsDaily.checked = Boolean(state.prefs.dailyTask);
+  refreshExportDirName();
   els.settingsModal.classList.add('visible');
+}
+
+/* MIDIの書き出し先フォルダ(2026-09-26、ユーザー要望「MIDIカードから直接ローカルフォルダに保存できる形に。保存先は設定画面で
+ * 指定する形に」)。フォルダの選択(ハンドル)は js/midi/export.js が IndexedDB に残す。フォルダへの直接保存に対応していない
+ * ブラウザ(File System Access API が無い)では、MIDIカードの保存は普通のダウンロードになる */
+function refreshExportDirName() {
+  const M = window.LyraMidi;
+  if (!M || !M.canPickFolder()) {
+    els.settingsExportName.textContent = 'このブラウザはフォルダへの直接保存に対応していません(ダウンロードになります)';
+    els.settingsExportBtn.hidden = true;
+    return;
+  }
+  M.exportDirName().then((name) => { els.settingsExportName.textContent = name || '未設定(最初の保存の時にも選べます)'; });
+}
+
+async function pickMidiExportDir() {
+  try {
+    const name = await window.LyraMidi.pickExportDir();
+    els.settingsExportName.textContent = name;
+    setStatus(`MIDIの書き出し先を「${name}」にしました`);
+  } catch (err) {
+    if (err.name !== 'AbortError') setStatus(`フォルダを選べませんでした: ${err.message}`, { important: true });
+  }
 }
 
 function closeSettings() {
