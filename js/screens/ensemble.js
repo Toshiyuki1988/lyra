@@ -128,7 +128,7 @@
 
     cardHexes(card) {
       // MIDIカードのEditは編集画面(js/midi/editor.js の openMidiEditor)を開く(2026-09-25)
-      const editable = card.type === 'text' || card.type === 'midi' || card.type === 'image' || (card.type === 'task' && card.origin !== 'app');
+      const editable = card.type === 'text' || card.type === 'midi' || card.type === 'image' || card.type === 'prompt' || (card.type === 'task' && card.origin !== 'app');
       // 課題カードには上に「聴く」「鳴らす」(その課題カードのまとまりを対象に、アンサンブルを聴く/コード+旋律で鳴らす)
       const taskTools = card.type === 'task' ? hexHtml('listen', '聴く') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
       // 美学・ジャンル・作曲家のソウルカードには上に「ビート」(そのソウルのジャンルを象徴するビートをすぐ作る)
@@ -141,8 +141,12 @@
       const imageTools = card.type === 'image' ? hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') : '';
       // 気づき⇔課題の入れ替え(左下)。アプリからの課題は理由・対象のパラメータを持つので入れ替えない
       const swap = card.type === 'text' || (card.type === 'task' && card.origin !== 'app')
-        ? hexHtml('swap', card.type === 'text' ? '→課題' : '→気づき') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + imageTools + soulTools + swap;
+        ? hexHtml('swap', card.type === 'text' ? '→課題' : '→気づき') : card.type === 'prompt' ? hexHtml('swap', card.promptOrigin === 'task' ? '→課題' : '→気づき') : '';
+      // 気づき・課題は右下の「→プロンプト」で、要望をMIDI生成向けの文章に整えたプロンプトカードにする(2026-09-26)
+      const toPrompt = card.type === 'text' || (card.type === 'task' && card.origin !== 'app') ? hexHtml('toprompt', '→プロンプト') : '';
+      // プロンプトカードは上に「整える」「鳴らす」「ビート」
+      const promptTools = card.type === 'prompt' ? hexHtml('refine', '整える') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + imageTools + soulTools + promptTools + swap + toPrompt;
     },
 
     onHexAction(action, card, el) {
@@ -155,6 +159,9 @@
       else if (action === 'delete') confirmDeleteCard(card);
       else if (action === 'listen') listenFromTask(card);
       else if (action === 'sketch' && card.type === 'image') sketchFromImage(card, el);
+      else if (action === 'sketch' && card.type === 'prompt') sketchFromPrompt(card, el);
+      else if (action === 'toprompt') toPrompt(card, el);
+      else if (action === 'refine') refinePromptCard(card, el);
       else if (action === 'replace') pickReplacement(card, el);
       else if (action === 'sketch') sketchFromTask(card);
       else if (action === 'comment') commentOnNote(card, el);
@@ -189,6 +196,7 @@
     if (card.type === 'summary') return 320;
     if (card.type === 'comment') return 230;
     if (card.type === 'image') return 220;
+    if (card.type === 'prompt') return 240;
     return 180;
   }
 
@@ -243,6 +251,16 @@
           `<div class="ens-card-kind">課題 · あなたから</div>` +
           `<textarea class="star-card-memo" spellcheck="false" data-field="text" placeholder="いま取り組みたいこと">${escapeHtml(card.text || '')}</textarea>`;
       }
+    },
+
+    prompt(card, el) {
+      const preset = card.model && window.LyraPresets ? window.LyraPresets.byId(card.model) : null;
+      el.innerHTML =
+        `<div class="ens-card-kind ens-card-kind--prompt">プロンプト · MIDI生成用</div>` +
+        `<textarea class="star-card-memo star-card-memo--prompt" spellcheck="false" data-field="prompt" placeholder="上の「整える」で、Geminiが要望をMIDI生成向けの文章に書き直します">${escapeHtml(card.prompt || '')}</textarea>` +
+        (card.text ? `<div class="ens-card-sub prompt-origin">元の要望: ${escapeHtml(card.text)}</div>` : '') +
+        (preset ? `<div class="ens-card-sub ens-card-sub--accent">おすすめ: ${escapeHtml(preset.label)}${card.bars ? ` · ${card.bars}小節` : ''}</div>` : '') +
+        (card.why ? `<div class="ens-card-sub midi-comment">${escapeHtml(card.why)}</div>` : '');
     },
 
     param(card, el) {
@@ -477,6 +495,7 @@
       renderMembers();
     }
     window.LyraMidi.createBeat({
+      promptCard: promptCardOf(cards, card.id),
       stage,
       souls,
       images: imageCardsOf(cards, card.id),
@@ -495,9 +514,9 @@
       setStatus('この課題カードをASTRで美学・ジャンル・作曲家のソウルか画像のカードとつないでから「鳴らす」を押してください', { important: true });
       return;
     }
-    const hasImage = comp.some((id) => (getCardById(id) || {}).type === 'image');
+    const hasImage = comp.some((id) => ['image', 'prompt'].includes((getCardById(id) || {}).type));
     if (!hasImage && !sketchSouls(recruitedSouls(comp)).length) {
-      setStatus('「鳴らす」には、美学・ジャンル・作曲家のソウル(またはそのパラメータ)か、画像のカードをつないでください', { important: true });
+      setStatus('「鳴らす」には、美学・ジャンル・作曲家のソウル(またはそのパラメータ)か、画像かプロンプトのカードをつないでください', { important: true });
       return;
     }
     focusCardId = card.id;
@@ -535,6 +554,8 @@
       ? { x: Math.min(...placed.map((c) => c.x || 0)), y: Math.max(...placed.map((c) => (c.y || 0) + (c.height || 120))) + 60 }
       : newCardSpawnPos();
     window.LyraMidi.createSketch({
+      // プロンプトカード(押したカードを優先): おすすめのモデル・小節数・ゲージを使う。文そのものは cardLine で最優先の指示として渡る
+      promptCard: promptCardOf(placed, fromCardId),
       // つないだMIDIのパートは差し替えに使える。気づき・課題カードの文は「光景・物語」の初期値にする(ダイアログで直せる)
       midiSources: placed.filter((c) => c.type === 'midi').slice(0, 3),
       storyDefault: [...userTexts(placed), ...placed.filter((c) => c.type === 'image' && c.impression).map((c) => c.impression.trim().slice(0, 200))].join(' / '),
@@ -756,6 +777,8 @@ ${task}
     switch (card.type) {
       case 'text':
         return card.text ? `[気づき] ${card.text}` : null;
+      case 'prompt':
+        return card.prompt || card.text ? `[プロンプト(ユーザーの要望をMIDI生成向けに整えたもの。最優先で従う)] ${card.prompt || card.text}` : null;
       case 'task':
         return card.text ? `[課題 · ${card.origin === 'app' ? 'アプリから' : 'あなたから'}] ${card.text}${card.reason ? `(${card.reason})` : ''}` : null;
       case 'param': {
@@ -1471,6 +1494,16 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
 
   /** 気づき⇔課題(あなたから)を入れ替える(2026-09-25、ユーザー要望)。文・位置・線はそのまま */
   function swapNoteTask(card) {
+    if (card.type === 'prompt') {
+      // 元の気づき・課題へ戻す(整えた文はカードに残し、同じ要望のまま「→プロンプト」を押せばGeminiを呼ばずに戻れる)
+      card.type = card.promptOrigin === 'task' ? 'task' : 'text';
+      if (card.type === 'task') card.origin = 'user';
+      rerenderCard(card);
+      renderMembers();
+      scheduleAutoSave();
+      setStatus(`${card.type === 'task' ? '課題' : '気づき'}に戻しました(整えた文は残っているので、要望を変えなければ「→プロンプト」はすぐ戻ります)`);
+      return;
+    }
     if (card.type === 'text') {
       card.type = 'task';
       card.origin = 'user';
@@ -1679,6 +1712,77 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
     makeSketch(componentOf(card.id) || [card.id], card.id);
   }
 
+  /* ---- プロンプト(テキストカードの属性、2026-09-26) ----
+   * ユーザー要望「テキストカードの属性に『プロンプト』を作って。ざっくりとした僕の要望をMIDI生成に最適な文章に直す。『課題』『気づき』から変換可能」。
+   * 気づき・課題カードの右下「→プロンプト」で、Geminiを1回呼んで要望を書き直し(js/midi/compose.js の refinePrompt)、同じカードを
+   * プロンプトカードにする(位置・線はそのまま)。card.text は元の要望のまま残し、整えた文は card.prompt(Editで直せる)。
+   * 上の「整える」で書き直し直す(手を入れた文も踏まえる)。「鳴らす」「ビート」はそのまとまりで作り、整えた文は最優先の指示として渡る。
+   * 左下の「→気づき/→課題」で元に戻せる(整えた文は残すので、要望を変えなければ次の「→プロンプト」はGeminiを呼ばない) */
+
+  function promptCardOf(cards, firstId) {
+    const list = cards.filter((c) => c && c.type === 'prompt' && (c.prompt || c.text));
+    return list.find((c) => c.id === firstId) || list[0] || null;
+  }
+
+  async function runRefine(card, el, draft) {
+    if (!window.LyraMidi || !window.LyraMidi.refinePrompt) return false;
+    const text = String(card.text || '').trim();
+    if (!text) {
+      setStatus('要望が空です。先に気づき・課題に書いてから「→プロンプト」を押してください', { important: true });
+      return false;
+    }
+    if (el) deactivateEditGuide(el);
+    const comp = componentOf(card.id) || [];
+    const context = comp.filter((id) => id !== card.id).map((id) => getCardById(id)).filter(Boolean).map(cardLine).filter(Boolean).slice(0, 12).map((l) => `- ${l.slice(0, 200)}`).join('\n');
+    setStatus('要望をMIDI生成向けに整えています…', { busy: true });
+    try {
+      const r = await window.LyraMidi.refinePrompt({ text, draft, context });
+      Object.assign(card, { prompt: r.prompt, model: r.model, bars: r.bars, gauges: r.gauges, why: r.why, promptFrom: text });
+      return true;
+    } catch (err) {
+      console.error(err);
+      setStatus(`プロンプトに整えられませんでした: ${err.message}`, { important: true });
+      return false;
+    }
+  }
+
+  function syncPromptHeight(card) {
+    const el = cardElById(card.id);
+    if (el) syncCardHeight(el);
+  }
+
+  async function toPrompt(card, el) {
+    const text = String(card.text || '').trim();
+    // 同じ要望で前に整えた文が残っていれば、Geminiを呼ばずに戻す
+    if (!(card.prompt && card.promptFrom === text) && !(await runRefine(card, el, null))) return;
+    card.promptOrigin = card.type;
+    card.type = 'prompt';
+    delete card.origin;
+    card.height = null; // 整えた文に合わせて高さを測り直す
+    rerenderCard(card);
+    syncPromptHeight(card);
+    renderMembers();
+    scheduleAutoSave();
+    const preset = card.model && window.LyraPresets ? window.LyraPresets.byId(card.model) : null;
+    setStatus(`プロンプトにしました${preset ? `(おすすめ: ${preset.label})` : ''}。上の「鳴らす」「ビート」か、つないだ課題の「鳴らす」で使えます`);
+  }
+
+  async function refinePromptCard(card, el) {
+    if (!(await runRefine(card, el, card.prompt || null))) return;
+    card.height = null;
+    rerenderCard(card);
+    syncPromptHeight(card);
+    scheduleAutoSave();
+    setStatus('プロンプトを整え直しました');
+  }
+
+  function sketchFromPrompt(card, el) {
+    if (el) deactivateEditGuide(el);
+    focusCardId = card.id;
+    renderMembers();
+    makeSketch(componentOf(card.id) || [card.id], card.id);
+  }
+
   /** 画像カード(押したカードを先頭に、最大3枚) */
   function imageCardsOf(cards, firstId) {
     const list = cards.filter((c) => c && c.type === 'image');
@@ -1789,6 +1893,7 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
       if (c.type === 'soul') return (getSoul(c.soulId) || {}).name || null;
       if (c.type === 'param') return (findParam(c).p || {}).name || null;
       if (c.type === 'text') return '気づき';
+      if (c.type === 'prompt') return 'プロンプト';
       if (c.type === 'task') return '課題';
       if (c.type === 'source') return 'つないだ出典';
       if (c.type === 'image') return '画像';

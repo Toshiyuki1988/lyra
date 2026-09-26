@@ -1737,3 +1737,17 @@ a.btn-secondary { display: block; }
 .midi-stars .midi-star:hover ~ .midi-star { color: #d8cfbd; }
 .midi-stars--large .midi-star { font-size: 22px; padding: 0 2px; }
 .model-item-stars { font-size: 11px; font-weight: 500; color: #b07d1e; margin-left: 8px; }
+
+/* ---------- プロンプトカード(テキストカードの属性、js/screens/ensemble.js、2026-09-26) ---------- */
+.star-card--ens-prompt { background: #f6f3fb; border-color: #c7bbdf; }
+.ens-card-kind--prompt { color: #6d5a8a; font-weight: 600; }
+.star-card-memo--prompt { font-size: 12px; line-height: 1.7; min-height: 4em; flex: none; } /* flex:1 だと高さ未定のカードで2行に縮むため、中身の高さに従わせる */
+.prompt-origin { color: var(--faint); font-size: 10.5px; }
+/* 気づき・課題の右下「→プロンプト」(左下は気づき⇔課題の入れ替え) */
+.star-card-hex--toprompt { left: 100%; top: 100%; transform: translate(-55%, 14px); background: #6d5a8a; font-size: 10px; }
+.star-card-hex-strut--toprompt { display: none; }
+/* プロンプトカードの上: 整える・鳴らす・ビート(課題カードの聴く・鳴らす・ビートと同じ並び) */
+.star-card-hex--refine { left: 50%; top: 0; background: #6d5a8a; letter-spacing: 0.04em; transform: translate(calc(-150% - 6px), calc(-100% - 10px)); }
+.star-card-hex-strut--refine { display: none; }
+.modal .model-item--recommended { border-color: #6d5a8a; box-shadow: 0 0 0 1px #6d5a8a inset; }
+.model-item-label em.model-item-rec { background: #6d5a8a; }

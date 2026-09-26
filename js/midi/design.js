@@ -26,7 +26,7 @@
 
   const PARAM_SCHEMA = {
     notes: ARR(NOTE_ITEM), cell: ARR(CELL_ITEM),
-    comping: S('STRING'), voicing: S('STRING'), degrees: ARR(S('INTEGER')), chordBars: S('INTEGER'), size: S('INTEGER'), pattern: S('STRING'),
+    comping: S('STRING'), voicing: S('STRING'), hits: S('STRING'), hitSteps: S('INTEGER'), degrees: ARR(S('INTEGER')), chordBars: S('INTEGER'), size: S('INTEGER'), pattern: S('STRING'),
     gesture: S('STRING'), occurrence: S('STRING'),
     rule: S('STRING'), step: S('NUMBER'), repeats: S('INTEGER'), shiftEvery: S('INTEGER'), voices: S('INTEGER'), delay: S('NUMBER'),
     transpose: ARR(S('INTEGER')), speeds: ARR(S('NUMBER')), talea: ARR(S('NUMBER')), triad: S('STRING'), position: S('STRING'), hold: S('NUMBER'),
@@ -39,6 +39,7 @@
     chain: ARR(S('STRING')), gap: S('NUMBER'),
     row: ARR(S('STRING')), forms: ARR(S('STRING')), rhythm: ARR(S('NUMBER')), texture: S('STRING'), group: S('INTEGER'),
     accent: S('INTEGER'),
+    phraseLen: S('NUMBER'), chromatic: S('NUMBER'), triplets: S('NUMBER'),
     stepsPerBeat: S('INTEGER'), swing: S('NUMBER'), patterns: ARR(OBJ({ section: S('STRING'), rows: DRUM_ROWS, fill: DRUM_ROWS }, ['rows'])),
   };
 
@@ -178,6 +179,8 @@
     if (has('cell')) L.cell = parseCell(raw.cell, false).filter((n) => n.pitch != null);
     if (has('comping')) L.comping = pickWord(raw.comping, E.COMPINGS, 'sustain');
     if (has('voicing')) L.voicing = pickWord(raw.voicing, T.VOICINGS, 'close');
+    if (has('hits')) L.hits = String(raw.hits || '').replace(/[|\s]/g, '').replace(/[O0]/g, 'o').replace(/[_]/g, '.').replace(/[^Xxo.\-]/g, '.').slice(0, 96);
+    if (has('hitSteps')) L.hitSteps = [2, 3, 4, 6].includes(Math.round(Number(raw.hitSteps))) ? Math.round(Number(raw.hitSteps)) : 2;
     if (has('degrees')) L.degrees = (raw.degrees || []).map((d) => (ROMAN[String(d).toUpperCase().replace(/[^IV]/g, '')] || int(d, 1, 12, 1))).slice(0, 32);
     if (has('chordBars')) L.chordBars = int(raw.chordBars, 1, 8, 1);
     if (has('size')) L.size = int(raw.size, 3, 4, 3);
@@ -196,7 +199,7 @@
     if (has('triad')) L.triad = str(raw.triad, 8);
     L.position = ['above', 'below', 'alternate'].includes(raw.position) ? raw.position : generator === 'counterpoint' ? 'above' : 'alternate';
     L.hold = num(raw.hold, 1, 32, 8);
-    if (has('density')) L.density = num(raw.density, 0.25, 48, 4);
+    if (has('density')) L.density = num(raw.density, 0.25, 48, generator === 'bebop' ? 7 : 4);
     if (has('spread')) L.spread = num(raw.spread, 0, 1, 0.4);
     if (has('durMin')) L.durMin = num(raw.durMin, 0.0625, 8, 0.25);
     if (has('durMax')) L.durMax = num(raw.durMax, 0.0625, 16, 1);
@@ -224,6 +227,9 @@
     if (has('rhythm')) L.rhythm = nums(raw.rhythm, 0.125, 8, 16);
     if (has('texture')) L.texture = ['line', 'pointillist', 'chords'].includes(raw.texture) ? raw.texture : 'line';
     if (has('group')) L.group = int(raw.group, 2, 4, 3);
+    if (has('phraseLen')) L.phraseLen = num(raw.phraseLen, 2, 32, 6);
+    if (has('chromatic')) L.chromatic = num(raw.chromatic, 0, 1, 0.45);
+    if (has('triplets')) L.triplets = num(raw.triplets, 0, 1, 0.15);
     if (has('accent')) L.accent = int(raw.accent, 0, 16, 0);
     if (has('stepsPerBeat')) L.stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.stepsPerBeat))) ? Math.round(Number(raw.stepsPerBeat)) : 4;
     if (generator === 'drums') L.swing = (L.stepsPerBeat || 4) % 3 === 0 ? 0 : num(raw.swing, 0, 1, 0);

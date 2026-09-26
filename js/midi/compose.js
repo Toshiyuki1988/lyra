@@ -133,7 +133,7 @@
   }
 
   /** モデルのピッカー(見出しごとに並べ、説明つき)。やめたら null */
-  function pickModel(title) {
+  function pickModel(title, recommended) {
     return new Promise((resolve) => {
       const last = lastModel();
       const stats = M.modelStats ? M.modelStats() : {};
@@ -148,8 +148,8 @@
       overlay.innerHTML = `<div class="modal model-picker"><h2>${escapeHtml(title || 'どのモデルで作りますか?')}</h2>` +
         `<p class="modal-desc">モデルは「音高・拍子・時間の設計・層の作り方」の組み合わせです。Geminiは設計図を1回だけ書き、音はアプリが作ります(主旋律をGeminiが書くモデルは、反芻でもう1回)。</p>` +
         groups.map((g) => `<div class="model-group"><div class="model-group-name">${escapeHtml(g.name)}</div>` +
-          g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}" data-model="${p.id}">` +
-            `<span class="model-item-label">${escapeHtml(p.label)}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
+          g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}" data-model="${p.id}">` +
+            `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
             `<span class="model-item-text">${escapeHtml(p.text)}</span></button>`).join('') + `</div>`).join('') +
         `<div class="modal-actions"><button type="button" class="secondary" data-cancel>やめる</button></div></div>`;
       const finish = (id) => {
@@ -599,7 +599,8 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
 
   /** 課題カード・画像カードの「鳴らす」: モデルを選び、質問してから作る */
   async function createSketch(opts) {
-    const id = await pickModel('どのモデルで鳴らしますか?');
+    const pc = opts.promptCard || null;
+    const id = await pickModel(pc && pc.model ? 'どのモデルで鳴らしますか?(プロンプトカードのおすすめに印)' : 'どのモデルで鳴らしますか?', pc ? pc.model : null);
     if (!id) return;
     const preset = P.byId(id);
     const values = await showFormDialog({
@@ -607,7 +608,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       message: `${[...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)].join('・') || 'つないだカード'}から作ります。Geminiを${preset.ruminate ? '2回(設計図と、主旋律の反芻。つないだMIDIの旋律を使う時は1回)' : '1回'}呼びます。` +
         (opts.souls && opts.souls.length ? 'アーティスト名・曲名などの項目は渡しません。' : '') + feedbackNote(preset),
       submitLabel: '作る',
-      fields: presetFields(preset, { story: opts.storyDefault, sources: opts.midiSources || [] }),
+      fields: presetFields(preset, { story: opts.storyDefault, sources: opts.midiSources || [], bars: pc && pc.bars, gauges: pc && pc.gauges }),
     });
     if (!values) return;
     const v = readPresetValues(values, preset, opts.midiSources || []);
@@ -658,9 +659,9 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const names = [...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)];
     const values = await showFormDialog({
       title: 'ビートを作る',
-      message: `${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。${feedbackNote(preset)}`,
+      message: `${opts.promptCard ? 'プロンプトカードの要望に沿って、' : ''}${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。${feedbackNote(preset)}`,
       submitLabel: '作る',
-      fields: presetFields(preset, {}),
+      fields: presetFields(preset, { bars: opts.promptCard && opts.promptCard.bars, gauges: opts.promptCard && opts.promptCard.gauges }),
     });
     if (!values) return;
     const v = readPresetValues(values, preset, []);
@@ -672,6 +673,58 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       focusParamIds: opts.focusParamIds,
       excludeReferences: false,
     }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y }));
+  }
+
+  /* ---------------- プロンプトを整える(テキストカードの属性「プロンプト」、2026-09-26) ----------------
+   * ユーザー要望「テキストカードの属性に『プロンプト』を作って。ざっくりとした僕の要望をMIDI生成に最適な文章に直す。『課題』『気づき』から
+   * 変換可能」。Geminiを1回呼び、要望を設計図に直しやすい観点(情景と時間の流れ・感情の起伏・テンポ・拍子とリズム・和声と音階・
+   * 質感と層・形式と長さ・避けたいこと)の箇条書きに書き直し、合うモデル・小節数・ゲージも出させる。
+   * できた文はカードに残り、MIDIを作る時に最優先の指示として渡る(ensemble.js の cardLine)。おすすめのモデルはピッカーに印、
+   * 小節数・ゲージはダイアログの初期値になる */
+
+  const REFINE_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      prompt: { type: 'STRING' },
+      model: { type: 'STRING' },
+      bars: { type: 'INTEGER' },
+      gauges: { type: 'OBJECT', properties: { grain: { type: 'INTEGER' }, leap: { type: 'INTEGER' }, dub: { type: 'INTEGER' }, emotion: { type: 'INTEGER' } } },
+      why: { type: 'STRING' },
+    },
+    required: ['prompt', 'model', 'bars', 'why'],
+  };
+
+  /** { text: ざっくりした要望, draft?: 前に整えた文(手を入れているかもしれない), context?: つながっているカードの行 } → { prompt, model, bars, gauges, why } */
+  async function refinePrompt({ text, draft, context }) {
+    const models = P.PRESETS.map((p) => `- ${p.id}: ${p.label} — ${p.text}${p.hidden ? '(ドラムだけのビート。「ビート」の入口で作る)' : ''}`).join('\n');
+    const prompt = `あなたは作曲支援アプリLYRAのプロンプト係です。ユーザーのざっくりした要望を、このアプリのMIDI生成に最も効く文章に書き直してください。
+MIDI生成では、別のGeminiがこの文章を読んで設計図(音高の器・拍子・時間の設計図・層ごとの生成器とパラメータ)を書き、アプリがそれを音にします。
+
+ユーザーの要望: ${text}
+${draft ? `前に整えた文(ユーザーが手を入れている場合がある。手を入れた所は尊重する):
+${draft}
+` : ''}${context ? `つながっているカード(参考):
+${context}
+` : ''}
+書き直しの約束:
+- ユーザーの意図を変えない。書かれていないことは、要望から自然に導ける範囲で具体化する(決めつけすぎず、幅を残す)
+- 次の観点を、設計図に直せる具体的な言葉で書く: 情景・物語(時間とともにどう変わるか)/雰囲気と感情の起伏(頂点はどこか)/テンポ感(BPMの目安)/拍子とリズムの感じ(ハネ・変拍子・食い)/和声と音階の方向(旋法・コードの色・調性の有無)/質感と層の役割(何が地で何が図か、音域)/形式と長さ/避けたいこと
+- 「〇〇の曲みたいに」は、その曲の旋律を写させるのでなく、技法・雰囲気・リズムの特徴の言葉に置き換える
+- 「・」で始まる箇条書きで6〜9行、全体で350字以内。です・ます調にしない
+- model: 次のモデルの id から、この要望に最も合うものを1つ
+${models}
+- bars: 4〜32の小節数。gauges: grain(音の粒度)・leap(跳躍)・dub(つんのめり)・emotion(感情)をそれぞれ0〜100
+- why: そのモデルを選んだ理由を40字以内で`;
+    const raw = await askGeminiJson({ prompt, responseSchema: REFINE_SCHEMA, maxOutputTokens: 2048, timeoutMs: 90000, label: 'プロンプトを整える' });
+    const model = P.byId(String(raw.model || '').trim()) ? String(raw.model).trim() : null;
+    const gauges = {};
+    GAUGES.forEach((g) => {
+      const v = raw.gauges && Number(raw.gauges[g.name]);
+      if (Number.isFinite(v)) gauges[g.name] = Math.round(clamp(v, 0, 100, g.value) / 5) * 5;
+    });
+    const out = String(raw.prompt || '').trim().slice(0, 600);
+    if (!out) throw new Error('書き直した文が返ってきませんでした');
+    return { prompt: out, model, bars: Math.round(clamp(raw.bars, 2, 64, 8)), gauges: Object.keys(gauges).length ? gauges : null, why: String(raw.why || '').slice(0, 80) };
   }
 
   /* ---------------- 作り直す ---------------- */
@@ -819,7 +872,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
   }
 
   Object.assign(M, {
-    GAUGES, gaugeLabel, pickModel, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
+    GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries },
   });
 })();

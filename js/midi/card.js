@@ -16,6 +16,7 @@
 
   const LABELS = {
     sustain: '伸ばす', stabs: '短く刻む', offbeat: '裏拍', pulse: '8分で刻む', arpeggio: '分散和音', broken: 'アルベルティ風', none: 'なし',
+    jazz: 'ジャズのコンピング', charleston: 'チャールストン', anticipation: '食い', rootless: 'ルートレス', bossa: 'ボサノヴァ',
     close: '密集', open: '開離', shell: '3度と7度', cluster: '2度でぶつける', quartal: '4度堆積', power: 'ルートと5度', parallel: '平行移動',
     'root-fifth': 'ルートと5度', root: 'ルート', octave: '8分のオクターブ', pedal: '主音の持続', walking: 'ウォーキング',
   };
@@ -25,8 +26,9 @@
   /** 層のパラメータの一行要約 */
   function paramSummary(l) {
     switch (l.generator) {
-      case 'chords': return [`伴奏: ${LABELS[l.comping] || l.comping || '伸ばす'}`, `積み方: ${LABELS[l.voicing] || l.voicing || '密集'}`, l.degrees && l.degrees.length ? `度数 ${l.degrees.join('-')}` : ''].filter(Boolean).join(' · ');
+      case 'chords': return [l.hits ? `リズム譜 ${l.hits}(1拍${l.hitSteps || 2}分割)` : `伴奏: ${LABELS[l.comping] || l.comping || '伸ばす'}`, `積み方: ${LABELS[l.voicing] || l.voicing || '密集'}`, l.degrees && l.degrees.length ? `度数 ${l.degrees.join('-')}` : ''].filter(Boolean).join(' · ');
       case 'bass': return `型: ${LABELS[l.pattern] || l.pattern || 'ルート'}`;
+      case 'bebop': return `密度 ${l.density || 7}音/小節 · フレーズ${l.phraseLen || 6}拍 · 半音のアプローチ ${Math.round((l.chromatic != null ? l.chromatic : 0.45) * 100)}% · 3連 ${Math.round((l.triplets != null ? l.triplets : 0.15) * 100)}%`;
       case 'line': return `${(l.notes || []).length}音(Geminiが書いた旋律)`;
       case 'gesture': return `${(E.GESTURE_TYPES[l.gesture] || { label: `「${l.gesture}」は鳴らない型` }).label} · ${E.OCCURRENCES[l.occurrence] || 'まばら'}`;
       case 'process': {
@@ -220,7 +222,7 @@
         `<div class="panel-source">${escapeHtml([ROLE_LABELS[l.role] || l.role, l.register ? `音域: ${T.REGISTER_LABELS[l.register]}` : '', l.active && l.active.length ? `区間: ${l.active.join('・')}` : '', l.root != null || l.scale ? `調: ${l.root != null ? T.NOTE_NAMES[l.root] : ''} ${l.scale || ''}` : '', l.timbre ? `音色: ${l.timbre}` : ''].filter(Boolean).join(' · '))}</div>` +
         `<div class="panel-source">${escapeHtml(paramSummary(l))}</div>` +
         (l.why ? `<div class="midi-writeup">${escapeHtml(l.why)}</div>` : '') + drumsRows +
-        (gen ? `<div class="layer-actions">${gen.fixed && !(l.generator === 'serial' && l.texture === 'pointillist') ? '' : `<button type="button" class="btn-small" data-layer-reroll="${i}">振り直す</button>`}` +
+        (gen ? `<div class="layer-actions">${(typeof gen.fixed === 'function' ? gen.fixed(l) : gen.fixed) && !(l.generator === 'serial' && l.texture === 'pointillist') ? '' : `<button type="button" class="btn-small" data-layer-reroll="${i}">振り直す</button>`}` +
           `<button type="button" class="btn-small" data-layer-mute="${i}">${l.muted ? '鳴らす' : '消音'}</button></div>` : '') +
         `</div>`;
     }).join('');

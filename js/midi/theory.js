@@ -180,7 +180,7 @@
 
   /* ---------------- 和音の積み方と声部進行 ---------------- */
 
-  const VOICINGS = ['close', 'open', 'shell', 'cluster', 'quartal', 'power', 'parallel'];
+  const VOICINGS = ['close', 'open', 'shell', 'cluster', 'quartal', 'power', 'parallel', 'rootless'];
 
   /** 和音の型ごとの「積み方」。rotate: 転回形を候補にする / drop2: 上から2番目を1オクターブ下げる */
   function voicingShape(chord, type) {
@@ -195,6 +195,17 @@
         return { stack: third === 3 ? [0, 5, 10, 15] : [4, 9, 14, 19], rotate: false };
       case 'cluster':
         return { stack: pcs.includes(2) ? pcs : [...pcs, 2], rotate: true };
+      case 'rootless': {
+        // ジャズピアノのルートレス・ボイシング(2026-09-26): 根音を抜き、3度・7度にテンションを足した4音。
+        // 転回形を候補にするので、声部進行の近さでAフォーム(3-5-7-9)とBフォーム(7-9-3-5)が自然に選ばれる。
+        // ドミナントは5度の代わりに13th、ハーフディミニッシュは9thの代わりに11th、7度の無い和音は6度を使う
+        const has = (t) => chord.tones.some((x) => x % 12 === t % 12);
+        const seventh = chord.seventh !== null ? chord.seventh : third === 3 ? 10 : 9;
+        const dominant = third === 4 && seventh === 10;
+        const ninth = [13, 15].find((t) => chord.tones.includes(t) || chord.tones.includes(t + 12)) || (chord.fifth === 6 ? 17 : 14);
+        const color = dominant ? (has(8) ? 8 : 9) : chord.fifth;
+        return { stack: [third, color, seventh, ninth].map((t) => t % 12), rotate: true };
+      }
       default: {
         let use = pcs;
         if (use.length > 4 && chord.fifth === 7) use = use.filter((p) => p !== 7); // 完全5度から省く

@@ -82,9 +82,18 @@
     };
 
     // コード進行
-    const chords = system === 'chords'
+    let chords = system === 'chords'
       ? (p.chords || []).map((c) => ({ ...c, layers: T.parseLayers(c.symbol) })).filter((c) => c.layers && c.start < total)
       : [];
+    // 進行が曲の長さより短ければ、頭から繰り返す(形式を繰り返す音楽のように。Geminiが小節数より短い進行を書いた時も鳴らし続ける)
+    const progEnd = chords.reduce((e, c) => Math.max(e, c.start + c.duration), 0);
+    if (chords.length && progEnd > 0 && progEnd < total - EPS) {
+      const base = chords.slice();
+      for (let off = progEnd; off < total - EPS && chords.length < 512; off += progEnd) {
+        base.forEach((c) => { if (c.start + off < total - EPS) chords.push({ ...c, start: c.start + off }); });
+      }
+    }
+    chords = chords.sort((a, b) => a.start - b.start);
     const chordIdx = (beat) => {
       let hit = -1;
       chords.forEach((c, i) => { if (c.start <= beat + EPS) hit = i; });

@@ -41,8 +41,8 @@
 
   /* ================= 楽典(基本の楽典モデル由来) ================= */
 
-  const COMPINGS = ['sustain', 'stabs', 'offbeat', 'pulse', 'arpeggio', 'broken', 'none'];
-  const BASSES = ['root-fifth', 'root', 'octave', 'pedal', 'walking', 'none']; // root-fifth を root より先に照合する
+  const COMPINGS = ['sustain', 'stabs', 'offbeat', 'pulse', 'arpeggio', 'broken', 'jazz', 'charleston', 'anticipation', 'none'];
+  const BASSES = ['root-fifth', 'root', 'octave', 'pedal', 'walking', 'bossa', 'none']; // root-fifth を root より先に照合する
   const REGISTER_CENTER = { low: 55, mid: 62, high: 69 };
 
   /** 伴奏の型 → コードの区間 [s, e) の中で鳴らす位置と長さ */
@@ -80,22 +80,61 @@
     return out;
   }
 
+  /** リズム譜の文字列(X=強 x=普通 o=弱 .=休み -=前の音を伸ばす)→ 1小節の中の打つ位置 [{o(拍), d(拍), v}] */
+  function parseHits(str, steps, len) {
+    const s = String(str || '').replace(/[|\s]/g, '');
+    if (!s) return [];
+    const n = Math.max(1, Math.round(len * steps));
+    const out = [];
+    // 1小節より短い行は、1拍の倍数の長さなら繰り返す(ドラムと同じ約束)
+    const repeat = s.length < n && s.length >= steps && s.length % steps === 0;
+    for (let k = 0; k < n; k++) {
+      if (!repeat && k >= s.length) break;
+      const ch = s[k % s.length];
+      const v = { X: 100, x: 80, o: 58 }[ch];
+      if (v) out.push({ o: k / steps, d: 1 / steps, v });
+      else if (ch === '-' && out.length) out[out.length - 1].d += 1 / steps;
+    }
+    return out;
+  }
+
+  /** ジャズのコンピング: 1小節に2〜3打、裏拍と食いを多めに(乱数。粒度と緊張で打数が増える) */
+  function jazzComp(ctx, bar) {
+    const cands = [
+      { o: 0, w: 0.5 }, { o: 0.5, w: 0.35 }, { o: 1, w: 0.3 }, { o: 1.5, w: 0.9 }, { o: 2, w: 0.35 },
+      { o: 2.5, w: 0.7 }, { o: 3, w: 0.3 }, { o: 3.5, w: 0.8 },
+    ].filter((c) => c.o < bar.len - EPS);
+    const want = Math.max(1, Math.round(1.5 + ctx.tension(bar.start) * 1.5 + (ctx.gauge('grain') - 0.5) * 2 + ctx.rng.between(-0.5, 0.8)));
+    const chosen = [];
+    for (let tries = 0; chosen.length < want && tries < 20; tries++) {
+      const total = cands.reduce((sum, c) => sum + (chosen.includes(c) ? 0 : c.w), 0);
+      let r = ctx.rng.next() * total;
+      const hit = cands.find((c) => !chosen.includes(c) && (r -= c.w) <= 0);
+      if (hit && !chosen.some((c) => Math.abs(c.o - hit.o) < 0.6)) chosen.push(hit);
+    }
+    return chosen.sort((a, b) => a.o - b.o).map((c, i, arr) => ({
+      o: c.o,
+      d: Math.min(ctx.rng.pick([0.3, 0.45, 0.9]), (i + 1 < arr.length ? arr[i + 1].o : bar.len) - c.o),
+      v: c.o % 1 ? 82 : 70,
+    }));
+  }
+
   register('chords', {
-    fixed: true, // 乱数を使わない(振り直しても同じ音)
+    fixed: (l) => l.comping !== 'jazz', // ジャズのコンピング以外は乱数を使わない
     label: '和音',
     roles: ['harmony'],
-    text: 'コード進行を伴奏の型で鳴らす。和音の積み方は前の和音から近い転回形を選ぶ(parallel は同じ形のまま平行移動=ドビュッシーのプラーニング)',
-    params: ['comping', 'voicing', 'degrees', 'chordBars', 'size'],
-    paramText: 'comping(伴奏の型): sustain(伸ばす)/stabs(短く刻む)/offbeat(裏拍)/pulse(8分で刻む)/arpeggio(分散和音)/broken(アルベルティ風)。voicing(積み方): close/open/shell(3度と7度)/cluster/quartal(4度堆積)/power/parallel(平行移動)。コード進行(pitch.chords)が無い時だけ degrees(音階の度数の並び。例 [1,6,4,5])・chordBars(1コードの小節数)・size(3=三和音、4=七の和音)',
+    text: 'コード進行を伴奏の型で鳴らす。和音の積み方は前の和音から近い転回形を選ぶ(parallel は同じ形のまま平行移動=ドビュッシーのプラーニング、rootless はジャズピアノのルートレス・ボイシング)。hits にリズム譜を書くと、その位置・強さで和音を打つ(不規則なアクセントの連打や、決まったコンピングの型)',
+    params: ['comping', 'voicing', 'hits', 'hitSteps', 'degrees', 'chordBars', 'size'],
+    paramText: 'comping(伴奏の型): sustain(伸ばす)/stabs(短く刻む)/offbeat(裏拍)/pulse(8分で刻む)/arpeggio(分散和音)/broken(アルベルティ風)/jazz(ジャズのコンピング。裏拍と食いの不規則な2〜3打)/charleston(1拍目と2拍目の裏)/anticipation(次のコードを8分早く食う)。voicing(積み方): close/open/shell(3度と7度)/rootless(ルートレス)/cluster/quartal(4度堆積)/power/parallel(平行移動)。hits(任意): 1小節ぶんのリズム譜の文字列(X=強 x=普通 o=弱 .=休み -=前の和音を伸ばす)。書くと comping より優先。hitSteps は1拍の分割(2=8分、4=16分、3=3連)。コード進行(pitch.chords)が無い時だけ degrees(音階の度数の並び。例 [1,6,4,5])・chordBars(1コードの小節数)・size(3=三和音、4=七の和音)',
     render(ctx, L) {
       const out = [];
       let prev = null;
       const prevUpper = [];
       let parallelShape = null;
-      harmonySpans(ctx, L).forEach(({ start: s, end: e, layers }) => {
+      // コードの区間ごとに、積み方を先に決める
+      const spans = harmonySpans(ctx, L).map(({ start: s, end: e, layers }) => {
         const chord = layers[0];
         const sec = sectionAt(ctx, s);
-        const comping = (sec && sec.comping) || L.comping || 'sustain';
         const vType = (sec && sec.voicing) || L.voicing || 'close';
         const center = sec && sec.register && sec.register !== 'mid' ? REGISTER_CENTER[sec.register] : Math.round((ctx.range[0] + ctx.range[1]) / 2);
         let lower;
@@ -123,6 +162,50 @@
           prevUpper[i] = up;
           voicing = [...voicing, ...up];
         });
+        return { s, e, voicing, comping: (sec && sec.comping) || L.comping || 'sustain' };
+      });
+      const spanAt = (t) => spans.find((x) => t >= x.s - EPS && t < x.e - EPS);
+      const strike = (voicing, t, d, v) => voicing.forEach((p, i) => out.push(note(p, t, d, v - (i === voicing.length - 1 ? 0 : 4))));
+
+      // リズム譜(hits)があれば、それで打つ(小節ごとに、その時点のコードで)
+      if (L.hits) {
+        const steps = [2, 3, 4, 6].includes(L.hitSteps) ? L.hitSteps : 2;
+        ctx.bars.forEach((bar) => {
+          parseHits(L.hits, steps, bar.len).forEach((h) => {
+            const t = bar.start + h.o;
+            const sp = spanAt(t);
+            if (!sp || sp.comping === 'none') return;
+            strike(sp.voicing, t, Math.min(h.d, sp.e - t) * 0.95, h.v);
+          });
+        });
+        return out;
+      }
+
+      spans.forEach((sp, si) => {
+        const { s, e, voicing, comping } = sp;
+        if (comping === 'jazz') {
+          ctx.bars.filter((b) => b.start < e - EPS && b.start + b.len > s + EPS).forEach((bar) => {
+            jazzComp(ctx, bar).forEach((h) => {
+              const t = bar.start + h.o;
+              if (t < s - EPS || t >= e - EPS) return;
+              strike(voicing, t, Math.min(h.d, e - t) * 0.95, h.v);
+            });
+          });
+          return;
+        }
+        if (comping === 'charleston') {
+          ctx.bars.filter((b) => b.start >= s - EPS && b.start < e - EPS).forEach((bar) => {
+            strike(voicing, bar.start, 0.6, 80);
+            if (bar.start + 1.5 < e - EPS) strike(voicing, bar.start + 1.5, 0.45, 74);
+          });
+          return;
+        }
+        if (comping === 'anticipation') {
+          // 次のコードを8分早く食い、そのまま伸ばす(最初のコードだけは拍どおり)
+          const t = si === 0 ? s : Math.max(0, s - 0.5);
+          strike(voicing, t, e - t - 0.05, 78);
+          return;
+        }
         const onsets = compOnsets(comping, s, e, ctx.bars);
         if (comping === 'arpeggio' || comping === 'broken') {
           const n = voicing.length;
@@ -137,40 +220,94 @@
     },
   });
 
+  /** ウォーキングベース(2026-09-26、ジャズのモデルに合わせて作り直した)。
+   *  1拍目はコードの根音、途中はコードの音か音階の段で次のコードへ向かい、コードが変わる直前の拍は
+   *  次の根音へ半音・全音・5度から寄る(アプローチ)。たまに3連の跳ね(ゴースト)を入れる */
+  function walkingLine(ctx, spans) {
+    const out = [];
+    const range = [28, 52];
+    const fold = (p) => {
+      let x = p;
+      while (x < range[0]) x += 12;
+      while (x > range[1]) x -= 12;
+      return x;
+    };
+    const near = (pc, from) => {
+      let best = null;
+      for (let p = range[0]; p <= range[1]; p++) if (mod12(p) === pc && (best === null || Math.abs(p - from) < Math.abs(best - from))) best = p;
+      return best === null ? fold(36 + pc) : best;
+    };
+    let cur = null;
+    spans.forEach((sp, si) => {
+      const chord = sp.layers[0];
+      const next = spans[si + 1] ? spans[si + 1].layers[0] : spans[0].layers[0];
+      const beats = [];
+      for (let t = sp.start; t < sp.end - 0.5 + EPS; t += 1) beats.push(t);
+      if (!beats.length) return;
+      const tones = chord.tones.map((x) => mod12(chord.root + x));
+      cur = cur === null ? fold(36 + chord.bass) : near(chord.bass, cur);
+      beats.forEach((t, k) => {
+        let p;
+        if (k === 0) p = cur;
+        else if (k === beats.length - 1) {
+          const target = near(next.bass, cur);
+          p = fold(ctx.rng.pick([target - 1, target + 1, target - 1, ctx.src.step(target, cur > target ? 1 : -1, t), target + 7 - 12]));
+          if (p === cur) p = fold(target + (cur >= target ? 1 : -1));
+        } else {
+          const target = near(next.bass, cur);
+          const dir = target > cur ? 1 : target < cur ? -1 : ctx.rng.chance(0.5) ? 1 : -1;
+          const chordTone = tones.map((pc) => near(pc, cur)).filter((x) => x !== cur && Math.sign(x - cur) === dir && Math.abs(x - cur) <= 5);
+          p = chordTone.length && ctx.rng.chance(0.45) ? ctx.rng.pick(chordTone) : ctx.src.step(cur, dir, t);
+          p = fold(p);
+        }
+        out.push(note(p, t, 0.92, k === 0 ? 92 : 80 + ctx.rng.between(-6, 4)));
+        // たまに3連の跳ね(前の拍の最後の3連8分に、次の音へのゴースト)
+        if (k < beats.length - 1 && ctx.rng.chance(0.08 + ctx.gauge('grain') * 0.1)) {
+          const last = out[out.length - 1];
+          last.duration = 0.62;
+          out.push(note(p, t + 2 / 3, 0.3, 58));
+        }
+        cur = p;
+      });
+    });
+    return out;
+  }
+
   register('bass', {
-    fixed: true, // 乱数を使わない(振り直しても同じ音)
+    fixed: (l) => l.pattern !== 'walking', // ウォーキング以外は乱数を使わない
     label: 'ベース',
     roles: ['bass'],
     defaultRegister: 'low',
-    text: 'コードの根音(分数コードはその低音)でベースラインを作る',
+    text: 'コードの根音(分数コードはその低音)でベースラインを作る。walking はジャズのウォーキング(拍の頭に根音・次のコードへ半音や5度から寄る)',
     params: ['pattern', 'degrees', 'chordBars'],
-    paramText: 'pattern: root(ルートを伸ばす)/root-fifth(ルートと5度)/octave(8分のオクターブ)/pedal(主音の持続)/walking(次のコードへ順次で歩く)',
+    paramText: 'pattern: root(ルートを伸ばす)/root-fifth(ルートと5度=ツー・フィール)/octave(8分のオクターブ)/pedal(主音の持続)/walking(ジャズのウォーキング)/bossa(ボサノヴァ: 付点4分の根音と5度)',
     render(ctx, L) {
       const out = [];
       const spans = harmonySpans(ctx, L);
-      spans.forEach(({ start: s, end: e, layers }, si) => {
+      const walkingSpans = spans.filter((sp) => {
+        const sec = sectionAt(ctx, sp.start);
+        return ((sec && sec.bass) || L.pattern) === 'walking';
+      });
+      if (walkingSpans.length) out.push(...walkingLine(ctx, walkingSpans));
+      spans.forEach(({ start: s, end: e, layers }) => {
         const sec = sectionAt(ctx, s);
         const type = (sec && sec.bass) || L.pattern || 'root';
-        if (type === 'none') return;
+        if (type === 'none' || type === 'walking') return;
         const chord = layers[0];
         const pc = type === 'pedal' ? ctx.src.rootAt(0) : chord.bass;
         let low = 36 + pc;
         if (low > 43) low -= 12; // G1〜F#2
+        const fifth = low + 7 > 50 ? low - 5 : low + 7;
         const hits = [];
         if (type === 'octave') {
           for (let t = s, k = 0; t < e - EPS; t += 0.5, k++) hits.push({ t, p: k % 2 ? low + 12 : low, d: 0.45 });
-        } else if (type === 'walking') {
-          const next = spans[si + 1] ? spans[si + 1].layers[0].bass : pc;
-          let target = 36 + next;
-          if (target > 43) target -= 12;
-          const beats = [];
-          for (let t = s; t < e - EPS; t += 1) beats.push(t);
-          beats.forEach((t, k) => {
-            let p;
-            if (k === 0) p = low;
-            else if (k === beats.length - 1) p = target + (target > low ? -1 : 1); // 次の根音へ半音で寄る
-            else p = ctx.src.step(low, k * (target >= low ? 1 : -1), t);
-            hits.push({ t, p, d: 0.9 });
+        } else if (type === 'bossa') {
+          ctx.bars.filter((b) => b.start >= s - EPS && b.start < e - EPS).forEach((b) => {
+            hits.push({ t: b.start, p: low, d: 1.4 });
+            if (b.len >= 4 - EPS) {
+              hits.push({ t: b.start + 1.5, p: fifth, d: 0.45 });
+              hits.push({ t: b.start + 2, p: fifth, d: 1.9 });
+            }
           });
         } else {
           hits.push({ t: s, p: low });
@@ -178,16 +315,153 @@
             if (bar > s + EPS) hits.push({ t: bar, p: low });
             if (type === 'root-fifth') {
               const mid = bar + (Number.isInteger(len) && len % 2 === 0 ? len / 2 : Math.ceil(len / 2 - EPS));
-              if (mid < bar + len - EPS && mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: low + 7 > 50 ? low - 5 : low + 7 });
+              if (mid < bar + len - EPS && mid > s + EPS && mid < e - EPS) hits.push({ t: mid, p: fifth });
             }
           });
           hits.sort((x, y) => x.t - y.t);
         }
         hits.forEach((h, i) => {
           const next = i + 1 < hits.length ? hits[i + 1].t : e;
-          out.push(note(h.p, h.t, Math.max(0.1, h.d || (next - h.t) * 0.95), onBar(ctx, h.t) ? 88 : 80));
+          out.push(note(h.p, h.t, Math.max(0.1, Math.min(h.d || (next - h.t) * 0.95, e - h.t)), onBar(ctx, h.t) ? 88 : 80));
         });
       });
+      return out;
+    },
+  });
+
+  /* ================= アドリブ線(ジャズ、2026-09-26) ================= */
+
+  /** コードの性格からコードスケール(ルートからの半音)を選ぶ。付いているテンションはスケールに入れる */
+  function chordScale(ch) {
+    const iv = ch.tones.map((t) => t % 12);
+    let scale;
+    if (ch.third === 3 && ch.fifth === 6 && ch.seventh === 9) scale = [0, 2, 3, 5, 6, 8, 9, 11]; // ディミニッシュ(全半)
+    else if (ch.third === 3 && ch.fifth === 6) scale = [0, 2, 3, 5, 6, 8, 10]; // ロクリアン♮2
+    else if (ch.third === 3) scale = ch.seventh === 11 ? [0, 2, 3, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 9, 10]; // メロディックマイナー / ドリアン
+    else if (ch.third === 5 || ch.third === 2) scale = [0, 2, 4, 5, 7, 9, 10]; // sus → ミクソリディアン
+    else if (ch.seventh === 10) {
+      scale = [0, 2, 4, 5, 7, 9, 10]; // ミクソリディアン(オルタードのテンションがあれば差し替える)
+      if (iv.includes(1)) scale = scale.filter((x) => x !== 2).concat(1);
+      if (iv.includes(3)) scale = scale.concat(3);
+      if (iv.includes(8)) scale = scale.filter((x) => x !== 9).concat(8);
+      if (iv.includes(6)) scale = scale.filter((x) => x !== 5).concat(6);
+    } else scale = iv.includes(6) ? [0, 2, 4, 6, 7, 9, 11] : [0, 2, 4, 5, 7, 9, 11]; // リディアン / アイオニアン
+    return [...new Set(scale.map((x) => mod12(ch.root + x)))];
+  }
+
+  register('bebop', {
+    label: 'アドリブ線',
+    roles: ['melody'],
+    text: 'ジャズのアドリブのような8分の線をアプリが作る。各コードのスケールの上を歩き、強拍にコードの音を置き、コードが変わる直前は半音のアプローチや囲み込み(エンクロージャー)で次のコードの3度・7度へ入る。ときどき3連のターン、フレーズの終わりはコードの音で決めて息継ぎする。緊張が高いほどフレーズが長く高くなる',
+    params: ['density', 'phraseLen', 'chromatic', 'triplets'],
+    paramText: 'density(1小節あたりの平均の音の数 3〜8。8で8分を敷き詰める)、phraseLen(1フレーズの平均の長さ、拍 3〜16)、chromatic(半音のアプローチ・囲み込みの多さ 0〜1。ビバップは0.5以上、モードは0.2前後)、triplets(3連のターンの多さ 0〜1)',
+    render(ctx, L) {
+      const { src, rng, total } = ctx;
+      const range = L.register ? ctx.range : [60, 86];
+      const spans = src.hasChords ? src.sections.map((x) => ({ start: x.start, end: x.end, ch: src.chordAt(x.start).layers[0] })) : null;
+      const spanAt = (t) => (spans ? spans.find((x) => t >= x.start - EPS && t < x.end - EPS) || spans[spans.length - 1] : null);
+      const chordAt = (t) => (spans ? spanAt(t).ch : src.diatonicChord(t, 1, 4));
+      const scaleAt = (t) => (spans ? chordScale(chordAt(t)) : src.pcsAt(t));
+      const tonesAt = (t) => {
+        const ch = chordAt(t);
+        return ch.tones.map((x) => mod12(ch.root + x));
+      };
+      const guideAt = (t) => {
+        const ch = chordAt(t);
+        return [ch.third === null ? 7 : ch.third, ch.seventh !== null ? ch.seventh : ch.fifth].map((x) => mod12(ch.root + x));
+      };
+      const nextChangeAfter = (t) => (spans ? (spans.find((x) => x.start > t + EPS) || { start: null }).start : null);
+      const nearestPc = (pcs, from, lo, hi) => {
+        let best = null;
+        for (let p = lo; p <= hi; p++) if (pcs.includes(mod12(p)) && (best === null || Math.abs(p - from) < Math.abs(best - from))) best = p;
+        return best === null ? from : best;
+      };
+      const stepIn = (pcs, from, dir) => {
+        let p = from + dir;
+        for (let k = 0; k < 4 && !pcs.includes(mod12(p)); k++) p += dir;
+        return p;
+      };
+      const density = Math.max(2, Math.min(8, L.density || 7));
+      const chromatic = L.chromatic != null ? L.chromatic : 0.45;
+      const triplets = L.triplets != null ? L.triplets : 0.15;
+      const phraseLen = Math.max(2, L.phraseLen || 6);
+      const leap = ctx.gauge('leap');
+      const out = [];
+      let cur = nearestPc(tonesAt(0), Math.round(range[0] + (range[1] - range[0]) * 0.4), range[0], range[1]);
+      let t = rng.pick([0, 0.5, 1]);
+      while (t < total - 0.5) {
+        const tension = ctx.tension(t);
+        const end = Math.min(total, t + phraseLen * rng.between(0.6, 1.4) * (0.8 + tension * 0.6));
+        let dir = rng.chance(0.5) ? 1 : -1;
+        const phraseStart = out.length;
+        while (t < end - 0.25) {
+          const onBeat = Math.abs(t - Math.round(t)) < EPS;
+          const change = nextChangeAfter(t);
+          // コードが変わる直前: 半音のアプローチか囲み込みで、次のコードの3度・7度へ入る
+          if (change !== null && change - t <= 1 + EPS && change < end && rng.chance(0.35 + chromatic * 0.6)) {
+            const target = nearestPc(guideAt(change), cur, range[0], range[1]);
+            const room = change - t;
+            if (room >= 1 - EPS && rng.chance(0.55)) {
+              const above = stepIn(scaleAt(change), target, 1);
+              out.push(note(above, t, 0.45, 80), note(target - 1, t + 0.5, 0.45, 76));
+            } else if (room >= 0.5 - EPS) {
+              if (room >= 1 - EPS) out.push(note(stepIn(scaleAt(t), cur, target > cur ? 1 : -1), t, 0.45, 74));
+              out.push(note(target + (target > cur ? -1 : 1), change - 0.5, 0.45, 80));
+            }
+            out.push(note(target, change, 0.45, 86));
+            cur = target;
+            t = change + 0.5;
+            continue;
+          }
+          // 3連のターン(今の音の上・今の音・下)
+          if (onBeat && t + 1 <= end && rng.chance(triplets)) {
+            const pcs = scaleAt(t);
+            const up = stepIn(pcs, cur, 1);
+            const down = stepIn(pcs, cur, -1);
+            out.push(note(up, t, 0.3, 82), note(cur, t + 1 / 3, 0.3, 70), note(down, t + 2 / 3, 0.3, 74));
+            cur = down;
+            t += 1;
+            continue;
+          }
+          if (rng.next() > density / 8) {
+            t += 0.5; // 休みの8分(密度が低いほど多い)
+            continue;
+          }
+          // 緊張が高いほど高い所へ向かう。音域の端では向きを変える
+          const aim = range[0] + (range[1] - range[0]) * (0.3 + tension * 0.55);
+          if (Math.abs(cur - aim) > 7 && rng.chance(0.5)) dir = aim > cur ? 1 : -1;
+          else if (rng.chance(0.15)) dir = -dir;
+          if (cur >= range[1] - 2) dir = -1;
+          if (cur <= range[0] + 2) dir = 1;
+          let p;
+          if (onBeat) {
+            // 強拍はコードの音(近い方へ。跳躍度が高いと1つ飛ばす)
+            const tones = tonesAt(t);
+            p = stepIn(tones, cur, dir);
+            if (rng.chance(leap * 0.5)) p = stepIn(tones, p, dir);
+          } else {
+            p = stepIn(scaleAt(t), cur, dir);
+            // 経過の半音(2つの段のあいだを半音で埋める)
+            if (Math.abs(p - cur) === 2 && rng.chance(chromatic * 0.35)) p = cur + dir;
+          }
+          p = Math.max(range[0], Math.min(range[1], p));
+          const vel = onBeat ? 72 : 86; // ジャズは裏拍にアクセント
+          out.push(note(p, t, 0.45, rng.chance(0.1) ? 52 : vel + rng.between(-5, 5)));
+          cur = p;
+          t += 0.5;
+        }
+        // フレーズの終わり: コードの音で決め、少し伸ばす
+        if (out.length > phraseStart) {
+          const last = out[out.length - 1];
+          last.pitch = nearestPc(tonesAt(last.start), last.pitch, range[0], range[1]);
+          last.duration = Math.min(rng.pick([0.5, 1, 1.5]), Math.max(0.25, total - last.start));
+          last.velocity = 88;
+          cur = last.pitch;
+          t = last.start + last.duration;
+        }
+        // 息継ぎ(緊張が高いほど短い)
+        t = Math.round((t + rng.pick([0.5, 1, 1.5, 2]) * (1.3 - ctx.tension(t) * 0.7)) * 2) / 2;
+      }
       return out;
     },
   });
