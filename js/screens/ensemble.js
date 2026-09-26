@@ -146,10 +146,24 @@
       const toPrompt = card.type === 'text' || (card.type === 'task' && card.origin !== 'app') ? hexHtml('toprompt', '→プロンプト') : '';
       // プロンプトカードは上に「整える」「鳴らす」「ビート」
       const promptTools = card.type === 'prompt' ? hexHtml('refine', '整える') + hexHtml('sketch', '鳴らす') + hexHtml('beat', 'ビート') : '';
-      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + imageTools + soulTools + promptTools + swap + toPrompt;
+      // プラグインのソウルカード・パラメータカードには上に「チャット」(そのプラグインの専門AIとのチャットを隣に開く。2026-09-27)
+      const chatTools = chatHostOf(card) ? hexHtml('chat', 'チャット') : '';
+      // チャットカードのEditはトピックの変更(js/soulchat.js)
+      if (card.type === 'chat') return hexHtml('edit', 'Edit') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      return (editable ? hexHtml('edit', 'Edit') : '') + hexHtml('astr') + hexHtml('delete', 'Delete') + taskTools + noteTools + imageTools + soulTools + promptTools + chatTools + swap + toPrompt;
     },
 
     onHexAction(action, card, el) {
+      if (card.type === 'chat') {
+        if (el) deactivateEditGuide(el);
+        if (action === 'edit') window.LyraSoulChat.editTopic(card);
+        else if (action === 'delete') confirmDeleteCard(card);
+        return;
+      }
+      if (action === 'chat') {
+        openChatFrom(card, el);
+        return;
+      }
       if (action === 'edit' && card.type === 'midi') {
         if (window.LyraMidi) {
           deactivateEditGuide(el);
@@ -172,6 +186,7 @@
     onCardTap(card) {
       focusCardId = card.id;
       renderMembers();
+      if (card.type === 'chat') return; // チャットはカードの中で完結する(右パネルは使わない)
       showCardPanel(card);
     },
 
@@ -181,6 +196,8 @@
 
     onConnectionsChanged() {
       renderMembers();
+      // チャットにつないだ・外したプラグインのAIが参加者に加わる/抜ける
+      if (window.LyraSoulChat) scope.cards.filter((c) => c.type === 'chat').forEach((c) => window.LyraSoulChat.refreshParticipants(c));
     },
 
     onCardMoved(card) {
@@ -194,6 +211,7 @@
     if (card.type === 'soul') return 190;
     if (card.type === 'audio' || card.type === 'midi') return 210;
     if (card.type === 'summary') return 320;
+    if (card.type === 'chat') return 360;
     if (card.type === 'comment') return 230;
     if (card.type === 'image') return 220;
     if (card.type === 'prompt') return 240;
@@ -218,6 +236,16 @@
   }
 
   const CARD_BUILDERS = {
+    chat(card, el) {
+      const host = getSoul(card.soulId);
+      if (!host || !window.LyraSoulChat) {
+        el.classList.add('star-card--ens-missing');
+        el.innerHTML = `<div class="ens-card-kind">チャット</div><div class="ens-card-title">${escapeHtml(card.topic || '')}(主のソウルが削除されました)</div>`;
+        return;
+      }
+      window.LyraSoulChat.buildCard(card, el, chatContext(card, host));
+    },
+
     comment(card, el) {
       el.innerHTML =
         `<div class="ens-card-kind voice-kind"><span class="voice-avatar">${escapeHtml(voiceOf(card.speaker).avatar)}</span>感想 · ${escapeHtml(card.speakerLabel || voiceOf(card.speaker).label)}</div>` +
@@ -572,6 +600,63 @@
     });
   }
 
+  /* ---------------- プラグインの専門AIチャット(js/soulchat.js、2026-09-27) ----------------
+   * ユーザー要望「アンサンブル画面でもカードからチャットを展開できるように、アステリズムで繋いだ別プラグインのAIがチャットに参加できるように」。
+   *   - プラグインのソウルカード・パラメータカードの上の「チャット」→ トピック(+任意で最初の質問)→ そのカードの右隣にチャットを置き、
+   *     線を自動で結ぶ(何から開いたチャットかを辿れるように。感想・MIDIの改善版と同じ例外。connection.auto)
+   *   - 主はそのプラグイン(card.soulId)。チャットカードにASTRで**直接**つないだ別のプラグインのソウルカード・パラメータカードの持ち主が
+   *     参加者に加わる。1回の送信でGeminiは1回(全員の発言を1回の出力に書かせる)
+   *   - つないだパラメータカードのパラメータは詳しく渡す。気づき・課題・MIDIなど他のカードは要約を文脈として渡す */
+  function chatHostOf(card) {
+    let owner = null;
+    if (card.type === 'soul') owner = getSoul(card.soulId);
+    else if (card.type === 'param') owner = findParam(card).owner;
+    return owner && owner.category === 'plugin' ? owner : null;
+  }
+
+  function chatContext(chat, host) {
+    const people = () => {
+      const list = [host];
+      neighbors(chat.id).forEach((c) => {
+        const s = chatHostOf(c);
+        if (s && !list.includes(s)) list.push(s);
+      });
+      return list;
+    };
+    return {
+      host,
+      participants: people,
+      place: `アンサンブル in ${stage.name}`,
+      focusParamIds: (s) => new Set(neighbors(chat.id).filter((c) => c.type === 'param' && c.soulId === s.id).map((c) => c.paramId)),
+      extraLines: () => neighbors(chat.id)
+        .filter((c) => !['soul', 'param', 'chat', 'speech'].includes(c.type))
+        .map(cardLine)
+        .filter(Boolean)
+        .slice(0, 8),
+      openParam: (soulId, paramId) => {
+        const s = getSoul(soulId);
+        const p = s && s.params.find((x) => x.id === paramId);
+        if (p) navigate(`#/soul/${encodeURIComponent(s.id)}/${encodeURIComponent(p.moduleId)}/${encodeURIComponent(p.id)}`);
+      },
+    };
+  }
+
+  async function openChatFrom(card, el) {
+    if (el) deactivateEditGuide(el);
+    const host = chatHostOf(card);
+    if (!host) return;
+    const answer = await window.LyraSoulChat.askNewChat(host, `アンサンブル in ${stage.name}`);
+    if (!answer) return;
+    const w = card.width || defaultWidth(card);
+    const pos = { x: (card.x || 0) + w + 60 + 180, y: (card.y || 0) + 220 };
+    const chat = window.LyraSoulChat.makeChat({ soulId: host.id }, answer.topic, pos);
+    addCardToEnsemble(stage, chat);
+    connectEnsembleCards(stage, card.id, chat.id);
+    playCardMoveTickSound();
+    revealEnsembleCard(chat);
+    if (answer.question) window.LyraSoulChat.send(chat, answer.question);
+  }
+
   /* ---------------- 感想とまとめ(CONSTELLATIONのCrewsに近い) ----------------
    * 2026-09-25追加(ユーザー要望「気付きからGeminiAIに感想を聞けるように。ゆくゆくは作曲家AIも参加できるように。
    * ConstellationのCrews機能に近い」「サマリー機能もだね」)。
@@ -808,6 +893,8 @@ ${task}
         return card.text ? `[感想 · ${card.speakerLabel || voiceOf(card.speaker).label}] ${card.text}` : null;
       case 'summary':
         return card.text ? `[まとめ · ${card.speakerLabel || voiceOf(card.speaker).label}] ${card.title ? `${card.title}: ` : ''}${card.text}` : null;
+      case 'chat':
+        return window.LyraSoulChat ? window.LyraSoulChat.describe(card) : null;
       case 'speech':
         return null;
       default:
@@ -1791,6 +1878,15 @@ ${speakers.map(({ key, soul }) => `[${key}] ${soul.name}(${categoryLabel(soul.ca
   }
 
   async function confirmDeleteCard(card) {
+    if (card.type === 'chat' && window.LyraSoulChat) {
+      if (!(await window.LyraSoulChat.confirmDelete(card))) return;
+      if (focusCardId === card.id) focusCardId = null;
+      removeCardFromScope(card);
+      renderMembers();
+      setStatus('削除しました');
+      scheduleAutoSave();
+      return;
+    }
     const choice = await showChoiceDialog({
       title: 'このカードを削除しますか?',
       message: card.type === 'param' || card.type === 'soul' || card.type === 'source'

@@ -86,7 +86,7 @@
 
     buildCard(card, el) {
       if (card.type === 'chat') {
-        window.LyraSoulChat.buildCard(card, el, { soul, openParam: openParamFromChat, onChanged: refreshChatList });
+        window.LyraSoulChat.buildCard(card, el, chatContext(card));
         return;
       }
       if (card === module) {
@@ -485,9 +485,9 @@
       return;
     }
     const targetModule = module;
-    const answer = await window.LyraSoulChat.askNewChat(soul, targetModule);
+    const answer = await window.LyraSoulChat.askNewChat(soul, `「${modulePath(targetModule)}」のページ`);
     if (!answer) return;
-    const chat = window.LyraSoulChat.makeChat(soul, targetModule, answer.topic, chatSpawnPos());
+    const chat = window.LyraSoulChat.makeChat({ moduleId: targetModule.id }, answer.topic, chatSpawnPos());
     soul.chats.push(chat);
     scheduleAutoSave();
     if (module !== targetModule) return; // ダイアログの間に別のページへ移っていたら、データにだけ入れる
@@ -512,6 +512,30 @@
     if (panelMode === 'module') showPanel('module');
     scheduleAutoSave();
     setStatus('削除しました');
+  }
+
+  /**
+   * チャットカードに渡す文脈(js/soulchat.js)。ソウル画面の話し手はこのソウルの専門AIだけ。
+   * 詳しく渡すのは、チャットのあるページのパラメータと、ASTRでチャットにつないだパラメータ
+   */
+  function chatContext(chat) {
+    const owner = soul;
+    const m = owner.modules.find((x) => x.id === chat.moduleId);
+    return {
+      host: owner,
+      participants: () => [owner],
+      place: `${owner.name}の「${m ? modulePath(m) : ''}」のページ`,
+      focusParamIds: () => {
+        const ids = new Set(owner.params.filter((p) => p.moduleId === chat.moduleId).map((p) => p.id));
+        owner.connections.forEach((c) => {
+          if (c.cardIdA === chat.id) ids.add(c.cardIdB);
+          if (c.cardIdB === chat.id) ids.add(c.cardIdA);
+        });
+        return ids;
+      },
+      openParam: (soulId, paramId) => openParamFromChat(paramId),
+      onChanged: refreshChatList,
+    };
   }
 
   /** やり取りが増えた時、概要パネルの「このページのチャット」の件数を合わせる(パネルで入力中なら触らない) */

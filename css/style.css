@@ -1755,9 +1755,13 @@ a.btn-secondary { display: block; }
 /* ---------- 専門AIチャット(ソウル画面のチャットカード、js/soulchat.js、2026-09-27) ----------
    CONSTELLATIONの座談会カードの形: 見出し・会話ログ(カードの高さいっぱい、中だけスクロール)・入力欄。
    ログの上ではカードの移動・キャンバスのパンより、文字の選択とスクロールを優先する(js/canvas.js の .chat-log) */
-.star-card--chat { padding: 0; gap: 0; overflow: hidden; min-width: 240px; min-height: 220px; box-shadow: 0 2px 10px rgba(20, 18, 14, 0.14); }
-.chat-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 8px; border-bottom: 1px solid var(--line); background: var(--surface-2); cursor: grab; }
+/* overflow: hidden は付けない(カードの外に出る編集ガイドのヘックス・トンボが切り取られて、削除できなかった)。角は見出し・入力欄で丸める */
+.star-card--chat { padding: 0; gap: 0; min-width: 240px; min-height: 220px; box-shadow: 0 2px 10px rgba(20, 18, 14, 0.14); }
+.chat-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px 8px; border-bottom: 1px solid var(--line); background: var(--surface-2); border-radius: 8px 8px 0 0; cursor: grab; }
 .chat-head svg { flex: none; }
+.chat-orbs { display: flex; flex: none; }
+.chat-orbs svg + svg { margin-left: -5px; }
+.chat-speaker { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; margin: 0 0 2px 2px; }
 .chat-head-text { min-width: 0; }
 .chat-topic { font-family: var(--serif); font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-log {
@@ -1781,7 +1785,10 @@ a.btn-secondary { display: block; }
 .chat-typing span:nth-child(2) { animation-delay: 0.15s; }
 .chat-typing span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes chat-typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
-.chat-composer { display: flex; gap: 6px; align-items: flex-end; padding: 8px; border-top: 1px solid var(--line); background: var(--panel); }
+.chat-composer { display: flex; gap: 6px; align-items: flex-end; padding: 8px; border-top: 1px solid var(--line); background: var(--panel); border-radius: 0 0 8px 8px; }
+/* プラグインのソウル・パラメータカードの上の「チャット」ヘックス(アンサンブル) */
+.star-card-hex--chat { left: 50%; top: 0; background: #4f7392; letter-spacing: 0.04em; transform: translate(-50%, calc(-100% - 10px)); }
+.star-card-hex-strut--chat { display: none; }
 .chat-input {
   flex: 1; resize: none; border: 1px solid var(--line-strong); border-radius: 7px; padding: 6px 8px;
   font-family: var(--sans); font-size: 12px; line-height: 1.5; color: var(--text); background: #fff; outline: none; max-height: 90px;
