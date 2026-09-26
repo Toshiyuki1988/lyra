@@ -8,12 +8,16 @@
 //   - **音声はDriveに上げない**。フォルダのハンドルはこの端末のIndexedDB(lyra-local の handles、キーは premix:<フォルダカードのid>)、
 //     音はその場でファイルから読む。Driveのデータ(state.premix)に残るのは、カードの位置・大きさ・ファイル名・ループ/音量/残響だけ。
 //     別の端末・ページの開き直しでは、フォルダへのアクセスの許可を1回押し直す(ブラウザの決まり)
-//   - フォルダを動かすと中のオーディオカードも一緒に動く(js/canvas.js の onCardDragging)。オーディオカードはフォルダの外へは出ない
+//   - フォルダを動かすと中のオーディオカードも一緒に動く(js/canvas.js の onCardDragging)
+//   - オーディオカードを**別のフォルダの枠の中に落とすと、そのエリアの一員になる**(同日、ユーザー要望「他フォルダのオーディオカードを
+//     アクティブプレミックスエリアに入れたら鳴らせるように」)。folderId =いるエリア(鳴る場所・一緒に動く枠)、sourceFolderId =ファイルの
+//     出どころ(読み込み・「読み直す」・1フォルダ10個の数え方)。落としたエリアをアクティブにし、鳴っている途中なら止めずにつなぎ替える。
+//     どの枠の中でもない所に落とした時は、今のエリアの中へ戻す
 //   - Web Audio: カード → 音量 → フォルダのバス(アクティブで1・待機で0)→ 出力。残響はフォルダごとの Convolver(合成したインパルス応答)へ送る
 //
 // データ: state.premix = { activeId, cards: [
 //   { id, type: 'folder', name, x, y, width, height, createdAt },
-//   { id, type: 'sound', folderId, fileName, loop, volume(0〜100), reverb(0〜100), x, y, width, createdAt } ] }
+//   { id, type: 'sound', folderId(いるエリア), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop, volume(0〜100), reverb(0〜100), x, y, width, createdAt } ] }
 
 (function () {
   const MAX_SOUNDS = 10;
@@ -39,8 +43,11 @@
     return state.premix;
   }
   const folders = () => data().cards.filter((c) => c.type === 'folder');
-  const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId);
+  const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
+  const sourceOf = (sound) => sound.sourceFolderId || sound.folderId;
+  const soundsFrom = (folderId) => data().cards.filter((c) => c.type === 'sound' && sourceOf(c) === folderId); // そのフォルダのファイルのカード
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
+  const folderName = (id) => (data().cards.find((c) => c.id === id) || {}).name || '';
 
   /* ---------------- ハンドルの保存(IndexedDB) ---------------- */
 
@@ -187,7 +194,7 @@
     },
 
     onCardMoved(card, el) {
-      if (card.type === 'sound') clampIntoFolder(card, el);
+      if (card.type === 'sound') dropSound(card, el);
       scheduleAutoSave();
     },
   };
@@ -197,7 +204,8 @@
   function buildFolder(f, el) {
     el.classList.add('star-card--folder');
     const rt = folderRt.get(f.id) || {};
-    const count = soundsOf(f.id).length;
+    const count = soundsFrom(f.id).length;
+    const guests = soundsOf(f.id).filter((x) => sourceOf(x) !== f.id).length;
     let msg = '';
     if (rt.status === 'nohandle') msg = `この端末ではフォルダを覚えていません。<button type="button" class="btn-small" data-f="pick">フォルダを選び直す</button>`;
     else if (rt.status === 'needperm') msg = `フォルダを読むには許可が要ります。<button type="button" class="btn-small btn-small--accent" data-f="perm">アクセスを許可</button>`;
@@ -206,7 +214,7 @@
     el.innerHTML =
       `<div class="fold-head"><span class="fold-badge"></span>` +
       `<span class="fold-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>` +
-      `<span class="fold-count">${count} / ${MAX_SOUNDS}</span>` +
+      `<span class="fold-count" title="このフォルダのファイルのカード / 上限">${count} / ${MAX_SOUNDS}${guests ? ` · 他のフォルダから${guests}` : ''}</span>` +
       `<span class="fold-actions">` +
       `<button type="button" class="btn-small" data-f="playall" title="このフォルダの音を全部鳴らす">▶ 全部</button>` +
       `<button type="button" class="btn-small" data-f="stopall" title="このフォルダの音を全部止める">■</button>` +
@@ -336,7 +344,7 @@
       }
       files.sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
       const byName = new Map(files.map((x) => [x.name, x.h]));
-      const existing = soundsOf(f.id);
+      const existing = soundsFrom(f.id); // 他のエリアへ移したカードも、このフォルダのファイルとして数える
       // 既にあるカード: 見つかれば結び直す
       existing.forEach((s) => {
         const srt = soundRt.get(s.id) || {};
@@ -348,19 +356,20 @@
       const have = new Set(existing.map((s) => s.fileName));
       const room = MAX_SOUNDS - existing.length;
       const added = files.filter((x) => !have.has(x.name)).slice(0, Math.max(0, room));
+      const inArea = soundsOf(f.id).length;
       added.forEach((x, i) => {
-        const slot = existing.length + i;
+        const slot = inArea + i;
         const s = placeSound(f, x.name, slot);
         soundRt.set(s.id, { fileHandle: x.h, missing: false });
       });
       rt.status = 'ready';
       refreshFolder(f);
-      soundsOf(f.id).forEach((s) => refreshSound(s));
+      soundsFrom(f.id).forEach((s) => refreshSound(s));
       scheduleAutoSave();
       setStatus(`「${f.name}」: ${files.length}個のオーディオ${added.length ? `のうち${added.length}個をカードにしました` : ''}` +
         (files.length > MAX_SOUNDS ? `(1フォルダ${MAX_SOUNDS}個まで。ファイル名の順)` : ''));
       // 波形と再生の準備(ファイルから読むだけ。Driveには上げない)
-      for (const s of soundsOf(f.id)) await decodeSound(s);
+      for (const s of soundsFrom(f.id)) await decodeSound(s);
     } catch (err) {
       console.error(err);
       rt.status = 'error';
@@ -390,20 +399,39 @@
     return s;
   }
 
+  /** フォルダを外す時に一緒に外すカード(そのフォルダのファイルのカード。どこのエリアにいても) */
+  function removableWith(f) {
+    return soundsFrom(f.id);
+  }
+
   async function confirmRemoveFolder(f) {
     const choice = await showChoiceDialog({
       title: `フォルダ「${f.name}」を外しますか?`,
-      message: `このフォルダカードと、中のオーディオカード${soundsOf(f.id).length}枚を外します。PCのファイルはそのまま残ります。`,
+      message: `このフォルダカードと、中のオーディオカード${removableWith(f).length}枚を外します` +
+        '(他のエリアへ移した、このフォルダのファイルのカードも外れます。このエリアに入れた他のフォルダのカードは、元のフォルダへ戻ります)。PCのファイルはそのまま残ります。',
       options: [
         { label: 'やめる', value: 'cancel', secondary: true },
         { label: '外す', value: 'remove', danger: true },
       ],
     });
     if (choice !== 'remove') return;
-    soundsOf(f.id).forEach((s) => {
+    removableWith(f).forEach((s) => {
       stop(s);
       soundRt.delete(s.id);
       removeCardFromScope(s);
+    });
+    // このエリアに入れていた他のフォルダのカードは、出どころのフォルダの枠へ戻す
+    soundsOf(f.id).forEach((s) => {
+      const home = data().cards.find((c) => c.id === sourceOf(s));
+      if (!home) return;
+      stop(s);
+      s.folderId = home.id;
+      delete s.sourceFolderId;
+      s.x = home.x + PAD;
+      s.y = home.y + HEAD_H;
+      const el = cardElById(s.id);
+      if (el) clampIntoFolder(s, el);
+      refreshSound(s);
     });
     const rt = folderRt.get(f.id);
     if (rt && rt.bus) rt.bus.out.disconnect();
@@ -421,7 +449,7 @@
   function buildSound(s, el) {
     el.classList.add('star-card--sound', 'star-card--no-resize');
     el.innerHTML =
-      `<div class="snd-name" title="${escapeHtml(s.fileName)}">${escapeHtml(s.fileName.replace(/\.[^.]+$/, ''))}</div>` +
+      `<div class="snd-name" title="${escapeHtml(s.fileName)}">${escapeHtml(s.fileName.replace(/\.[^.]+$/, ''))}<span class="snd-from"></span></div>` +
       `<div class="snd-wave"><canvas width="${SOUND_W * 2}" height="56"></canvas><div class="snd-playhead"></div><div class="snd-msg"></div></div>` +
       `<div class="snd-row">` +
       `<button type="button" class="snd-play" data-s="play" aria-label="再生">▶</button>` +
@@ -471,6 +499,8 @@
     play.setAttribute('aria-label', rt.playing ? '停止' : '再生');
     play.disabled = Boolean(rt.missing);
     el.querySelector('.snd-loop').classList.toggle('snd-loop--on', Boolean(s.loop));
+    const from = el.querySelector('.snd-from');
+    if (from) from.textContent = sourceOf(s) !== s.folderId ? ` ← ${folderName(sourceOf(s))}` : '';
     el.querySelector('.snd-time').textContent = rt.buffer ? `${rt.buffer.duration.toFixed(1)}秒` : '';
     el.querySelector('.snd-msg').textContent = rt.missing ? 'フォルダに見つかりません' : rt.loading ? '読み込み中…' : rt.buffer ? '' : '';
     drawWave(s, el);
@@ -590,7 +620,45 @@
     scheduleAutoSave();
   }
 
-  /** オーディオカードは自分のフォルダの枠(プレミックスエリア)の中に留める */
+  /**
+   * オーディオカードを落とした時: 別のフォルダの枠の中ならそのエリアへ移してアクティブにする(鳴っていれば止めずにつなぎ替える)。
+   * どの枠の中でもなければ、今のエリアの中へ戻す
+   */
+  function dropSound(s, el) {
+    const cx = s.x + el.offsetWidth / 2;
+    const cy = s.y + el.offsetHeight / 2;
+    const inside = folders().filter((f) => cx >= f.x && cx <= f.x + (f.width || 0) && cy >= f.y && cy <= f.y + (f.height || 0));
+    // 重なっていたら、面積の小さい(内側の)枠を選ぶ
+    const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
+    if (target && target.id !== s.folderId) {
+      const prev = folderOf(s);
+      s.sourceFolderId = sourceOf(s);
+      s.folderId = target.id;
+      if (s.sourceFolderId === s.folderId) delete s.sourceFolderId; // 元のフォルダへ帰った
+      reroute(s);
+      setActive(target.id);
+      [prev, target].forEach((f) => f && refreshFolder(f));
+      refreshSound(s);
+      setStatus(`「${s.fileName}」を「${target.name}」のエリアへ移しました`);
+    }
+    clampIntoFolder(s, el);
+    renderActive();
+  }
+
+  /** 鳴っているカードを、今いるエリアのバスへつなぎ替える(止めずに) */
+  function reroute(s) {
+    const rt = soundRt.get(s.id);
+    if (!rt || !rt.node) return;
+    const bus = busOf(s.folderId);
+    const { gain, send } = rt.node;
+    gain.disconnect();
+    send.disconnect();
+    gain.connect(bus.out);
+    gain.connect(send);
+    send.connect(bus.conv);
+  }
+
+  /** オーディオカードは今いるフォルダの枠(プレミックスエリア)の中に留める */
   function clampIntoFolder(s, el) {
     const f = folderOf(s);
     if (!f) return;
@@ -629,5 +697,5 @@
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound } };
 })();
