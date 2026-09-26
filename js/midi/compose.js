@@ -67,6 +67,12 @@
   }
 
   /** プリセットの生成前の質問(prev: 作り直しの時の前回の値) */
+  /** 生成前の質問のメッセージに添える、評価が効いていることの一言 */
+  function feedbackNote(preset) {
+    const st = M.modelStats ? M.modelStats()[preset.id] : null;
+    return st ? `このモデルで付けた★(${st.n}件、平均★${st.avg})を手がかりにします。` : '';
+  }
+
   function presetFields(preset, prev = {}) {
     const f = preset.fields;
     const out = [];
@@ -82,7 +88,9 @@
     if (f.includes('gauges')) {
       P.gaugesOf(preset).forEach((name) => {
         const g = GAUGES.find((x) => x.name === name);
-        const v = prev.gauges && Number.isFinite(prev.gauges[name]) ? prev.gauges[name] : g.value;
+        // 前回の値 > このモデルで★4以上を付けたMIDIのゲージの平均 > 既定値
+        const liked = M.likedGauges ? M.likedGauges(preset.id) : null;
+        const v = prev.gauges && Number.isFinite(prev.gauges[name]) ? prev.gauges[name] : liked && Number.isFinite(liked[name]) ? liked[name] : g.value;
         out.push({ name: `g_${name}`, label: g.label, type: 'range', min: 0, max: 100, step: 5, ends: g.ends, value: String(v) });
       });
     }
@@ -128,6 +136,7 @@
   function pickModel(title) {
     return new Promise((resolve) => {
       const last = lastModel();
+      const stats = M.modelStats ? M.modelStats() : {};
       const groups = [];
       P.PRESETS.filter((p) => !p.hidden).forEach((p) => {
         let g = groups.find((x) => x.name === p.group);
@@ -140,7 +149,7 @@
         `<p class="modal-desc">モデルは「音高・拍子・時間の設計・層の作り方」の組み合わせです。Geminiは設計図を1回だけ書き、音はアプリが作ります(主旋律をGeminiが書くモデルは、反芻でもう1回)。</p>` +
         groups.map((g) => `<div class="model-group"><div class="model-group-name">${escapeHtml(g.name)}</div>` +
           g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}" data-model="${p.id}">` +
-            `<span class="model-item-label">${escapeHtml(p.label)}${p.id === last ? '<em>前回</em>' : ''}</span>` +
+            `<span class="model-item-label">${escapeHtml(p.label)}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
             `<span class="model-item-text">${escapeHtml(p.text)}</span></button>`).join('') + `</div>`).join('') +
         `<div class="modal-actions"><button type="button" class="secondary" data-cancel>やめる</button></div></div>`;
       const finish = (id) => {
@@ -425,6 +434,7 @@ ${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.im
       arcRule(preset, input),
       fixedRule(input.fixed),
       gaugeRule(input.gauges),
+      M.feedbackRule ? M.feedbackRule(preset.id) : '',
       [techniqueRule(preset, input), preset.id === 'beat' ? BEAT_REFERENCE_RULE : ORIGINALITY_RULE, input.automation ? `- automation: 連続的に変えたいシンセのつまみのCCオートメーション [{controller(74=明るさ、1=モジュレーション、11=エクスプレッション), label(「CC74 → 何のつまみに割り当てる想定か」), points:[{bar(小節。小数で小節の途中), value 0〜127}]}]。割り当て先は次の手持ちのパラメータから: ${input.automation}` : ''].filter(Boolean).join('\n'),
       WRITEUP,
     ].filter(Boolean).join('\n\n');
@@ -595,7 +605,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const values = await showFormDialog({
       title: `${preset.label}で作る`,
       message: `${[...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)].join('・') || 'つないだカード'}から作ります。Geminiを${preset.ruminate ? '2回(設計図と、主旋律の反芻。つないだMIDIの旋律を使う時は1回)' : '1回'}呼びます。` +
-        (opts.souls && opts.souls.length ? 'アーティスト名・曲名などの項目は渡しません。' : ''),
+        (opts.souls && opts.souls.length ? 'アーティスト名・曲名などの項目は渡しません。' : '') + feedbackNote(preset),
       submitLabel: '作る',
       fields: presetFields(preset, { story: opts.storyDefault, sources: opts.midiSources || [] }),
     });
@@ -620,7 +630,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const plugins = members.filter((s) => s.category === 'plugin');
     const values = await showFormDialog({
       title: `${preset.label}でMIDIにする`,
-      message: `この発言をもとに作ります。Geminiを${preset.ruminate ? '2回(設計図と主旋律の反芻)' : '1回'}呼びます。${plugins.length ? `プラグイン(${plugins.map((s) => s.name).join('・')})のつまみに割り当てるCCオートメーションも付けます。` : ''}`,
+      message: `この発言をもとに作ります。Geminiを${preset.ruminate ? '2回(設計図と主旋律の反芻)' : '1回'}呼びます。${feedbackNote(preset)}${plugins.length ? `プラグイン(${plugins.map((s) => s.name).join('・')})のつまみに割り当てるCCオートメーションも付けます。` : ''}`,
       submitLabel: '作る',
       fields: presetFields(preset, {}),
     });
@@ -648,7 +658,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const names = [...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)];
     const values = await showFormDialog({
       title: 'ビートを作る',
-      message: `${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。`,
+      message: `${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。${feedbackNote(preset)}`,
       submitLabel: '作る',
       fields: presetFields(preset, {}),
     });
@@ -735,6 +745,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       speech && speech.chain ? `もとの提案: ${speech.chain.concept} → ${speech.chain.structure} → ${(speech.chain.operations || []).join(' / ')}` : '',
       history.length ? `これまでのコメント(古い順): ${history.join(' / ')}` : '',
       `今回のコメント: ${comment || '(なし。つないだカード・ソウル・モデルの変更・技法の要望を取り入れる)'}`,
+      M.ratingOf && M.ratingOf(card) ? `ユーザーは前回の版に★${M.ratingOf(card)}(5段階)を付けている。${M.ratingOf(card) >= 4 ? '気に入っているので、良い所を保ったまま磨く' : M.ratingOf(card) <= 2 ? '気に入っていないので、コメントで触れていない所も思い切って変えてよい' : '可もなく不可もないので、コメントを手がかりに一段良くする'}` : '',
       prevJson
         ? (modelChanged
           ? `前回は「${(P.byId(curId) || { label: curId }).label}」で作った。今回は「${preset.label}」で作り直す。前回の設計図(素材として。音高の器・時間の設計図・動機や旋律は、このモデルの形に移して生かす):\n${prevJson}`

@@ -35,7 +35,7 @@ lyra/
     ├── midi/            … MIDI生成一式(仕組みは models/README.md)
     │   ├── theory.js / engine.js / generators.js … 音楽理論・軸と合成・層の生成器
     │   ├── design.js / presets.js / compose.js   … 設計図の形・モデル(プリセット)・Geminiとの流れ
-    │   └── play.js / export.js / editor.js / card.js … 試聴とWAV・.midとフォルダへの保存・編集画面・カード
+    │   └── play.js / export.js / editor.js / card.js / feedback.js … 試聴とWAV・.midとフォルダへの保存・編集画面・カード・★評価
     ├── imagesearch.js   … 画像カードの画像検索(Pixabay API)
     ├── audio.js         … オーディオの圧縮・保存・再生
     ├── daily.js         … 日次課題

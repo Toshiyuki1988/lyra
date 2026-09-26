@@ -101,10 +101,24 @@ MIDI生成モデルの補充、またMIDIエディター含めてMIDI生成周�
 振り直し(`rerender`): 全体=シードを替える / 層=その層の `reroll` を1つ増やす / 消音=`muted` を切り替える。
 手で編集したカードは上書きの確認を出す。つないだMIDIから使った音(`midi.fixed`)は振り直しても差し替え直す。
 
+## 5.1 ★評価をそのままフィードバックにする(`js/midi/feedback.js`、2026-09-26)
+
+ユーザー要望「カードに最大5個の星ボタンを実装して、ユーザーが評価できるようにして。星をつけたらそれがそのままフィードバックになるよう設計して」。
+コメントを書かなくても、星を付けるだけで次の生成が変わる。Geminiの呼び出しは増やさない。
+
+- MIDIカード(BEATも)とパネルに ★1〜5。同じ星をもう一度押すと評価を外す(`card.rating`)
+- 星を付けた時点で、そのカードの設計図の要約(モデル・テンポ・拍子・音高・層と生成器のパラメータ・時間の設計図の緊張の並び・ゲージ・コンセプト)を
+  `state.prefs.midiRatings`(Driveに保存、最大80件)に記録する。カードを消しても記録は残る
+- 次に**同じモデル**で作る時、★4〜5の要約(最大3件)を「寄せる傾向」、★1〜2(最大2件)を「避ける傾向」としてプロンプトに入れる。
+  設計図は写さず、今回の入力・注文を優先させる。同じモデルの評価が無ければ、ほかのモデルの★5(最大2件)を好みの手がかりとして渡す
+- 生成前の質問のゲージの初期値は、そのモデルで★4以上を付けたMIDIのゲージの平均(前回の値があればそちらが優先)
+- モデルのピッカーに、モデルごとの平均の星と件数。作り直しでは、元のカードの星もGeminiに伝える(★4〜5は良い所を保って磨く、★1〜2は思い切って変える)
+- アンサンブルへの説明(`describe`)にも評価を添える
+
 ## 6. データ
 
 カードの `midi`: `{ tempo, beatsPerBar, meters, notes:[{part, pitch, start, duration, velocity}], cc, markers, tempoChanges,
-partNames, partRoles, partLayers, model, design, seed, gauges, rumination?, fixed?, fixedFrom?, edited?, rescaledTo? }`。
+partNames, partRoles, partLayers, model, design, seed, gauges, rumination?, fixed?, fixedFrom?, edited?, rescaledTo? }`。カードの `rating`(1〜5)。
 パートは `p1`〜(層の声部ごと)と `f1…`(つないだMIDIから使った音)。役割(`partRoles`)が `drums` のパートは .mid で10ch、
 ほかは1chから順(10chを飛ばす)。
 

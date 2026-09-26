@@ -132,6 +132,7 @@
     el.innerHTML =
       `<div class="midi-head"><span class="midi-icon">${isBeat ? '◉' : '♪'}</span><span class="ens-card-kind ens-card-kind--accent">${isBeat ? 'BEAT' : `MIDI${preset ? ` · ${escapeHtml(preset.short)}` : ''}`}${owner ? ` · ${escapeHtml(owner.name)}のソウル` : ''}</span></div>` +
       `<div class="ens-card-title">${escapeHtml(card.name)}</div>` +
+      M.starsHtml(card) +
       (card.comment ? `<div class="ens-card-sub midi-comment">「${escapeHtml(card.comment)}」を受けて</div>` : '') +
       (card.linkedNames && card.linkedNames.length ? `<div class="ens-card-sub midi-comment">+ ${escapeHtml(card.linkedNames.join('・'))}をつないで</div>` : '') +
       (m.edited ? `<div class="ens-card-sub midi-comment">✎ 手で編集済み</div>` : '') +
@@ -146,6 +147,7 @@
       `<div class="speech-actions"><button type="button" class="btn-small" data-midi="play">${M.isPlaying(card.id) ? '■ 停止' : '▶ 試聴'}</button>` +
       `<button type="button" class="btn-small" data-midi="save" title="書き出し先フォルダへ .mid を保存(1トラック。書き出し先は設定画面で変えられます)">⇩ 保存</button>` +
       `<button type="button" class="btn-small" data-midi="revise">作り直す</button></div>`;
+    M.bindStars(el, card);
     el.querySelector('[data-midi="play"]').addEventListener('click', (event) => {
       event.stopPropagation();
       M.togglePlay(card);
@@ -166,7 +168,7 @@
     const m = card.midi;
     const cur = M.designOf(card);
     const head = `${card.name}${card.description ? `(${card.description})` : ''}${card.concept ? ` コンセプト: ${card.concept}` : ''}` +
-      `${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${m.edited ? '(ユーザーが手で編集済み)' : ''}`;
+      `${M.ratingOf(card) ? ` ユーザーの評価★${M.ratingOf(card)}` : ''}${card.comment ? ` ユーザーのコメント「${card.comment}」を受けた改善版` : ''}${card.linkedNames && card.linkedNames.length ? ` ${card.linkedNames.join('・')}をつないでブラッシュアップした版` : ''}${m.edited ? '(ユーザーが手で編集済み)' : ''}`;
     if (!cur) return `[MIDI] ${head}: テンポ${Math.round(m.tempo)}、${m.notes.length}音`;
     const d = cur.design;
     const preset = presetOf(cur.model);
@@ -240,6 +242,7 @@
       `<input class="panel-title-input" data-midi-field="name" value="${escapeHtml(card.name)}">` +
       `<div class="panel-sub">${preset ? `${escapeHtml(preset.label)} · ` : ''}テンポ ${Math.round(m.tempo)} · ${escapeHtml(T.meterLabel(m))} · ${bars}小節 · ${m.notes.length}音 · 試聴の音色: ${escapeHtml(M.voiceOf(card).label)}(編集画面で変更)</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
+      `<div class="panel-section midi-rating"><div class="panel-label">評価(星がそのまま次の生成へのフィードバックになります)</div>${M.starsHtml(card, 'large')}</div>` +
       (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
       (cur && cur.gauges ? `<div class="panel-section"><div class="panel-label">ゲージ</div><div class="panel-source">${escapeHtml(M.gaugeLabel(cur.gauges))}</div></div>` : '') +
       (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
@@ -295,6 +298,7 @@
   }
 
   function bindPanel(panel, card) {
+    M.bindStars(panel.querySelector('.midi-rating'), card);
     const name = panel.querySelector('[data-midi-field="name"]');
     name.addEventListener('input', () => {
       card.name = name.value;
