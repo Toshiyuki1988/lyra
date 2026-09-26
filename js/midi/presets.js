@@ -5,6 +5,7 @@
 //
 // プリセットの欄:
 //   id, group(ピッカーの見出し), label, short(カードに出す短い名前), text(ピッカーの説明)
+//   kids       … 小学生向けの解説 { title, text }(ピッカーの子どものアイコンにかざすと出る。2026-09-27、文はユーザーが書いたもの)
 //   generators … Geminiが使ってよい生成器(プロンプトとスキーマはこの分だけになる)
 //   pitch      … { systems: 使ってよい音高供給(先頭が既定), defaultScale, rotate(見立て蔵式の主音の巡回), hint(Geminiへの指示), prefs(ダイアログの選択肢) }
 //   meter      … four(4/4固定)/ free(Geminiが拍子の変化を書ける)/ changing(アプリが変拍子を作る)
@@ -50,6 +51,7 @@
     {
       id: 'process', group: '基本', label: '漸進プロセスモデル(Reich型フェイズシフトを含む)', short: '漸進プロセス',
       text: '短い音の細胞に規則(フェイズのずれ・加算・イソリズム・カノン・ティンティナブリ・転調鳴鐘)を掛け、少しずつ変化させる。層ごとに別トラック',
+      kids: { title: 'ズレていく手拍子', text: '2人で同じリズムの手拍子をたたくんだけど、ひとりだけちょっとずつ速くしていく。最初はピッタリ合ってたのに、だんだんズレていって、しばらくするとまた偶然ピッタリ合う瞬間がくる——そのズレて、また合う面白さで音楽を作る方法。' },
       generators: ['process'],
       pitch: { systems: ['scale', 'free'], hint: 'scale で入力の気分に合う調・旋法(ドリアン、リディアン、五音音階、陰音階、全音音階など)。細胞の音はその中から選ぶ' },
       meter: 'four', arc: false, bars: 16, tempo: 112, voice: 'vibes',
@@ -62,6 +64,7 @@
     {
       id: 'stochastic', group: '生成モデル', label: '確率過程モデル(Xenakis型)', short: '確率過程',
       text: '音の出現をポアソン過程、音高をブラウン運動から引く。設計するのは「分布のパラメータ」。疎らな点描から密集した雲へ、緊張曲線に沿ってなめらかに移る',
+      kids: { title: 'サイコロで音を決める', text: 'サイコロをふって音を決めるイメージ。でも普通のサイコロじゃなくて、「小さい目が出やすいサイコロ」と「大きい目が出やすいサイコロ」を場面ごとに使い分ける。そうすると、まばらな音からだんだん音がぎゅっと集まってくる、みたいな自然な変化が作れる。' },
       generators: ['stochastic', 'gesture'],
       pitch: { systems: ['scale', 'free'], hint: 'scale で音の集合を決める(全音音階・半音階・五音音階・八音音階など)。free なら12音すべて' },
       meter: 'four', arc: true, bars: 16, tempo: 80, voice: 'pad',
@@ -71,6 +74,7 @@
     {
       id: 'automaton', group: '生成モデル', label: '生成文法・セルオートマトンモデル', short: 'オートマトン',
       text: 'L-systemやWolfram型のセルオートマトンの単純な書き換え規則を繰り返し、自己相似の模様を「育てる」。1回の生成が決定でなく成長になる',
+      kids: { title: '育てるモデル', text: '最初にすごく簡単なルールをひとつだけ決めて、それを何回も繰り返す。植物のタネから葉っぱがどんどん増えていくみたいに、単純なルールなのに繰り返すうちに複雑で綺麗な模様が「育っていく」。' },
       generators: ['automaton', 'gesture'],
       pitch: { systems: ['scale'], hint: 'scale で音階を決める(セルは音階の段に対応する)' },
       meter: 'four', arc: false, bars: 16, tempo: 96, voice: 'vibes',
@@ -80,6 +84,7 @@
     {
       id: 'markov', group: '生成モデル', label: 'コーパスモデル(n-gram・マルコフ連鎖)', short: 'マルコフ',
       text: 'ある語法(雅楽・民謡・ブルースなど)らしい短いお手本の句から遷移確率を学び、そのクセを保った新しい旋律を歩いて作る。規則を人手で書かずに語法の手触りを移す',
+      kids: { title: 'まねっこモデル', text: '昔からあるわらべ歌やお祭りの曲をたくさん聞かせて、「次にどんな音がきやすいか」のクセを覚えさせる。そのクセを真似して新しい曲を作るので、初めて聞く曲なのに「なんか和風っぽいな」と感じる曲になる。' },
       generators: ['markov', 'chords', 'bass', 'gesture'],
       pitch: { systems: ['scale', 'chords'], hint: 'scale でその語法の音階(民謡音階、都節、ブルース、ドリアンなど)' },
       meter: 'four', arc: false, bars: 16, tempo: 90, voice: 'flute',
@@ -89,6 +94,7 @@
     {
       id: 'counterpoint', group: '生成モデル', label: '制約充足モデル(対位法)', short: '対位法',
       text: '「強拍は協和」「連続5度・8度の禁止」「声部の交差なし」などの制約を先に決め、それを満たす声部を探索で見つける。旋律を能動的に書くのでなく、条件から解を得る',
+      kids: { title: 'ルールパズル', text: '数独に似ている。「この音とこの音は同時に鳴らしちゃダメ」みたいなルールをたくさん先に決めておいて、そのルールを全部守れる組み合わせをコンピュータに探させる。自分で作るというより、パズルを解いてもらう感じ。' },
       generators: ['line', 'counterpoint', 'bass'],
       pitch: { systems: ['scale', 'chords'], hint: 'scale でキーと旋法(対位法の探索はこの音階の音から選ぶ)' },
       meter: 'four', arc: false, ruminate: true, bars: 8, tempo: 76, voice: 'strings',
@@ -98,6 +104,7 @@
     {
       id: 'sonify', group: '生成モデル', label: '直接ソニフィケーションモデル', short: 'ソニフィケーション',
       text: '画像の明るさ・色相・輪郭(左から右へ)や、光景から想像した時系列を、解釈を挟まずにほぼそのまま音の高さ・密度・強さにする。意外性のある動きが出る',
+      kids: { title: 'そのまま音にする', text: '気温や星の光の強さみたいな、音楽と関係ない数字をそのまま音の高さや長さに変える。人間が「こういう感じにしよう」と考えずに、数字をそのまま音にするから、思いがけない動きの音が出てくる。' },
       generators: ['sonify', 'gesture'],
       pitch: { systems: ['scale', 'free'], hint: 'scale で音の集合を決める(値は音階の段に対応する)' },
       meter: 'four', arc: false, bars: 8, tempo: 84, voice: 'piano',
@@ -107,6 +114,7 @@
     {
       id: 'tension', group: '生成モデル', label: '緊張曲線モデル(出力目標駆動)', short: '緊張曲線',
       text: '入力からではなく、先に曲全体の緊張・密度の時間曲線を決め、各時点の音数・音域・強弱をそれに合わせて逆算して埋める',
+      kids: { title: '山登りの道のり', text: '曲を山登りのコースだと考えて、「ここはゆるやかに登る」「ここで一気に盛り上がる」「ここでゆっくり下る」という道のりを先に決めておく。その道のりに合わせて、あとから音の数や高さをはめこんでいく。' },
       generators: ['stochastic', 'gesture', 'chords', 'process'],
       pitch: { systems: ['scale', 'chords'], hint: 'scale か chords' },
       meter: 'four', arc: true, bars: 16, tempo: 88, voice: 'pad',
@@ -116,6 +124,7 @@
     {
       id: 'dialogue', group: '生成モデル', label: 'マルチエージェント対話モデル(Voyager型)', short: '対話',
       text: '複数の奏者が、直前の相手の句を聴いて気質のルール(模倣・反行・応答・対比・こだま・沈黙)で反応する。全体は与えず、相互作用から立ち上がる',
+      kids: { title: 'おしゃべりモデル', text: '何人かが「相手が高い音を出したら自分は低い音を出す」みたいな簡単なルールだけ持っていて、お互いの音を聞きながら自由に演奏する。台本はないのに、おしゃべりみたいに自然と会話っぽい音楽になる。' },
       generators: ['dialogue', 'gesture'],
       pitch: { systems: ['scale'], hint: 'scale で共有する音階' },
       meter: 'four', arc: true, bars: 16, tempo: 100, voice: 'epiano',
@@ -125,6 +134,7 @@
     {
       id: 'motif', group: '生成モデル', label: '動機変容モデル', short: '動機変容',
       text: '短い動機に、移高・反行・逆行・拡大・縮小・断片化・解消の変換を鎖のようにつなぎ、執拗に発展させる(動機労作)',
+      kids: { title: '変身モデル', text: '短いメロディーのタネをひとつ用意して、それを「逆さまにする」「大きく伸ばす」「小さく縮める」「後ろから読む」ようにどんどん変身させていく。同じタネから生まれたのに、いろんな形に変わっていくのが面白いところ。' },
       generators: ['motif', 'chords', 'bass'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords か scale' },
       meter: 'free', arc: true, bars: 16, tempo: 108, voice: 'piano',
@@ -134,6 +144,7 @@
     {
       id: 'serial', group: '生成モデル', label: '十二音列(セリエル)モデル', short: '十二音列',
       text: '12音を1回ずつ使う音列だけを語彙に、原型・反行・逆行・逆行の反行とその移高で音高を導く。調性の重力を持たない',
+      kids: { title: '順番ゲーム', text: '12個の音を、好きな順番でひとつずつ、全部使い切るまで同じ音を繰り返さない、というルールを決める。その順番を「逆から読む」「上下さかさまにする」ことで新しいメロディーを作る。同じ12枚のトランプで遊ぶ、決まったルールのゲームみたいなもの。' },
       generators: ['serial'],
       pitch: { systems: ['row'], hint: 'system は row にする(音列は層の row に書く)' },
       meter: 'free', arc: false, bars: 12, tempo: 72, voice: 'piano',

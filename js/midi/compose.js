@@ -132,6 +132,68 @@
     }
   }
 
+  /* 小学生向けの解説(2026-09-27、ユーザー要望「カラムに子どものアイコンを置いて、かざしたらポップアップ」)。
+   * ピッカーの各行の右端に子どものアイコン。マウスをかざすと吹き出し、タッチでは押すと開閉(押してもモデルは選ばない)。
+   * ピッカーは中をスクロールする(.modal の overflow)ので、吹き出しは画面に固定して重ね、はみ出さない位置に置く */
+  const KIDS_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
+    '<circle cx="12" cy="13" r="8" fill="#fde3c4" stroke="#b8863b" stroke-width="1.3"/>' +
+    '<path d="M5.2 10.5C6 6.5 9 5 12 5s6 1.5 6.8 5.5C16.5 9 14.5 8.4 12 8.8 9.5 8.4 7.5 9 5.2 10.5z" fill="#6b4a2b"/>' +
+    '<path d="M12 5c.3-1.2 1.2-2 2.2-2.2" fill="none" stroke="#6b4a2b" stroke-width="1.3" stroke-linecap="round"/>' +
+    '<circle cx="9.3" cy="13.2" r="1" fill="#3a2c1f"/><circle cx="14.7" cy="13.2" r="1" fill="#3a2c1f"/>' +
+    '<circle cx="7.6" cy="15.6" r="1.1" fill="#f4a9a0" opacity="0.7"/><circle cx="16.4" cy="15.6" r="1.1" fill="#f4a9a0" opacity="0.7"/>' +
+    '<path d="M9.8 16.3c1.2 1.1 3.2 1.1 4.4 0" fill="none" stroke="#3a2c1f" stroke-width="1.1" stroke-linecap="round"/></svg>';
+
+  function bindKidsPopups(overlay) {
+    const pop = document.createElement('div');
+    pop.className = 'kids-pop';
+    pop.hidden = true;
+    overlay.appendChild(pop);
+    let current = null;
+    const hide = () => {
+      pop.hidden = true;
+      current = null;
+    };
+    const show = (icon) => {
+      const preset = P.PRESETS.find((x) => x.id === icon.dataset.kids);
+      if (!preset || !preset.kids) return;
+      current = icon;
+      pop.innerHTML = `<div class="kids-pop-head">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` +
+        `<div class="kids-pop-model">${escapeHtml(preset.label)}</div>` +
+        `<div class="kids-pop-text">${escapeHtml(preset.kids.text)}</div>`;
+      pop.hidden = false;
+      const r = icon.getBoundingClientRect();
+      const w = pop.offsetWidth;
+      const h = pop.offsetHeight;
+      const margin = 10;
+      let left = r.right - w;
+      left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+      let top = r.bottom + 8;
+      if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 8);
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+    };
+    overlay.querySelectorAll('[data-kids]').forEach((icon) => {
+      icon.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') show(icon);
+      });
+      icon.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'mouse' && current === icon) hide();
+      });
+      icon.addEventListener('click', (event) => {
+        // アイコンを押してもモデルは選ばない(タッチでは開閉)
+        event.stopPropagation();
+        event.preventDefault();
+        if (current === icon && !pop.hidden) hide();
+        else show(icon);
+      });
+    });
+    const modal = overlay.querySelector('.modal');
+    if (modal) modal.addEventListener('scroll', hide, { passive: true });
+    overlay.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('[data-kids], .kids-pop')) hide();
+    });
+  }
+
   /** モデルのピッカー(見出しごとに並べ、説明つき)。やめたら null */
   function pickModel(title, recommended) {
     return new Promise((resolve) => {
@@ -150,7 +212,9 @@
         groups.map((g) => `<div class="model-group"><div class="model-group-name">${escapeHtml(g.name)}</div>` +
           g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}" data-model="${p.id}">` +
             `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
-            `<span class="model-item-text">${escapeHtml(p.text)}</span></button>`).join('') + `</div>`).join('') +
+            `<span class="model-item-text">${escapeHtml(p.text)}</span>` +
+            (p.kids ? `<span class="model-kids" data-kids="${p.id}" role="img" aria-label="小学生向けの解説">${KIDS_ICON}</span>` : '') +
+            `</button>`).join('') + `</div>`).join('') +
         `<div class="modal-actions"><button type="button" class="secondary" data-cancel>やめる</button></div></div>`;
       const finish = (id) => {
         overlay.remove();
@@ -160,6 +224,7 @@
         resolve(id);
       };
       overlay.querySelectorAll('[data-model]').forEach((b) => b.addEventListener('click', () => finish(b.dataset.model)));
+      bindKidsPopups(overlay);
       overlay.querySelector('[data-cancel]').addEventListener('click', () => finish(null));
       attachBackgroundTapToClose(overlay, () => finish(null));
       document.body.appendChild(overlay);
