@@ -7,7 +7,7 @@
 //   - 選択範囲が出ている間、キャンバスの上に「選択カードを全削除」「★3以下のMIDIを全削除」のバーを出す(2026-09-27、ユーザー要望)。
 //     削除は2段階の確認(showChoiceDialog を2回)。削除の中身は画面ごとに違うので、画面が deleteCards(cards) を持つ時だけ出す
 //     (アンサンブル・ソウル画面。入口画面のソウルは対象外)。画面の deletableCard(card) が false のカード(ソウル画面のモジュールの
-//     ハブなど)は数えない。★は未評価のMIDIを含めない(まだ聴いて判断していないため)
+//     ハブなど)は数えない。「★3以下」には★を付けていないMIDIも含める(同日、ユーザー判断「星がついてないものも削除していいよ」)
 //   - モードを持たない(CONSTELLATIONのFlight Engineerはモジュールとして開くが、LYRAではShiftだけで使えるようにした)。
 //     Shiftの無いスマホ・タブレットでは使えない
 // canvas.js の viewportEl / contentEl / viewportState / clientToContent、app.js の cardElById / getCardById /
@@ -61,7 +61,8 @@
   }
 
   function lowRatedMidis(cards) {
-    return cards.filter((c) => c.type === 'midi' && Number.isInteger(c.rating) && c.rating >= 1 && c.rating <= LOW_RATING_MAX);
+    // ★を付けていない(rating が null・0)MIDIも含める
+    return cards.filter((c) => c.type === 'midi' && !(Number.isInteger(c.rating) && c.rating > LOW_RATING_MAX));
   }
 
   function kindLabel(card) {
@@ -102,7 +103,7 @@
       `<span class="marquee-actions-count">${cards.length}枚を選択中</span>` +
       `<button type="button" class="marquee-action marquee-action--danger" data-marquee="all">選択カードを全削除</button>` +
       (hasMidi
-        ? `<button type="button" class="marquee-action" data-marquee="low"${low.length ? '' : ' disabled'} title="★${LOW_RATING_MAX}以下を付けたMIDIだけ(未評価は含めない)">★${LOW_RATING_MAX}以下のMIDIを全削除(${low.length})</button>`
+        ? `<button type="button" class="marquee-action" data-marquee="low"${low.length ? '' : ' disabled'} title="★${LOW_RATING_MAX}以下と、★を付けていないMIDI">★${LOW_RATING_MAX}以下のMIDIを全削除(${low.length})</button>`
         : '');
     barEl.querySelector('[data-marquee="all"]').addEventListener('click', () => deleteSelected('all'));
     const lowBtn = barEl.querySelector('[data-marquee="low"]');
@@ -114,7 +115,7 @@
     const all = deletableSelected();
     const targets = mode === 'low' ? lowRatedMidis(all) : all;
     if (!targets.length) return;
-    const what = mode === 'low' ? `★${LOW_RATING_MAX}以下のMIDI ${targets.length}枚` : `選んだカード ${targets.length}枚`;
+    const what = mode === 'low' ? `★${LOW_RATING_MAX}以下(★なしを含む)のMIDI ${targets.length}枚` : `選んだカード ${targets.length}枚`;
     deleting = true;
     try {
       // 1段階目: 何が消えるか
@@ -122,7 +123,7 @@
         title: `${what}を削除しますか?`,
         message: `内訳: ${breakdown(targets)}
 ` +
-          (mode === 'low' ? `評価していないMIDIと★${LOW_RATING_MAX + 1}以上のMIDI、MIDI以外のカードは残ります。
+          (mode === 'low' ? `★を付けていないMIDIも消えます。★${LOW_RATING_MAX + 1}以上のMIDIと、MIDI以外のカードは残ります。
 ` : '') +
           'カードと、そこから伸びている線が消えます。',
         options: [
