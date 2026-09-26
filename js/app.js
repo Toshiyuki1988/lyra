@@ -41,6 +41,7 @@ const state = {
   ensembles: {}, // 舞台のソウルID → { cards: [], connections: [] }
   prefs: { dailyTask: true },
   daily: { lastDate: null },
+  trash: [], // 削除履歴(js/trash.js。矩形選択からの一括削除の直近10件)
 };
 
 // 今の画面のキャンバスに載っているカードと線。canvas.jsの共通処理はここだけを見る。
@@ -328,6 +329,7 @@ function applyLoadedData(data) {
     state.ensembles = data.ensembles || {};
     state.prefs = { dailyTask: true, ...(data.prefs || {}) };
     state.daily = { lastDate: null, ...(data.daily || {}) };
+    state.trash = Array.isArray(data.trash) ? data.trash : [];
   } else {
     state.souls = [];
     state.ensembles = {};
@@ -832,6 +834,7 @@ function collectSaveData() {
     ensembles: state.ensembles,
     prefs: state.prefs,
     daily: state.daily,
+    trash: state.trash,
   };
 }
 

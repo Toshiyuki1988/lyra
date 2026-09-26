@@ -7,7 +7,8 @@
 //   - 選択範囲が出ている間、キャンバスの上に「選択カードを全削除」「★3以下のMIDIを全削除」のバーを出す(2026-09-27、ユーザー要望)。
 //     削除は2段階の確認(showChoiceDialog を2回)。削除の中身は画面ごとに違うので、画面が deleteCards(cards) を持つ時だけ出す
 //     (アンサンブル・ソウル画面。入口画面のソウルは対象外)。画面の deletableCard(card) が false のカード(ソウル画面のモジュールの
-//     ハブなど)は数えない。「★3以下」には★を付けていないMIDIも含める(同日、ユーザー判断「星がついてないものも削除していいよ」)
+//     ハブなど)は数えない。「★2以下」には★を付けていないMIDIも含める(同日、ユーザー判断。当初は★3以下・未評価を除く、から2回変更)
+//   - 削除した分は js/trash.js の削除履歴(直近10件)に残り、ヘッダーの削除履歴から戻せる。場所は画面の trashPlace() が返す
 //   - モードを持たない(CONSTELLATIONのFlight Engineerはモジュールとして開くが、LYRAではShiftだけで使えるようにした)。
 //     Shiftの無いスマホ・タブレットでは使えない
 // canvas.js の viewportEl / contentEl / viewportState / clientToContent、app.js の cardElById / getCardById /
@@ -21,7 +22,7 @@
   let barEl = null; // 選択中に出す削除のバー(viewportEl の中に固定。ズームしても大きさが変わらない)
   let deleting = false;
   const PAD = 12;
-  const LOW_RATING_MAX = 3;
+  const LOW_RATING_MAX = 2;
 
   const KIND_LABELS = {
     text: '気づき', task: '課題', prompt: 'プロンプト', midi: 'MIDI', image: '画像', audio: 'オーディオ', soul: 'ソウル',
@@ -135,7 +136,7 @@
       // 2段階目: 元に戻せないことの念押し
       const second = await showChoiceDialog({
         title: `本当に${targets.length}枚を削除しますか?`,
-        message: '削除すると元に戻せません。',
+        message: `削除履歴(右上のボタン)から戻せるのは直近${window.LyraTrash ? window.LyraTrash.MAX_ENTRIES : 10}件までです。それより前の削除は戻せません。`,
         options: [
           { label: 'やめる', value: 'cancel', secondary: true },
           { label: `${targets.length}枚を削除する`, value: 'delete', danger: true },
@@ -143,13 +144,21 @@
       });
       if (second !== 'delete') return;
       const removed = new Set(targets.map((c) => c.id));
+      // 削除履歴に残す分(カードと、消えるカードにつながっていた線)を、消す前に写しておく
+      const lostConnections = (scope.connections || []).filter((c) => removed.has(c.cardIdA) || removed.has(c.cardIdB));
+      const place = currentScreen.trashPlace ? currentScreen.trashPlace() : null;
+      const summary = mode === 'low'
+        ? `★${LOW_RATING_MAX}以下(★なしを含む)のMIDI ${targets.length}枚`
+        : `選んだカード ${targets.length}枚(${breakdown(targets)})`;
+      const snapshot = JSON.parse(JSON.stringify({ cards: targets, connections: lostConnections }));
       currentScreen.deleteCards(targets);
+      if (place && window.LyraTrash) window.LyraTrash.record({ place, summary, ...snapshot });
       selectedIds = selectedIds.filter((id) => !removed.has(id));
       drawBox();
       renderBar();
       redrawAsterismLines();
       scheduleAutoSave();
-      setStatus(`${targets.length}枚を削除しました`, { important: true });
+      setStatus(`${targets.length}枚を削除しました(右上の削除履歴から戻せます)`, { important: true });
     } finally {
       deleting = false;
     }

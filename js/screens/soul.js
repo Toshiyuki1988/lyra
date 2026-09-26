@@ -152,6 +152,11 @@
       else selectParam(card.id);
     },
 
+    /** 削除履歴(js/trash.js)に残す場所 */
+    trashPlace() {
+      return { kind: 'soul', soulId: soul.id, moduleId: module ? module.id : null, label: `${soul.name} › ${module ? modulePath(module) : ''}` };
+    },
+
     /** 矩形選択からのまとめての削除(js/marquee.js)。モジュールのハブは消さない(モジュールの削除は右パネルから) */
     deletableCard(card) {
       return card !== module;

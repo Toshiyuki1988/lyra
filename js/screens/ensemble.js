@@ -205,11 +205,16 @@
       renderMembers();
     },
 
+    /** 削除履歴(js/trash.js)に残す場所 */
+    trashPlace() {
+      return { kind: 'ensemble', stageId: stage.id, label: `アンサンブル in ${stage.name}` };
+    },
+
     /** 矩形選択からのまとめての削除(js/marquee.js。確認は向こうで2段階済み)。1枚ずつの削除と同じ後始末をする */
     deleteCards(cards) {
       cards.forEach((card) => {
         if (focusCardId === card.id) focusCardId = null;
-        if (card.type === 'image') deleteLocalImage(card.id).catch((err) => console.error(err));
+        // 画像カードの端末内の画像は、削除履歴(js/trash.js)から押し出された時に消す(戻せるように)
         if (card.type === 'chat' && window.LyraSoulChat) window.LyraSoulChat.forget(card);
         removeCardFromScope(card);
       });

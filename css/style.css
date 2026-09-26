@@ -1831,3 +1831,12 @@ a.btn-secondary { display: block; }
 .marquee-action--danger { border-color: var(--rust); color: var(--rust); }
 .marquee-action--danger:hover { background: var(--rust); color: #fff; }
 .marquee-action:disabled { opacity: 0.4; cursor: default; }
+
+/* 削除履歴(js/trash.js、2026-09-27) */
+.toolbar .icon-btn svg { display: block; }
+.modal.trash-modal { width: min(520px, calc(100vw - 32px)); max-width: none; }
+.trash-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+.trash-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.trash-row-text { flex: 1; min-width: 0; }
+.trash-row-title { font-size: 13px; color: var(--ink); line-height: 1.5; }
+.trash-row-sub { font-size: 11px; color: var(--muted); }
