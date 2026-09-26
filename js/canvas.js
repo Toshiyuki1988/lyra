@@ -424,6 +424,11 @@ function attachCardGestures(el) {
     el.dataset.x = String(x);
     el.dataset.y = String(y);
     applyCardTransform(el);
+    // 画面ごとの「ドラッグ中」の処理(プレミックスのフォルダは中のカードを一緒に動かす)
+    if (typeof onCardDragging === 'function') {
+      const draggingCard = getCardById(el.dataset.id);
+      if (draggingCard) onCardDragging(draggingCard, el, dx, dy);
+    }
     updateAutoPanPointer(clientX, clientY);
     // ドラッグ中はフル再構築(redrawAsterismLines())ではなく、このカードに関わる線だけを
     // 動かす軽量パスにする(2026年9月、カード数・接続数が多いセッションでのドラッグの
@@ -532,8 +537,10 @@ function attachCardGestures(el) {
     if (handleResize.edges.bottom) height = handleResize.startHeight + dy;
     if (handleResize.edges.top) height = handleResize.startHeight - dy;
 
-    width = clamp(width, CARD_MIN_WIDTH, CARD_MAX_SIZE);
-    height = clamp(height, CARD_MIN_HEIGHT, CARD_MAX_SIZE);
+    // プレミックスのフォルダカードは「エリア」なので、ふつうのカードより大きく広げられる
+    const maxSize = el.classList.contains('star-card--folder') ? 2600 : CARD_MAX_SIZE;
+    width = clamp(width, CARD_MIN_WIDTH, maxSize);
+    height = clamp(height, CARD_MIN_HEIGHT, maxSize);
 
     // 右端/下端は左上を固定点にすればよいが、左端/上端は反対側(右/下)が固定点になるため、
     // クランプ後の幅・高さから x/y を逆算する

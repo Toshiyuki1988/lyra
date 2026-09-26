@@ -42,6 +42,7 @@ const state = {
   prefs: { dailyTask: true },
   daily: { lastDate: null },
   trash: [], // 削除履歴(js/trash.js。矩形選択からの一括削除の直近10件)
+  premix: { activeId: null, cards: [] }, // プレミックス(js/screens/premix.js。カードの配置と設定だけ。音はDriveに上げない)
 };
 
 // 今の画面のキャンバスに載っているカードと線。canvas.jsの共通処理はここだけを見る。
@@ -330,6 +331,7 @@ function applyLoadedData(data) {
     state.prefs = { dailyTask: true, ...(data.prefs || {}) };
     state.daily = { lastDate: null, ...(data.daily || {}) };
     state.trash = Array.isArray(data.trash) ? data.trash : [];
+    state.premix = data.premix && Array.isArray(data.premix.cards) ? data.premix : { activeId: null, cards: [] };
   } else {
     state.souls = [];
     state.ensembles = {};
@@ -483,12 +485,14 @@ function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[0] === 'soul' && parts[1]) return { screen: 'soul', soulId: parts[1], moduleId: parts[2] || null, paramId: parts[3] || null };
   if (parts[0] === 'ensemble') return { screen: 'ensemble', stageId: parts[1] || null };
+  if (parts[0] === 'premix') return { screen: 'premix' };
   return { screen: 'home' };
 }
 
 function routeKey(route) {
   if (route.screen === 'soul') return `soul/${route.soulId}/${route.moduleId || ''}`;
   if (route.screen === 'ensemble') return `ensemble/${route.stageId || ''}`;
+  if (route.screen === 'premix') return 'premix';
   return 'home';
 }
 
@@ -770,6 +774,12 @@ function renderEnsembleTabs() {
     return;
   }
   const currentStageId = currentRoute && currentRoute.screen === 'ensemble' ? currentRoute.stageId : null;
+  // 4つ目の画面「プレミックス」(2026-09-27)への入口は、舞台タブの右隣に置く
+  const premixTab = document.getElementById('premix-tab');
+  if (premixTab) {
+    premixTab.hidden = false;
+    premixTab.classList.toggle('ensemble-tab--active', Boolean(currentRoute && currentRoute.screen === 'premix'));
+  }
   els.ensembleTabs.innerHTML =
     `<span class="ensemble-tabs-label">アンサンブル</span>` +
     stageSouls()
@@ -835,6 +845,7 @@ function collectSaveData() {
     prefs: state.prefs,
     daily: state.daily,
     trash: state.trash,
+    premix: state.premix,
   };
 }
 
@@ -1196,6 +1207,11 @@ function syncCardHeight(el) {
 /** js/canvas.js がズーム操作の落ち着いたタイミングで呼ぶ */
 function onViewportScaleSettled() {
   if (currentScreen && currentScreen.onScaleSettled) currentScreen.onScaleSettled();
+}
+
+/** js/canvas.js がカードをドラッグしている間、動くたびに呼ぶ(プレミックスでフォルダの中のカードを一緒に動かす) */
+function onCardDragging(card, el, dx, dy) {
+  if (currentScreen && currentScreen.onCardDragging) currentScreen.onCardDragging(card, el, dx, dy);
 }
 
 /** js/canvas.js がカードの移動を確定した時に呼ぶ */
