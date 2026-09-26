@@ -55,7 +55,8 @@
         ? route.paramId
         : null;
       scope = {
-        cards: module ? [module, ...soul.params.filter((p) => p.moduleId === module.id)] : [],
+        // 専門AIチャット(js/soulchat.js)も、置いたページ(moduleId)のカードとして並べる
+        cards: module ? [module, ...soul.params.filter((p) => p.moduleId === module.id), ...chatsOf(module)] : [],
         connections: soul.connections,
       };
       setCrumbs([
@@ -65,6 +66,9 @@
       ]);
       buildOverlay();
       setTools([
+        ...(soul.category === 'plugin'
+          ? [{ id: 'chat', label: 'チャット', icon: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 10h8M8 13h5"/>', onClick: () => addChat() }]
+          : []),
         { id: 'param', label: 'パラメータ', icon: '<circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>', onClick: () => addParamManually() },
         { id: 'shot', label: 'スクショ', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>', onClick: () => pickScreenshot() },
         { id: 'sources', label: '資料', icon: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>', onClick: () => showPanel('sources') },
@@ -81,6 +85,10 @@
     },
 
     buildCard(card, el) {
+      if (card.type === 'chat') {
+        window.LyraSoulChat.buildCard(card, el, { soul, openParam: openParamFromChat, onChanged: refreshChatList });
+        return;
+      }
       if (card === module) {
         el.classList.add('star-card--hub', 'star-card--no-resize');
         el.innerHTML =
@@ -100,11 +108,18 @@
 
     cardHexes(card) {
       if (card === module) return hexHtml('astr');
+      if (card.type === 'chat') return hexHtml('edit', 'Edit') + hexHtml('astr') + hexHtml('delete', 'Delete');
       return hexHtml('edit', 'Edit') + hexHtml('astr') + hexHtml('delete', 'Delete');
     },
 
-    onHexAction(action, card) {
+    onHexAction(action, card, el) {
       if (card === module) return;
+      if (card.type === 'chat') {
+        if (el) deactivateEditGuide(el);
+        if (action === 'edit') window.LyraSoulChat.editTopic(card).then((changed) => changed && panelMode === 'module' && showPanel('module'));
+        else if (action === 'delete') confirmDeleteChat(card);
+        return;
+      }
       if (action === 'edit') {
         selectParam(card.id);
         const nameInput = els.sidePanel.querySelector('[data-param-field="name"]');
@@ -132,12 +147,13 @@
     },
 
     onCardTap(card) {
+      if (card.type === 'chat') return;
       if (card === module) showPanel('module');
       else selectParam(card.id);
     },
 
     onCardMoved(card, el) {
-      if (card === module) return;
+      if (card === module || card.type === 'chat') return;
       if (!card.pinned) {
         card.pinned = true;
         delete card.suggested;
@@ -156,6 +172,10 @@
 
   function paramsOf(m) {
     return soul.params.filter((p) => p.moduleId === m.id);
+  }
+
+  function chatsOf(m) {
+    return soul.chats.filter((c) => c.moduleId === m.id);
   }
 
   /* ---------------- 浮遊UI(左のモジュールタブ・上の進行度) ---------------- */
@@ -419,21 +439,105 @@
 
   async function confirmDeleteModule() {
     const count = paramsOf(module).length;
+    const chatCount = chatsOf(module).length;
     const choice = await showChoiceDialog({
       title: `モジュール「${module.name}」を削除しますか?`,
-      message: `このページのパラメータ${count}件と、その説明・気づきも消えます。スクショの実体はDriveに残ります。`,
+      message: `このページのパラメータ${count}件と、その説明・気づき${chatCount ? `、チャット${chatCount}件` : ''}も消えます。スクショの実体はDriveに残ります。`,
       options: [
         { label: 'やめる', value: 'cancel', secondary: true },
         { label: '削除する', value: 'delete', danger: true },
       ],
     });
     if (choice !== 'delete') return;
-    const removedIds = new Set([module.id, ...paramsOf(module).map((p) => p.id)]);
+    const removedIds = new Set([module.id, ...paramsOf(module).map((p) => p.id), ...chatsOf(module).map((c) => c.id)]);
     soul.params = soul.params.filter((p) => !removedIds.has(p.id));
+    soul.chats = soul.chats.filter((c) => !removedIds.has(c.id));
     soul.connections = soul.connections.filter((c) => !removedIds.has(c.cardIdA) && !removedIds.has(c.cardIdB));
     soul.modules = soul.modules.filter((m) => m.id !== module.id);
     scheduleAutoSave();
     navigate(soulHash(soul, soul.modules[0] || null));
+  }
+
+  /* ---------------- 専門AIチャット(js/soulchat.js) ---------------- */
+
+  /**
+   * 新しいチャットカードの中心。スクショ・パラメータの列を隠さないよう、このページのカードとスクショの右隣に置く
+   * (真ん中に置くと、未配置のパラメータの列にかぶって見えなくなった)
+   */
+  function chatSpawnPos() {
+    const size = { width: 360, height: 440 };
+    let right = -Infinity;
+    let top = Infinity;
+    els.content.querySelectorAll('.star-card, .soul-shot').forEach((el) => {
+      const x = parseFloat(el.dataset.x) || 0;
+      const y = parseFloat(el.dataset.y) || 0;
+      right = Math.max(right, x + el.offsetWidth);
+      top = Math.min(top, y);
+    });
+    if (!Number.isFinite(right)) return newCardSpawnPos(60);
+    return { x: right + 60 + size.width / 2, y: top + size.height / 2 };
+  }
+
+  /** 下の道具バーの「チャット」: 今開いているページ(モジュール)に置く */
+  async function addChat() {
+    if (!module) {
+      setStatus('先に左の「＋」でモジュール(ページ)を作ってください');
+      return;
+    }
+    const targetModule = module;
+    const answer = await window.LyraSoulChat.askNewChat(soul, targetModule);
+    if (!answer) return;
+    const chat = window.LyraSoulChat.makeChat(soul, targetModule, answer.topic, chatSpawnPos());
+    soul.chats.push(chat);
+    scheduleAutoSave();
+    if (module !== targetModule) return; // ダイアログの間に別のページへ移っていたら、データにだけ入れる
+    scope.cards.push(chat);
+    const el = renderCard(chat);
+    playCardMoveTickSound();
+    const c = getCardCenterFromEl(el);
+    animateViewportTo(c.x, c.y);
+    el.classList.add('star-card--found');
+    if (panelMode === 'module') showPanel('module');
+    setTimeout(() => {
+      const input = el.querySelector('.chat-input');
+      if (input && !answer.question) input.focus();
+    }, 400);
+    if (answer.question) window.LyraSoulChat.send(chat, answer.question);
+  }
+
+  async function confirmDeleteChat(chat) {
+    if (!(await window.LyraSoulChat.confirmDelete(chat))) return;
+    soul.chats = soul.chats.filter((c) => c.id !== chat.id);
+    removeCardFromScope(chat); // scope.connections === soul.connections なので線もここで外れる
+    if (panelMode === 'module') showPanel('module');
+    scheduleAutoSave();
+    setStatus('削除しました');
+  }
+
+  /** やり取りが増えた時、概要パネルの「このページのチャット」の件数を合わせる(パネルで入力中なら触らない) */
+  function refreshChatList() {
+    if (panelMode !== 'module' || !els.sidePanel || els.sidePanel.contains(document.activeElement)) return;
+    if (els.sidePanel.querySelector('[data-chat]')) showPanel('module');
+  }
+
+  /** チャットの答えに付いたパラメータのチップから: 同じページならその場で選び、別のページならそこへ移る */
+  function openParamFromChat(paramId) {
+    const p = soul.params.find((x) => x.id === paramId);
+    if (!p) return;
+    if (module && p.moduleId === module.id) {
+      selectParam(p.id);
+      const el = cardElById(p.id);
+      if (el) {
+        const c = getCardCenterFromEl(el);
+        animateViewportTo(c.x, c.y);
+        el.classList.remove('star-card--found');
+        void el.offsetWidth; // 続けて押しても光り直すように
+        el.classList.add('star-card--found');
+      }
+      return;
+    }
+    const m = soul.modules.find((x) => x.id === p.moduleId);
+    if (m) navigate(`${soulHash(soul, m)}/${encodeURIComponent(p.id)}`);
   }
 
   /* ---------------- パラメータ ---------------- */
@@ -733,6 +837,7 @@
           `<div class="panel-inline-actions"><button type="button" class="btn-small" data-action="shot">スクショを貼る</button></div>`) +
       `</div>` +
       `<div class="panel-section"><div class="panel-label">パラメータ</div><div class="param-list">${listHtml}</div></div>` +
+      chatListHtml() +
       soulSummaryHtml() +
       `<div class="panel-actions">` +
       `<button type="button" class="btn-secondary" data-action="add-param">パラメータを足す</button>` +
@@ -763,6 +868,17 @@
         }
       });
     });
+    panel.querySelectorAll('[data-chat]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const el = cardElById(btn.dataset.chat);
+        if (!el) return;
+        const c = getCardCenterFromEl(el);
+        animateViewportTo(c.x, c.y);
+        el.classList.remove('star-card--found');
+        void el.offsetWidth; // 続けて押しても光り直すように
+        el.classList.add('star-card--found');
+      });
+    });
     panel.querySelectorAll('[data-action="shot"]').forEach((b) => b.addEventListener('click', pickScreenshot));
     const detach = panel.querySelector('[data-action="detach"]');
     if (detach) detach.addEventListener('click', detachScreenshot);
@@ -772,6 +888,20 @@
     panel.querySelector('[data-action="rename"]').addEventListener('click', renameModule);
     panel.querySelector('[data-action="delete-module"]').addEventListener('click', confirmDeleteModule);
     bindSoulSummary(panel);
+  }
+
+  /** このページに置いた専門AIチャットの一覧(押すとそのカードへ寄る) */
+  function chatListHtml() {
+    const chats = chatsOf(module);
+    if (!chats.length && soul.category !== 'plugin') return '';
+    return `<div class="panel-section"><div class="panel-label">このページのチャット</div>` +
+      (chats.length
+        ? `<div class="param-list">${chats
+          .map((c) => `<button type="button" class="param-row" data-chat="${c.id}"><span class="chat-row-mark">💬</span>` +
+            `${escapeHtml(c.topic || '')}<span class="param-row-tag">${c.messages.length}件</span></button>`)
+          .join('')}</div>`
+        : '<div class="panel-empty">下の「チャット」で、このページについて専門AIに聞くカードを置けます。</div>') +
+      `</div>`;
   }
 
   /** ソウル全体についての欄(気づき・アンサンブルへの持ち出し)。モジュール概要パネルの下に出す */

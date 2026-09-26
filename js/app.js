@@ -260,6 +260,7 @@ function makeSoul({ name, category, color, x, y, isDefaultStage }) {
     connections: [], // ソウル画面での手動Asterism
     notes: [], // ソウル全体への気づき
     vocabulary: [], // 共通語彙への変換表
+    chats: [], // 専門AIチャットのカード(js/soulchat.js。moduleIdのページに表示)
   };
 }
 
@@ -309,6 +310,7 @@ function normalizeSoul(soul) {
   soul.connections = soul.connections || [];
   soul.notes = soul.notes || [];
   soul.vocabulary = soul.vocabulary || []; // 共通語彙(密度・明度・動き…)への変換表(js/decompose.js)
+  soul.chats = soul.chats || []; // 専門AIチャット(js/soulchat.js、2026-09-27追加)
   if (!soul.color) soul.color = SOUL_COLORS[0];
   return soul;
 }

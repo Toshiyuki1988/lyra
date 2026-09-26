@@ -9,6 +9,7 @@
 //   playAstrConnectSound()     ASTRで線が繋がった時の「ピーン」
 //   playCardMoveTickSound()    カード移動中の1回ぶんの「ピ」
 //   playMidiCreatedSound()     MIDIカードができた時の「ポロロン」(2026-09-25、LYRA独自)
+//   playChatReplySound()       専門AIチャットの返事が届いた時の「シュコッ」(CONSTELLATIONの座談会と同じ音)
 
 let soundCtx = null;
 function soundAudioCtx() {
@@ -223,4 +224,36 @@ function playMidiCreatedSound() {
     osc.start(t);
     osc.stop(t + 0.6);
   });
+}
+
+/** 専門AIチャットの返事が届いた時の「シュコッ」(CONSTELLATIONの座談会の playChatReplySound() と同じ) */
+function playChatReplySound() {
+  const c = soundAudioCtx();
+  const now = c.currentTime;
+  const n = Math.floor(c.sampleRate * 0.05);
+  const buffer = c.createBuffer(1, n, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n) ** 1.4;
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  const filter = c.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(2400, now);
+  filter.frequency.exponentialRampToValueAtTime(850, now + 0.05);
+  filter.Q.value = 0.9;
+  const noiseGain = c.createGain();
+  noiseGain.gain.value = 0.1;
+  src.connect(filter).connect(noiseGain).connect(c.destination);
+  src.start(now);
+
+  const osc = c.createOscillator();
+  const clickGain = c.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 320;
+  clickGain.gain.setValueAtTime(0.0001, now + 0.045);
+  clickGain.gain.exponentialRampToValueAtTime(0.07, now + 0.05);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+  osc.connect(clickGain).connect(c.destination);
+  osc.start(now + 0.045);
+  osc.stop(now + 0.1);
 }
