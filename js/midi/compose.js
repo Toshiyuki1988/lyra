@@ -569,7 +569,8 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
   /**
    * Geminiに設計図を書かせてMIDIカードを作る。
    * input: { souls, images, contextText, focusParamIds, story, form, bars, pitch, rule, style, reference, hint, gauges, fixed, automation, excludeReferences }
-   * place: { stage, memberIds, speechId, fromCardId, x, y, revisionOf?(元のカード), comment?, linkedNames? }
+   * place: { stage, memberIds, speechId, fromCardId, x, y, revisionOf?(元のカード), comment?, linkedNames?, onCard? }
+   *   onCard(card): できたカードをアンサンブルに置かず、呼び出し側に渡す(プレミックスの語彙カード・画像カードから作る時。2026-09-29)
    */
   async function generate(preset, input, place, revise) {
     const prompt = buildPrompt(preset, input, revise ? revise.text : null);
@@ -636,7 +637,8 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       createdAt: new Date().toISOString(),
       ...(revise ? { comment: revise.comment.slice(0, 200), linkedNames: revise.linkedNames || [], version: revise.version, revisionOf: revise.card.id } : {}),
     };
-    placeMidiCard(place.stage, card, place.fromCardId);
+    if (place.onCard) place.onCard(card);
+    else placeMidiCard(place.stage, card, place.fromCardId);
     const layersLine = playable.map((l) => l.name || E.GENERATORS[l.generator].label).slice(0, 4).join('・');
     setStatus(`「${card.name}」を作りました(${preset.short}、${layersLine}${design.rumination ? '、主旋律は反芻済み' : ''})。タップで試聴・保存ができます`);
     return card;
@@ -684,7 +686,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       contextText: opts.contextText,
       focusParamIds: opts.focusParamIds,
       excludeReferences: true,
-    }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y }));
+    }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y, onCard: opts.onCard }));
   }
 
   /** 発言の「MIDIにする」 */
@@ -737,7 +739,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       contextText: opts.contextText,
       focusParamIds: opts.focusParamIds,
       excludeReferences: false,
-    }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y }));
+    }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y, onCard: opts.onCard }));
   }
 
   /* ---------------- プロンプトを整える(テキストカードの属性「プロンプト」、2026-09-26) ----------------

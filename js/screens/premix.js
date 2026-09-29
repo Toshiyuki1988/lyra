@@ -51,12 +51,16 @@
 //     フォルダの無い「MIDI」エリアを作る)。**音はDriveにもファイルにも残さない**: カードは MIDIカードへの参照(midiRef)と音色(midiVoice)
 //     だけを持ち、開くたびにその場で書き出し直す(アンサンブルでMIDIを直せば、開き直した時に新しい音になる)。元のMIDIカードが消えたら
 //     「見つかりません」。フォルダのファイルとしては数えない(1フォルダ10個・読み直しの対象外)。エリアを外すと、中のMIDIのカードも外れる
+//   - **語彙カード・画像カード(同日、ユーザー要望)**: オーディオカード(「語彙」ボタン/ヘックス)とエリア(見出しの「語彙」=今鳴っている音を録る)
+//     の音をGeminiに聞かせて長文の語彙カードにする。語彙カード・画像カード(道具バーの「画像」=Pixabay)の「MIDI」「ビート」でMIDIを作り、
+//     合成アンサンブルの音のオーディオカードにする(MIDIはカードの midiInline に持つ)。詳しくは「語彙カード」の節
 //
 // データ: state.premix = { activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
 //   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, virtual?(フォルダの無いエリア), x, y, width, height, createdAt },
 //   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
-//     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiVoice?,
-//     x, y, width, createdAt } ] }
+//     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiInline?(MIDIカード), midiVoice?,
+//     x, y, width, createdAt },
+//   { id, type: 'vocab', ... }(語彙カード), { id, type: 'image', ... }(画像カード) ] }
 
 (function () {
   const MAX_SOUNDS = 10;
@@ -93,7 +97,7 @@
   }
   const folders = () => data().cards.filter((c) => c.type === 'folder');
   const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
-  const isMidi = (sound) => Boolean(sound && sound.midiRef); // アンサンブルから持ち込んだMIDI(ファイルは無い)
+  const isMidi = (sound) => Boolean(sound && (sound.midiRef || sound.midiInline)); // MIDIを合成音にしたカード(ファイルは無い)
   const sourceOf = (sound) => (isMidi(sound) ? null : sound.sourceFolderId || sound.folderId);
   const soundsFrom = (folderId) => data().cards.filter((c) => c.type === 'sound' && sourceOf(c) === folderId); // そのフォルダのファイルのカード
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
@@ -205,6 +209,7 @@
       document.addEventListener('keydown', onKeydown);
       setTools([
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
+        { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
       ]);
       // フォルダを先に描く(オーディオカードが上に来るように)
@@ -223,6 +228,7 @@
 
     leave() {
       document.removeEventListener('keydown', onKeydown);
+      if (window.LyraImageSearch && window.LyraImageSearch.isOpen()) window.LyraImageSearch.close();
       stopAll();
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -232,6 +238,8 @@
 
     buildCard(card, el) {
       if (card.type === 'folder') buildFolder(card, el);
+      else if (card.type === 'vocab') buildVocab(card, el);
+      else if (card.type === 'image') buildImage(card, el);
       else buildSound(card, el);
       // 押したカード(またはその中のオーディオ)のフォルダをアクティブにする
       el.addEventListener('pointerdown', () => {
@@ -241,8 +249,12 @@
     },
 
     cardHexes(card) {
-      // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)
-      return (card.type === 'sound' ? hexHtml('astr') : '') + hexHtml('delete', 'Delete');
+      // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
+      if (card.type === 'sound') return hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
+      if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
+      if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
+      return hexHtml('delete', 'Delete');
     },
 
     onConnectionsChanged() {
@@ -263,10 +275,24 @@
     },
 
     onHexAction(action, card, el) {
-      if (action !== 'delete') return;
+      if (action === 'sketch' || action === 'beat') {
+        midiFrom(card, action);
+        return;
+      }
       if (el) deactivateEditGuide(el);
-      if (card.type === 'folder') confirmRemoveFolder(card);
-      else removeSound(card);
+      if (action === 'vocab') soundToVocab(card);
+      else if (action === 'replace') openImageSearch(card);
+      else if (action !== 'delete') return;
+      else if (card.type === 'folder') confirmRemoveFolder(card);
+      else if (card.type === 'vocab') {
+        removeCardFromScope(card);
+        scheduleAutoSave();
+      } else if (card.type === 'image') {
+        removeCardFromScope(card);
+        deleteLocalImage(card.id).catch((err) => console.error(err)); // 端末内の一時置き場(Driveではない)
+        if (searchTargetId === card.id) searchTargetId = null;
+        scheduleAutoSave();
+      } else removeSound(card);
     },
 
     onCardTap(card) {
@@ -330,7 +356,8 @@
         ? `<button type="button" class="btn-small fold-transport${tlOf(f).playing ? ' fold-transport--on' : ''}" data-f="transport" title="${chain
           ? 'すべてのアステリズムベルトを鳴らす(それぞれ、線の入ってこないカードから)' : 'プレイヘッドを動かす(エリア全体がループ)'}">${tlOf(f).playing ? '❚❚ 停止' : '▶ 再生'}</button>`
         : `<button type="button" class="btn-small" data-f="playall" title="このフォルダの音を全部鳴らす">▶ 全部</button>`) +
-      `<button type="button" class="btn-small" data-f="stopall" title="止める">■</button></span>` +
+      `<button type="button" class="btn-small" data-f="stopall" title="止める">■</button>` +
+      `<button type="button" class="btn-small fold-listen" data-f="listen" title="このエリアで今鳴っている音を録って、Geminiに聴かせて長文の語彙カードにする(Geminiを1回)">語彙</button></span>` +
       `<span class="fold-mode" role="group" aria-label="モード">` +
       `<button type="button" class="fold-mode-btn${tl || chain ? '' : ' fold-mode-btn--on'}" data-f="free">フリー</button>` +
       `<button type="button" class="fold-mode-btn${tl ? ' fold-mode-btn--on' : ''}" data-f="timeline">タイムライン</button>` +
@@ -352,6 +379,7 @@
         } else if (a === 'len-half') setLoopLen(f, loopLen(f) / 2);
         else if (a === 'len-double') setLoopLen(f, loopLen(f) * 2);
         else if (a === 'len-fit') fitLoopToSound(f);
+        else if (a === 'listen') areaToVocab(f);
         else if (a === 'stopall') {
           soundsOf(f.id).forEach((s) => stop(s));
           stopTransport(f);
@@ -607,6 +635,7 @@
     } else {
       el.insertAdjacentHTML('afterbegin',
         `<div class="snd-head"><div class="snd-name" title="${escapeHtml(s.fileName)}">${name}<span class="snd-from"></span></div>` +
+        `<button type="button" class="snd-vocab" data-s="vocab" title="この音(切り取った範囲)をGeminiに聴かせて、長文の語彙カードにする(Geminiを1回)">語彙</button>` +
         `<button type="button" class="snd-view" data-s="view" title="スフィア(小さな球)にする" aria-label="スフィアにする">◯</button></div>` +
         `<div class="snd-wave no-card-drag" title="ドラッグで鳴らす範囲を切り取る(端をつかむと片側だけ動く。ダブルクリックで外す)">` +
         `<canvas width="${SOUND_W * 2}" height="56"></canvas><div class="snd-playhead"></div><div class="snd-msg"></div></div>` +
@@ -644,6 +673,10 @@
       setFreeLoop(s);
       refreshSound(s);
       scheduleAutoSave();
+    });
+    el.querySelector('[data-s="vocab"]').addEventListener('click', (event) => {
+      event.stopPropagation();
+      soundToVocab(s);
     });
     el.querySelector('[data-s="unclip"]').addEventListener('click', (event) => {
       event.stopPropagation();
@@ -974,7 +1007,7 @@
     const rt = soundRt.get(s.id) || {};
     soundRt.set(s.id, rt);
     if (rt.buffer || rt.loading) return;
-    const card = findMidiCard(s.midiRef);
+    const card = s.midiInline || findMidiCard(s.midiRef);
     if (!card || !window.LyraMidi) {
       rt.missing = true;
       refreshSound(s);
@@ -1067,19 +1100,12 @@
 
   /** アクティブなエリア(無ければフォルダの無い「MIDI」エリアを作って)に置く */
   function placeMidiSound(hit, voice) {
-    let f = folders().find((x) => x.id === data().activeId) || folders()[0];
-    if (!f) {
-      const pos = newCardSpawnPos(40);
-      const w = PAD + 3 * SLOT_W;
-      const h = HEAD_H + 2 * SLOT_H;
-      f = { id: newId(), type: 'folder', name: 'MIDI', virtual: true, x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h, createdAt: new Date().toISOString() };
-      data().cards.unshift(f);
-      folderRt.set(f.id, { status: 'ready' });
-      const empty = els.overlay.querySelector('.premix-empty');
-      if (empty) empty.remove();
-      els.content.insertBefore(renderCard(f), els.content.querySelector('.star-card--sound') || null);
-    }
+    const f = ensureArea();
     const s = placeSound(f, hit.card.name || 'MIDI', soundsOf(f.id).length, { midiRef: { stageId: hit.stageId, cardId: hit.card.id }, midiVoice: voice, loop: true });
+    return afterMidiPlaced(f, s, `MIDI「${hit.card.name}」を${midiVoiceLabel(s)}で音にして`);
+  }
+
+  function afterMidiPlaced(f, s, what) {
     soundRt.set(s.id, {});
     const el = cardElById(s.id);
     if (el) {
@@ -1092,12 +1118,30 @@
     scheduleAutoSave();
     renderMidiSound(s).then(() => {
       const rt = soundRt.get(s.id) || {};
-      if (rt.buffer) setStatus(`MIDI「${hit.card.name}」を${midiVoiceLabel(s)}で音にして、「${f.name}」に置きました(${rt.buffer.duration.toFixed(1)}秒)`);
+      if (rt.buffer) setStatus(`${what}、「${f.name}」に置きました(${rt.buffer.duration.toFixed(1)}秒)`);
     });
     if (el) {
       const c = getCardCenterFromEl(el);
       animateViewportTo(c.x, c.y);
     }
+    return s;
+  }
+
+  /** アクティブなエリア(無ければ最初のエリア、1つも無ければフォルダの無い「MIDI」エリアを作る) */
+  function ensureArea() {
+    let f = folders().find((x) => x.id === data().activeId) || folders()[0];
+    if (!f) {
+      const pos = newCardSpawnPos(40);
+      const w = PAD + 3 * SLOT_W;
+      const h = HEAD_H + 2 * SLOT_H;
+      f = { id: newId(), type: 'folder', name: 'MIDI', virtual: true, x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h, createdAt: new Date().toISOString() };
+      data().cards.unshift(f);
+      folderRt.set(f.id, { status: 'ready' });
+      const empty = els.overlay.querySelector('.premix-empty');
+      if (empty) empty.remove();
+      els.content.insertBefore(renderCard(f), els.content.querySelector('.star-card--sound') || null);
+    }
+    return f;
   }
 
   function toggle(s) {
@@ -1924,6 +1968,406 @@
     rafId = requestAnimationFrame(tick);
   }
 
+  /* ---------------- 語彙カード(音を聞いて長文の言葉にする) ----------------
+   * 2026-09-29、ユーザー要望「オーディオカードからフルマックスの長文語彙カード化」「今エリアで鳴っている音からの長文語彙カード化」
+   * 「語彙カードからのシンセMIDI化・ビート化」。Geminiの無料枠は音声の入力も無料(料金ページで確認)。
+   *   - オーディオカード: 切り取った範囲(最大60秒)を16kHzモノラルのWAVにしてGeminiに1回聞かせる
+   *   - エリア: アクティブにして、そのエリアのバスの音を録る(タイムラインは1ループ、ほかは12秒。最大30秒)。カードの語彙メモ・並びも添える
+   *   - 返すのは見立て・音の事実・時間の流れ・質感語彙・情景・感情・美学的連想・作曲での使い方・合わないもの(合計2500〜3500字程度)。
+   *     ありきたりな形容詞で済ませない。聞き取れないことは書かない。曲名・人物の特定はしない
+   *   - 語彙カードは上の「MIDI」「ビート」で、その長文を文脈にしてMIDIを作り(js/midi/compose.js の onCard)、
+   *     合成アンサンブルの音でオーディオカードにしてアクティブなエリアに置く(生んだカードから線を結ぶ)
+   * データ: { id, type: 'vocab', title, summary, mitate[], facts, timeline[{at, text}], texture[], scene, emotion, aesthetic, music, avoid,
+   *   source: { kind: 'sound'|'area', name, seconds }, x, y, width, createdAt }
+   */
+  const LISTEN_MAX_SEC = 60;
+  const AREA_LISTEN_SEC = 12;
+  const AREA_LISTEN_MAX = 30;
+  const VOCAB_W = 320;
+
+  const VOCAB_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      title: { type: 'STRING' },
+      summary: { type: 'STRING' },
+      mitate: { type: 'ARRAY', items: { type: 'STRING' } },
+      facts: { type: 'STRING' },
+      timeline: { type: 'ARRAY', items: { type: 'OBJECT', properties: { at: { type: 'NUMBER' }, text: { type: 'STRING' } }, required: ['at', 'text'] } },
+      texture: { type: 'ARRAY', items: { type: 'STRING' } },
+      scene: { type: 'STRING' },
+      emotion: { type: 'STRING' },
+      aesthetic: { type: 'STRING' },
+      music: { type: 'STRING' },
+      avoid: { type: 'STRING' },
+    },
+    required: ['title', 'summary', 'mitate', 'facts', 'timeline', 'texture', 'scene', 'emotion', 'aesthetic', 'music', 'avoid'],
+  };
+
+  const VOCAB_SECTIONS = [
+    ['mitate', '見立て'], ['facts', '音の事実'], ['timeline', '時間の流れ'], ['texture', '質感の語彙'], ['scene', '情景・物語'],
+    ['emotion', '感情・身体感覚'], ['aesthetic', '美学的な連想'], ['music', '作曲での使い方'], ['avoid', '合わないもの'],
+  ];
+
+  /** 語彙カードの全文(MIDIを作る時の文脈) */
+  function vocabText(v) {
+    const lines = [`語彙カード「${v.title}」(${v.source && v.source.kind === 'area' ? 'プレミックスのエリアで鳴っていた音' : '音'}を聞いて書いた長文の語彙): ${v.summary}`];
+    VOCAB_SECTIONS.forEach(([key, label]) => {
+      const val = v[key];
+      if (!val || (Array.isArray(val) && !val.length)) return;
+      if (key === 'timeline') lines.push(`${label}: ${val.map((t) => `${Number(t.at).toFixed(1)}秒 ${t.text}`).join(' / ')}`);
+      else if (Array.isArray(val)) lines.push(`${label}: ${val.join(key === 'texture' ? '、' : ' / ')}`);
+      else lines.push(`${label}: ${val}`);
+    });
+    return lines.join('\n');
+  }
+
+  /** AudioBuffer の一部を16kHzモノラルのWAV(Geminiに渡す形)にする */
+  async function listenWav(buffer, start, seconds) {
+    const rate = 16000;
+    const len = Math.max(0.2, Math.min(seconds, buffer.duration - start));
+    const off = new OfflineAudioContext(1, Math.ceil(len * rate), rate);
+    const src = off.createBufferSource();
+    src.buffer = buffer;
+    src.connect(off.destination);
+    src.start(0, start, len);
+    const rendered = await off.startRendering();
+    const blob = window.LyraMidi.encodeWav(rendered);
+    return { file: { base64: await blobToBase64(blob), mimeType: 'audio/wav' }, seconds: len };
+  }
+
+  function vocabPrompt({ subject, seconds, memo, extra }) {
+    return `あなたは作曲支援アプリLYRAの「聴き手」です。添付の音(${seconds.toFixed(1)}秒)を注意深く聴き、この音を言葉だけで他の人(と別のAI)に伝えられるよう、できるだけ豊かで長い「語彙」を書いてください。
+ユーザーはこの語彙を、美学(視覚・雰囲気の特徴)と掛け合わせて、MIDIやビート、音の配置を作る材料にします。
+
+対象: ${subject}
+${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる): ${memo}\n` : ''}${extra ? `${extra}\n` : ''}
+書き方の約束:
+- 「温かい」「落ち着いた」「綺麗」のような、どの音にも当てはまる形容詞だけで済ませない。何が・どこで・どう鳴っているかまで具体的に
+- 「音の事実」と「時間の流れ」には実際に聞こえたことだけを書く。聞き取れないことは書かない。音程は分かる範囲で(音名・音域・調の気配)
+- 「見立て」は大胆に。何に聞こえるか・どんな場面の音に聞こえるかを、互いに違う方向で
+- 曲名・アーティスト名・人物を特定しない。歌詞や言葉が聞こえても書き写さない
+- 全体で2500〜3500字程度。各欄の分量の目安に従う
+
+出力:
+- title: この音の呼び名(20字以内)
+- summary: ひと言でいうと(60字以内)
+- mitate: 見立てを6〜8個(それぞれ40〜80字)
+- facts: 音の事実(500〜700字): 音色と倍音、立ち上がりと減衰、音域と音程、音量の変化、リズム・拍感・テンポ感、空間(残響・距離・広がり)、ノイズや質感、層の重なり
+- timeline: 時間の流れ(何秒目に何が起きるか)を5〜12個。at は秒
+- texture: 質感の語彙を20〜30語(名詞・動詞・オノマトペ・形容詞を混ぜて)
+- scene: 情景・物語(300〜500字): この音が流れる場所・時間・出来事
+- emotion: 感情・温度・身体感覚(200〜300字)
+- aesthetic: 美学的な連想(200〜300字): 色・光・素材・形・時代・文化の気配。音の言葉に置き換えず、視覚・雰囲気の言葉のまま
+- music: 作曲での使い方(300〜500字): MIDIやビートに翻訳するなら、テンポの目安・拍子・音階/旋法・和声の色・リズムの型・音域・層の役割。この音と組み合わせるなら何が合うか
+- avoid: この音に合わないもの(100字以内)`;
+  }
+
+  /** Geminiの答え → 語彙カード(生んだカードの右隣に置き、線を結ぶ) */
+  async function makeVocabCard({ files, prompt, source, near, fromId }) {
+    setStatus('Geminiが音を聴いて、語彙を書いています…', { busy: true });
+    const raw = await askGeminiJson({ prompt, files, responseSchema: VOCAB_SCHEMA, maxOutputTokens: 8192, timeoutMs: 180000, label: '音を語彙にする' });
+    const str = (x, n) => String(x || '').trim().slice(0, n);
+    const card = {
+      id: newId(),
+      type: 'vocab',
+      title: str(raw.title, 40) || '語彙',
+      summary: str(raw.summary, 120),
+      mitate: (Array.isArray(raw.mitate) ? raw.mitate : []).map((x) => str(x, 160)).filter(Boolean).slice(0, 10),
+      facts: str(raw.facts, 1200),
+      timeline: (Array.isArray(raw.timeline) ? raw.timeline : []).filter((t) => t && Number.isFinite(Number(t.at))).map((t) => ({ at: Math.max(0, Number(t.at)), text: str(t.text, 120) })).slice(0, 16),
+      texture: (Array.isArray(raw.texture) ? raw.texture : []).map((x) => str(x, 20)).filter(Boolean).slice(0, 40),
+      scene: str(raw.scene, 900),
+      emotion: str(raw.emotion, 600),
+      aesthetic: str(raw.aesthetic, 600),
+      music: str(raw.music, 900),
+      avoid: str(raw.avoid, 200),
+      source,
+      x: near ? near.x + (near.width || SOUND_W) + 60 : newCardSpawnPos().x,
+      y: near ? near.y : newCardSpawnPos().y,
+      width: VOCAB_W,
+      createdAt: new Date().toISOString(),
+    };
+    if (!card.facts && !card.mitate.length) throw new Error('語彙が返ってきませんでした');
+    data().cards.push(card);
+    const el = renderCard(card);
+    if (fromId) linkCards(fromId, card.id);
+    if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+    const c = getCardCenterFromEl(el);
+    animateViewportTo(c.x, c.y);
+    el.classList.add('star-card--found');
+    scheduleAutoSave();
+    const chars = vocabText(card).length;
+    setStatus(`語彙カード「${card.title}」を作りました(約${chars}字)。上の「MIDI」「ビート」で音にできます`);
+    return card;
+  }
+
+  /** 生んだカード → できたカードの線(自動。ベルトはオーディオカード同士の線だけを見るので、鳴らし方には関わらない) */
+  function linkCards(fromId, toId) {
+    data().connections.push({ id: newId(), cardIdA: fromId, cardIdB: toId, auto: true });
+    connCount = data().connections.length;
+    redrawAsterismLines();
+  }
+
+  async function soundToVocab(s) {
+    const rt = soundRt.get(s.id) || {};
+    if (!rt.buffer) await decodeSound(s);
+    const buf = (soundRt.get(s.id) || {}).buffer;
+    if (!buf) {
+      setStatus('音がまだ読み込めていません', { important: true });
+      return;
+    }
+    const clip = clipOf(s, soundRt.get(s.id));
+    try {
+      setStatus('音を準備しています…', { busy: true });
+      const { file, seconds } = await listenWav(buf, clip.start, Math.min(clip.len, LISTEN_MAX_SEC));
+      const name = s.fileName.replace(/\.[^.]+$/, '');
+      const subject = `オーディオ「${name}」${hasClip(s) ? `の切り取った範囲(${clip.start.toFixed(2)}〜${(clip.start + seconds).toFixed(2)}秒)` : ''}${clip.len > LISTEN_MAX_SEC ? `(最初の${LISTEN_MAX_SEC}秒)` : ''}` +
+        `${isMidi(s) ? `。LYRAのMIDIを${midiVoiceLabel(s)}の合成音で鳴らしたもの` : ''}`;
+      await makeVocabCard({
+        files: [file],
+        prompt: vocabPrompt({ subject, seconds, memo: s.memo }),
+        source: { kind: 'sound', name, seconds: Math.round(seconds * 10) / 10 },
+        near: s,
+        fromId: s.id,
+      });
+    } catch (err) {
+      console.error(err);
+      setStatus(`語彙にできませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  /** エリアで今鳴っている音(アクティブにした上で、そのエリアのバスの音)を録って、語彙カードにする */
+  async function areaToVocab(f) {
+    // 再生中か(タイムライン・チェーンはループの無音の所もあるので、その瞬間に音が出ているかでなく、再生を押しているかで見る)
+    const tl = (folderRt.get(f.id) || {}).tl;
+    const sounding = soundsOf(f.id).some((s) => (soundRt.get(s.id) || {}).playing) || Boolean(tl && tl.playing);
+    if (!sounding) {
+      setStatus('このエリアで音を鳴らしている間に押してください(鳴っている音を録って語彙にします)', { important: true });
+      return;
+    }
+    setActive(f.id);
+    const sec = Math.min(AREA_LISTEN_MAX, isTimeline(f) ? Math.max(4, loopLen(f)) : AREA_LISTEN_SEC);
+    const c = audio();
+    const bus = busOf(f.id);
+    const proc = c.createScriptProcessor(4096, 2, 2);
+    const left = [];
+    const right = [];
+    proc.onaudioprocess = (event) => {
+      left.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      right.push(new Float32Array(event.inputBuffer.getChannelData(1)));
+    };
+    const mute = c.createGain();
+    mute.gain.value = 0;
+    bus.out.connect(proc);
+    proc.connect(mute);
+    mute.connect(c.destination);
+    const el = cardElById(f.id);
+    if (el) el.classList.add('star-card--folder-listening');
+    try {
+      for (let left_ = sec; left_ > 0; left_--) {
+        setStatus(`「${f.name}」で鳴っている音を録っています…あと${left_}秒`, { busy: true });
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } finally {
+      bus.out.disconnect(proc);
+      proc.disconnect();
+      mute.disconnect();
+      if (el) el.classList.remove('star-card--folder-listening');
+    }
+    const frames = Math.min(left.reduce((n, a) => n + a.length, 0), Math.round(sec * c.sampleRate)); // ちょうど指定の長さ(タイムラインなら1ループ)に
+    if (!frames) {
+      setStatus('音を録れませんでした', { important: true });
+      return;
+    }
+    const rec = c.createBuffer(2, frames, c.sampleRate);
+    [left, right].forEach((chunks, ch) => {
+      const out = rec.getChannelData(ch);
+      let at = 0;
+      chunks.forEach((a) => {
+        if (at >= frames) return;
+        out.set(a.subarray(0, frames - at), at);
+        at += a.length;
+      });
+    });
+    const cards = soundsOf(f.id);
+    const lines = cards.map((s) => {
+      const r = soundRt.get(s.id) || {};
+      const cl = r.buffer ? clipOf(s, r) : null;
+      return `- ${s.fileName.replace(/\.[^.]+$/, '')}${cl ? `(${cl.len.toFixed(2)}秒${hasClip(s) ? '・切り取り' : ''})` : ''}${isMidi(s) ? '[MIDIの合成音]' : ''}${s.memo ? ` 語彙メモ: ${s.memo.slice(0, 120)}` : ''}`;
+    }).join('\n');
+    const belts = isChain(f) ? beltsOf(f).map((b) => cards.filter((s) => b.has(s.id)).map((s) => s.fileName.replace(/\.[^.]+$/, '')).join('→')) : [];
+    const modeLine = isTimeline(f) ? `タイムライン(${fmtLen(loopLen(f))}のループ)` : isChain(f) ? `チェーン(アステリズムベルト: ${belts.join(' / ') || 'なし'})` : 'フリー(カードごとに鳴らす)';
+    try {
+      setStatus('音を準備しています…', { busy: true });
+      const { file, seconds } = await listenWav(rec, 0, rec.duration);
+      await makeVocabCard({
+        files: [file],
+        prompt: vocabPrompt({
+          subject: `プレミックスのエリア「${f.name}」で重ねて鳴らしている音(${modeLine})`,
+          seconds,
+          extra: `エリアのカード(ファイル名・長さ・ユーザーの語彙メモ):\n${lines}\n個々の音の説明だけでなく、重なり方・ずれ・ループの周期・全体として立ち上がる印象も書く`,
+        }),
+        source: { kind: 'area', name: f.name, seconds: Math.round(seconds * 10) / 10 },
+        near: { x: f.x, y: f.y, width: f.width || 0 },
+        fromId: null,
+      });
+    } catch (err) {
+      console.error(err);
+      setStatus(`語彙にできませんでした: ${err.message}`, { important: true });
+    }
+  }
+
+  function buildVocab(v, el) {
+    el.classList.add('star-card--pm-vocab', 'star-card--pm-src');
+    const sec = (key, label) => {
+      const val = v[key];
+      if (!val || (Array.isArray(val) && !val.length)) return '';
+      let body;
+      if (key === 'mitate') body = `<ul>${val.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+      else if (key === 'timeline') body = `<ul class="pmv-time">${val.map((t) => `<li><b>${Number(t.at).toFixed(1)}s</b>${escapeHtml(t.text)}</li>`).join('')}</ul>`;
+      else if (key === 'texture') body = `<div class="pmv-tags">${val.map((x) => `<span>${escapeHtml(x)}</span>`).join('')}</div>`;
+      else body = `<p>${escapeHtml(val)}</p>`;
+      return `<section><h4>${label}</h4>${body}</section>`;
+    };
+    const src = v.source || {};
+    el.innerHTML =
+      `<div class="pmv-head"><span class="pmv-kind">語彙</span><span class="pmv-title">${escapeHtml(v.title)}</span></div>` +
+      `<div class="pmv-src">${src.kind === 'area' ? `エリア「${escapeHtml(src.name || '')}」の音` : `「${escapeHtml(src.name || '')}」`}から · ${src.seconds || ''}秒を聴いて</div>` +
+      `<div class="pmv-summary">${escapeHtml(v.summary)}</div>` +
+      `<div class="pmv-body no-card-drag">${VOCAB_SECTIONS.map(([k, l]) => sec(k, l)).join('')}</div>`;
+    // 本文はスクロールを優先(キャンバスのズームにしない)
+    el.querySelector('.pmv-body').addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
+  }
+
+  /* ---------------- 画像カード(Pixabay → シンセMIDI) ----------------
+   * 2026-09-29、ユーザー要望「プレミックスでもPixabay→シンセMIDIのフロー導入」。アンサンブルの画像カードと同じく、画像はこの端末の
+   * IndexedDB(js/app.js の putLocalImage、キーはカードID)にだけ置き、Driveには名前・出どころ・印象だけを残す。道具バーの「画像」で
+   * 画像検索(js/imagesearch.js)を開き、最初のクリックでカードを置き、続けてクリックするとそのカードの画像を入れ替える。
+   * 上の「MIDI」「ビート」で画像をGeminiに添付してMIDIを作り、合成アンサンブルの音でオーディオカードにする
+   * データ: { id, type: 'image', name, source?, imgWidth, imgHeight, impression, x, y, width, createdAt }
+   */
+  const IMAGE_W = 220;
+  let searchTargetId = null;
+
+  function buildImage(card, el) {
+    el.classList.add('star-card--pm-image', 'star-card--pm-src');
+    el.innerHTML =
+      `<div class="pmi-frame"><img alt="" draggable="false"><div class="pmi-none">この端末に画像がありません</div></div>` +
+      `<div class="pmi-name">${escapeHtml(card.name || '画像')}${card.source && card.source.site ? `<span> · ${escapeHtml(card.source.site)}</span>` : ''}</div>` +
+      (card.impression ? `<div class="pmi-imp">${escapeHtml(card.impression)}</div>` : '');
+    const img = el.querySelector('img');
+    // 画像が読み込まれてから、カードの高さを中身に合わせ直す(読み込み前に測ると画像の分が切れる)
+    img.addEventListener('load', () => {
+      const node = cardElById(card.id);
+      if (!node || !node.contains(img)) return;
+      card.height = null;
+      node.style.height = '';
+      syncCardHeight(node);
+    });
+    getLocalImageUrl(card.id).then((url) => {
+      if (url) {
+        img.src = url;
+        el.classList.remove('star-card--pm-image-none');
+      } else el.classList.add('star-card--pm-image-none');
+    }).catch((err) => console.error(err));
+  }
+
+  function rebuildCard(card) {
+    const el = cardElById(card.id);
+    if (!el) return;
+    const guide = el.classList.contains('star-card--edit-guide');
+    [...el.children].forEach((c) => {
+      if (!c.classList.contains('star-card-handle') && !c.classList.contains('star-card-hex')) c.remove();
+    });
+    const tmp = document.createElement('div');
+    screen.buildCard(card, tmp);
+    [...tmp.children].reverse().forEach((c) => el.insertBefore(c, el.firstChild));
+    tmp.classList.forEach((cls) => el.classList.add(cls));
+    el.classList.toggle('star-card--edit-guide', guide);
+    card.height = null;
+    el.style.height = '';
+    syncCardHeight(el);
+  }
+
+  function openImageSearch(target) {
+    if (!window.LyraImageSearch) return;
+    searchTargetId = target ? target.id : null;
+    const pickInto = async (file, meta) => {
+      const t = searchTargetId ? data().cards.find((c) => c.id === searchTargetId && c.type === 'image') : null;
+      if (t) await putImage(t, file, meta);
+      else {
+        const card = await putImage(null, file, meta);
+        if (card) {
+          searchTargetId = card.id;
+          window.LyraImageSearch.setTarget(card.name);
+        }
+      }
+    };
+    window.LyraImageSearch.open({
+      targetLabel: target ? target.name || '画像' : '',
+      onPick: pickInto,
+      onPickFile: async () => {
+        const file = await pickFile('image/*');
+        if (file) await pickInto(file, null);
+      },
+    });
+  }
+
+  /** card が無ければ新しい画像カードを置き、あればその画像を入れ替える(位置・線はそのまま、印象は空に) */
+  async function putImage(card, file, meta) {
+    setStatus('画像を読み込んでいます…', { busy: true });
+    try {
+      const { blob, width, height } = await downscaleImage(file, 512, 0.72);
+      const name = String((meta && meta.name) || (file.name || 'image').replace(/\.\w+$/, '')).slice(0, 40);
+      const source = meta && meta.site ? { site: meta.site, id: meta.id, pageURL: meta.pageURL, user: meta.user, tags: meta.tags } : null;
+      let target = card;
+      if (!target) {
+        const pos = newCardSpawnPos();
+        target = { id: newId(), type: 'image', x: pos.x - IMAGE_W / 2, y: pos.y - 120, width: IMAGE_W, createdAt: new Date().toISOString() };
+      }
+      await putLocalImage(target.id, blob);
+      Object.assign(target, { name, source, imgWidth: width, imgHeight: height, impression: '' });
+      if (!card) {
+        data().cards.push(target);
+        renderCard(target);
+      } else rebuildCard(target);
+      scheduleAutoSave();
+      setStatus(`画像「${name}」を${card ? '入れ替えました' : '置きました'}。上の「MIDI」「ビート」で、この画像の印象から音を作れます`);
+      return target;
+    } catch (err) {
+      console.error(err);
+      setStatus(`画像を読み込めませんでした: ${err.message}`, { important: true });
+      return null;
+    }
+  }
+
+  /* ---------------- 語彙カード・画像カード → シンセMIDI・ビート ---------------- */
+
+  function midiFrom(card, kind) {
+    const M = window.LyraMidi;
+    if (!M) return;
+    const el = cardElById(card.id);
+    if (el) deactivateEditGuide(el);
+    const onCard = (midiCard) => {
+      placeGeneratedMidi(midiCard, card);
+      if (card.type === 'image') rebuildCard(card); // 印象の文が書き込まれていれば表示する
+    };
+    const common = card.type === 'image'
+      ? { images: [card], storyDefault: card.impression || '' }
+      : { contextText: vocabText(card), storyDefault: [card.summary, card.scene].filter(Boolean).join(' ').slice(0, 300) };
+    if (kind === 'beat') M.createBeat({ ...common, onCard });
+    else M.createSketch({ ...common, onCard });
+  }
+
+  /** 作ったMIDIを合成アンサンブルの音にして、アクティブなエリアに置く(MIDIそのものはカードの中に持つ。Driveに入るのはノートの列だけ) */
+  function placeGeneratedMidi(midiCard, from) {
+    const f = ensureArea();
+    const s = placeSound(f, midiCard.name || 'MIDI', soundsOf(f.id).length, { midiInline: midiCard, midiVoice: DEFAULT_MIDI_VOICE, loop: true });
+    if (from) linkCards(from.id, s.id);
+    if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+    afterMidiPlaced(f, s, `「${midiCard.name}」を合成アンサンブルの音にして`);
+  }
+
   /* ---------------- Shift+D で複製 ---------------- */
 
   function onKeydown(event) {
@@ -1982,5 +2426,5 @@
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText } };
 })();
