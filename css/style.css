@@ -2252,3 +2252,17 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .snd-info:hover { border-color: #cfc6ff; color: #cfc6ff; }
 .star-card-hex--info { left: 0; top: 100%; transform: translate(-45%, 14px); background: #5a5480; font-size: 13px; }
 .star-card-hex-strut--info { display: none; }
+
+/* 自作の音色(音階はしご、js/sampler.js、2026-09-29) */
+.sampler-modal { width: min(560px, calc(100vw - 32px)); }
+.sampler-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 14px; }
+.sampler-item { padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: #fdfbf6; }
+.sampler-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.sampler-default { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff; }
+.sampler-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.sampler-actions { display: flex; gap: 6px; margin-top: 6px; }
+.sampler-new { padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.sampler-step { font-size: 12px; font-weight: 600; }
+.sampler-field { display: grid; grid-template-columns: 3.5em 1fr; align-items: center; gap: 8px; font-size: 12px; }
+.sampler-howto { font-size: 11.5px; line-height: 1.7; color: var(--text); background: rgba(120, 100, 60, 0.07); border-radius: 8px; padding: 8px 10px; }
+.sampler-buttons { display: flex; gap: 8px; flex-wrap: wrap; }

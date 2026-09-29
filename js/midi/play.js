@@ -8,6 +8,8 @@
 //   - 合成の音色(2026-09-29、ユーザー要望「プレミックスの確認用に作った音がけっこう高品質。MIDIをこの音に」): ベル(減衰するサイン波)・
 //     パッド(ゆっくり立ち上がる、わずかにずらした2つのサイン波)・ドローン(ゆっくり揺れるサイン波)と、パートごとに振り分ける
 //     「合成アンサンブル」(旋律=ベル、和音=パッド、ベース=ドローン、ドラム=簡易の打楽器)。読み込みが要らない(synth)
+//   - 自作の音色(音階はしご、js/sampler.js、同日): 登録した音色は VOICES に { sampler: id } で並ぶ(js/sampler.js が足し引きする)。
+//     近いサンプルの速さを変えて鳴らす。設定の「既定の音色」(state.prefs.defaultVoice)があれば、音色の決まっていないカードはそれで鳴る
 
 (function () {
   const M = (window.LyraMidi = window.LyraMidi || {});
@@ -34,7 +36,8 @@
   const ROLE_GAIN = { melody: 1, counter: 0.75, cantus: 0.7, harmony: 0.55, bass: 0.9, ground: 0.6, figure: 0.7, texture: 0.6 };
   const sampleCache = new Map(); // `${gm}/${pitch}` → AudioBuffer | Promise | null(読み込めなかった)
 
-  const voiceOf = (card) => VOICES.find((v) => v.id === (card && card.voice)) || VOICES.find((v) => v.id === DEFAULT_VOICE);
+  const voiceOf = (card) => VOICES.find((v) => v.id === (card && card.voice)) ||
+    VOICES.find((v) => v.id === (typeof state !== 'undefined' && state.prefs && state.prefs.defaultVoice)) || VOICES.find((v) => v.id === DEFAULT_VOICE);
   const samplePitch = (p) => Math.min(108, Math.max(21, p));
   const sampleName = (p) => `${['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'][p % 12]}${Math.floor(p / 12) - 1}`;
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
@@ -141,6 +144,14 @@
   /** 音色の読み込みを待ってから予約する(試聴・WAVの入口)。card は { voice, midi } の形でよい */
   async function scheduleVoiced(ctxOrMake, card, startAt) {
     const voice = voiceOf(card);
+    if (voice.sampler) {
+      // 自作の音色: 鳴らす音に要るサンプルだけを端末の保存場所から読む。読めなければ簡易シンセで
+      const S = window.LyraSampler;
+      const ok = S ? await S.prepare(voice.sampler, card.midi.notes.filter((n) => !isDrumNote(card.midi, n))).catch(() => false) : false;
+      if (!ok) setStatus(`音色(${voice.label})がこの端末に無いので、簡易シンセで鳴らします`, { important: true });
+      const ctx0 = typeof ctxOrMake === 'function' ? ctxOrMake() : ctxOrMake;
+      return scheduleSynth(ctx0, card, typeof startAt === 'function' ? startAt(ctx0) : startAt, ok ? voice : null);
+    }
     let useSamples = Boolean(voice.gm);
     if (useSamples) {
       const needsLoad = card.midi.notes.some((n) => !isDrumNote(card.midi, n) && !cachedSample(voice, n.pitch));
@@ -194,6 +205,26 @@
         nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
         return;
       }
+      if (voice && voice.sampler) {
+        const smp = window.LyraSampler && window.LyraSampler.pick(voice.sampler, n.pitch, n.velocity);
+        if (smp) {
+          const src = ctx.createBufferSource();
+          src.buffer = smp.buffer;
+          src.playbackRate.value = smp.rate;
+          src.connect(env);
+          env.connect(cutoff ? filter : out);
+          // サンプルは読み込み時に -1dB にそろえてあるので、和音で重なっても割れないよう控えめに(6音の和音で -4dB 前後)
+          const level = smp.gain * 0.6 * (role === 'melody' ? 1 : 0.85);
+          const end = Math.max(t0 + 0.02, t1);
+          env.gain.linearRampToValueAtTime(level, t0 + 0.003);
+          env.gain.setValueAtTime(level, end);
+          env.gain.setTargetAtTime(0, end, smp.release / 3); // 音を離したら、音色ごとの余韻で消す
+          src.start(t0);
+          src.stop(Math.min(end + smp.release * 2.5, t0 + smp.buffer.duration / smp.rate));
+          nodes.push(src);
+          return;
+        }
+      }
       const sample = voice && voice.gm ? cachedSample(voice, n.pitch) : null;
       if (sample) {
         const src = ctx.createBufferSource();
@@ -226,7 +257,7 @@
       nodes.push(osc);
     });
     const end = m.notes.reduce((e, n) => Math.max(e, n.start + n.duration), 0);
-    const duration = toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : 0.6); // 合成の音色は余韻(ベル・パッドの消え際)が長い
+    const duration = toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : voice && voice.sampler ? 1.4 : 0.6); // 合成の音色・自作の音色は余韻が長い
     const toBeat = secondsToBeat(m);
     return {
       duration,

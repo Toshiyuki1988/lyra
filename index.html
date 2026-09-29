@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260929m">
+<link rel="stylesheet" href="css/style.css?v=20260929n">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
@@ -112,6 +112,10 @@
         <span class="modal-field-label">MIDIの書き出し先フォルダ(MIDIカードの「⇩ 保存」の保存先。この端末のブラウザにだけ覚えます)</span>
         <div class="settings-export-line"><span id="settings-export-name">未設定</span><button type="button" id="settings-export-btn" class="secondary">フォルダを選ぶ</button></div>
       </div>
+      <div class="modal-field settings-export">
+        <span class="modal-field-label">自作の音色(音階はしご。好きなVSTの音を1音ずつ録って、MIDIの音色にします。この端末にだけ保存)</span>
+        <div class="settings-export-line"><span>ピアノなど</span><button type="button" id="settings-sampler-btn" class="secondary">音色を管理する</button></div>
+      </div>
       <label id="settings-daily-row" class="modal-check" hidden>
         <input type="checkbox" id="settings-daily">
         毎日の課題(アプリから)をアンサンブル in コンサートホールに出す
@@ -143,9 +147,9 @@
   <script src="js/midi/generators.js?v=20260929a"></script>
   <script src="js/midi/design.js?v=20260929b"></script>
   <script src="js/midi/presets.js?v=20260927a"></script>
-  <script src="js/midi/play.js?v=20260929c"></script>
+  <script src="js/midi/play.js?v=20260929e"></script>
   <script src="js/midi/export.js?v=20260926a"></script>
-  <script src="js/midi/compose.js?v=20260929c"></script>
+  <script src="js/midi/compose.js?v=20260929d"></script>
   <script src="js/midi/editor.js?v=20260926a"></script>
   <script src="js/midi/card.js?v=20260929a"></script>
   <script src="js/midi/feedback.js?v=20260927a"></script>
@@ -156,8 +160,9 @@
   <script src="js/screens/home.js?v=20260925h"></script>
   <script src="js/screens/soul.js?v=20260927d"></script>
   <script src="js/screens/ensemble.js?v=20260927c"></script>
+  <script src="js/sampler.js?v=20260929a"></script>
   <script src="js/nebula.js?v=20260929a"></script>
-  <script src="js/screens/premix.js?v=20260929p"></script>
+  <script src="js/screens/premix.js?v=20260929q"></script>
   <script src="js/trash.js?v=20260927a"></script>
   <script src="js/marquee.js?v=20260927d"></script>
 </body>

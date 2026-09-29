@@ -1177,7 +1177,9 @@
       { label: '合成パッド', value: 'lyra_pad' },
       { label: '合成ドローン', value: 'lyra_drone' },
     ];
-    if (!own.synth) options.push({ label: `カードの音色(${own.label})`, value: own.id });
+    // 自作の音色(音階はしご、js/sampler.js)も選べる
+    M.VOICES.filter((v) => v.sampler).forEach((v) => options.unshift({ label: v.label, value: v.id }));
+    if (!own.synth && !own.sampler) options.push({ label: `カードの音色(${own.label})`, value: own.id });
     const voice = await showChoiceDialog({
       title: `「${hit.card.name}」をどの音で持ち込みますか?`,
       message: '選んだ音色でMIDIを音にして置きます。ドラムのパートは簡易の打楽器の音になります。',
@@ -2597,7 +2599,10 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   /** 作ったMIDIを合成アンサンブルの音にして、アクティブなエリアに置く(MIDIそのものはカードの中に持つ。Driveに入るのはノートの列だけ) */
   function placeGeneratedMidi(midiCard, from) {
     const f = ensureArea();
-    const s = placeSound(f, midiCard.name || 'MIDI', soundsOf(f.id).length, { midiInline: midiCard, midiVoice: DEFAULT_MIDI_VOICE, loop: true });
+    // 設定の「既定の音色」が自作の音色なら、それで音にする(無ければ合成アンサンブル)
+    const def = state.prefs.defaultVoice;
+    const voice = def && window.LyraMidi.VOICES.some((v) => v.id === def && v.sampler) ? def : DEFAULT_MIDI_VOICE;
+    const s = placeSound(f, midiCard.name || 'MIDI', soundsOf(f.id).length, { midiInline: midiCard, midiVoice: voice, loop: true });
     if (from) linkCards(from.id, s.id);
     if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
     afterMidiPlaced(f, s, `「${midiCard.name}」を合成アンサンブルの音にして`);

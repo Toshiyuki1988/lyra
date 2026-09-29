@@ -637,7 +637,8 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       id: newId(),
       type: 'midi',
       name: revise ? `${revise.baseName}_v${revise.version}.mid` : fileName(raw, `lyra_${preset.id}.mid`),
-      voice: revise && revise.voice ? revise.voice : preset.voice || M.DEFAULT_VOICE,
+      // 設定の「既定の音色」(自作の音色など)があれば、それで鳴らす
+      voice: revise && revise.voice ? revise.voice : (state.prefs.defaultVoice && M.VOICES.some((v) => v.id === state.prefs.defaultVoice) ? state.prefs.defaultVoice : preset.voice || M.DEFAULT_VOICE),
       description: String(raw.description || '').slice(0, 60),
       concept: String(raw.concept || '').slice(0, 100),
       commentary: String(raw.commentary || '').slice(0, 400),
