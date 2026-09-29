@@ -2228,3 +2228,27 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
   .neb-album { left: 8px; right: 8px; top: auto; bottom: 64px; width: auto; max-height: 46vh; }
   .neb-album-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* 「このMIDIについて」(js/midi/card.js の aboutHtml。アンサンブルのパネルと、プレミックスの「ⓘ」、2026-09-29) */
+.midi-about { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.6; }
+.midi-about-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; }
+.midi-about-key { font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em; padding-top: 1px; }
+.midi-about-val { color: var(--ink); }
+.midi-about-notes { display: block; font-size: 10.5px; color: var(--muted); }
+.midi-about-intent { margin-top: 4px; padding: 8px 10px; border-radius: 8px; background: rgba(120, 100, 60, 0.07); border-left: 3px solid var(--accent); }
+.midi-about-intent > .midi-about-key { margin-bottom: 4px; }
+.midi-about-concept { font-family: var(--serif); font-size: 13.5px; color: var(--ink); }
+.midi-about-text { font-size: 11.5px; color: var(--text); margin-top: 3px; }
+.midi-about-sub { margin-top: 8px; font-size: 10px; letter-spacing: 0.08em; color: var(--faint); }
+.midi-about-layer { margin-top: 4px; }
+.midi-about-layer b { font-size: 11.5px; margin-right: 6px; }
+.midi-about-layer span { font-size: 10.5px; color: var(--muted); }
+.midi-about-layer p { margin: 1px 0 0; font-size: 11px; color: var(--text); }
+.midi-about-modal { width: min(520px, calc(100vw - 32px)); }
+.snd-info {
+  flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--pm-line-2);
+  background: #1b1d24; color: var(--pm-muted); font-size: 11px; line-height: 1; cursor: pointer;
+}
+.snd-info:hover { border-color: #cfc6ff; color: #cfc6ff; }
+.star-card-hex--info { left: 0; top: 100%; transform: translate(-45%, 14px); background: #5a5480; font-size: 13px; }
+.star-card-hex-strut--info { display: none; }

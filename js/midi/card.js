@@ -72,6 +72,53 @@
 
   const presetOf = (model) => P.byId(model) || { short: model || 'MIDI', label: model || 'MIDI' };
 
+  /**
+   * 「このMIDIについて」: 使用モデル・スケール・テンポなどと、Geminiの意図(コンセプト・解説・仕掛け・層ごとの理由・時間の設計図・技法)。
+   * 2026-09-29、ユーザー要望「MIDIカードに『使用モデル』『スケール』『Geminiの意図』を読める機能」。アンサンブルのパネルの上と、
+   * プレミックスのMIDIのカードの「ⓘ」で同じものを出す。書き換えはしない(読むだけ)
+   */
+  function aboutHtml(card) {
+    const m = card.midi;
+    const cur = M.designOf(card);
+    const d = cur && cur.design;
+    const preset = cur ? presetOf(cur.model) : null;
+    const row = (label, value) => (value ? `<div class="midi-about-row"><span class="midi-about-key">${label}</span><span class="midi-about-val">${value}</span></div>` : '');
+    let scale = '';
+    if (d && cur.model !== 'beat') {
+      scale = escapeHtml(pitchLabel(d));
+      const p = d.pitch;
+      const sc = p.system === 'scale' || p.system === 'chords' ? E.scaleOf(p.scale) : null;
+      if (sc && p.system === 'scale' && Array.isArray(sc.intervals)) {
+        scale += `<span class="midi-about-notes">構成音: ${sc.intervals.map((iv) => T.NOTE_NAMES[(p.root + iv) % 12]).join(' ')}</span>`;
+      }
+      if (m.rescaledTo) scale += `<span class="midi-about-notes">(編集画面でリスケール済み)</span>`;
+    }
+    const bars = T.barList(m, T.endBeat(m.notes) || 1).length;
+    const signature = (d && d.signature) || [];
+    const techniques = (d && d.techniques) || m.techniques || [];
+    const layers = d ? d.layers.filter((l) => l.why || l.timbre) : [];
+    const intent = [
+      card.concept ? `<div class="midi-about-concept">${escapeHtml(card.concept)}</div>` : '',
+      card.description ? `<div class="midi-about-text">${escapeHtml(card.description)}</div>` : '',
+      card.commentary ? `<div class="midi-about-text">${escapeHtml(card.commentary)}</div>` : '',
+      signature.length ? `<div class="midi-about-sub">入力らしさの仕掛け</div>${signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')}` : '',
+      layers.length ? `<div class="midi-about-sub">層ごとの狙い</div>${layers.map((l) => {
+        const gen = E.GENERATORS[l.generator];
+        const ges = l.gesture && E.GESTURE_TYPES && E.GESTURE_TYPES[l.gesture] ? `・${E.GESTURE_TYPES[l.gesture].label}` : '';
+        return `<div class="midi-about-layer"><b>${escapeHtml(l.name || (gen ? gen.label : l.generator))}</b><span>${escapeHtml(`${gen ? gen.label : ''}${ges}${l.timbre ? ` · 音色: ${l.timbre}` : ''}`)}</span>${l.why ? `<p>${escapeHtml(l.why)}</p>` : ''}</div>`;
+      }).join('')}` : '',
+      d && d.arc && d.arc.story ? `<div class="midi-about-sub">時間の設計図 · ${escapeHtml(d.arc.form)}</div><div class="midi-about-text">${escapeHtml(d.arc.story)}</div>` : '',
+      techniques.length ? `<div class="midi-about-sub">${cur && cur.model === 'beat' ? '参照したビート' : '引用した作曲技法'}</div><div class="midi-about-text">${escapeHtml(techniques.map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''}`).join(' / '))}</div>` : '',
+    ].filter(Boolean).join('');
+    return `<div class="midi-about">` +
+      row('使用モデル', preset ? `${escapeHtml(preset.label)}${preset.text ? `<span class="midi-about-notes">${escapeHtml(preset.text)}</span>` : ''}` : '(2026-09-26より前の形式)') +
+      row('スケール', scale || (cur && cur.model === 'beat' ? '(ドラムのビートのため無し)' : '')) +
+      row('テンポ・拍子', `${Math.round(m.tempo)} BPM · ${escapeHtml(T.meterLabel(m))} · ${bars}小節 · ${m.notes.length}音`) +
+      (cur && cur.gauges ? row('ゲージ', escapeHtml(M.gaugeLabel(cur.gauges))) : '') +
+      `<div class="midi-about-intent"><div class="midi-about-key">Geminiの意図</div>${intent || '<div class="midi-about-text">(意図の記録がありません)</div>'}</div>` +
+      `</div>`;
+  }
+
   /** カードや小さな欄に出す要約(コード進行 か 音高の器+層) */
   function summaryLine(card, max) {
     const cur = M.designOf(card);
@@ -238,24 +285,19 @@
     const preset = cur ? presetOf(cur.model) : null;
     const rum = (d && d.rumination) || m.rumination || (m.sketch && m.sketch.rumination) || null;
     const techniques = (d && d.techniques) || m.techniques || [];
-    const signature = (d && d.signature) || [];
     const bars = T.barList(m, T.endBeat(m.notes) || 1).length;
     return `<div class="panel-head"><div class="panel-title-wrap">` +
       `<input class="panel-title-input" data-midi-field="name" value="${escapeHtml(card.name)}">` +
       `<div class="panel-sub">${preset ? `${escapeHtml(preset.label)} · ` : ''}テンポ ${Math.round(m.tempo)} · ${escapeHtml(T.meterLabel(m))} · ${bars}小節 · ${m.notes.length}音 · 試聴の音色: ${escapeHtml(M.voiceOf(card).label)}(編集画面で変更)</div>` +
       `</div><button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       `<div class="panel-section midi-rating"><div class="panel-label">評価(星がそのまま次の生成へのフィードバックになります)</div>${M.starsHtml(card, 'large')}</div>` +
-      (card.description ? `<div class="panel-readonly">${escapeHtml(card.description)}</div>` : '') +
-      (cur && cur.gauges ? `<div class="panel-section"><div class="panel-label">ゲージ</div><div class="panel-source">${escapeHtml(M.gaugeLabel(cur.gauges))}</div></div>` : '') +
-      (card.concept ? `<div class="panel-section"><div class="panel-label">コンセプト</div><div class="midi-writeup">${escapeHtml(card.concept)}</div></div>` : '') +
-      (card.commentary ? `<div class="panel-section"><div class="panel-label">解説</div><div class="midi-writeup">${escapeHtml(card.commentary)}</div></div>` : '') +
+      `<div class="panel-section"><div class="panel-label">このMIDIについて</div>${aboutHtml(card)}</div>` +
       `<div data-midi-export>${exportBoxHtml(card)}</div>` +
       (rum ? `<div class="panel-section"><div class="panel-label">主旋律の反芻</div><div class="midi-writeup">${escapeHtml(rum.check)}${rum.changes ? `<div class="midi-rumination">${escapeHtml(rum.changes)}</div>` : ''}</div></div>` : '') +
       `<div class="panel-roll" data-midi-roll>${pianoRollSvg(m, 300, 130, card.selection)}</div>${legendHtml(m)}` +
       (cur ? layersHtml(card, cur) : '') +
       (d && d.arc ? arcHtml(d.arc) : '') +
       (m.fixedFrom ? `<div class="panel-section"><div class="panel-label">つないだMIDIから使ったパート</div>${m.fixedFrom.map((x) => `<div class="panel-source">「${escapeHtml(x.name)}」の${escapeHtml(x.parts.join('・'))}</div>`).join('')}</div>` : '') +
-      (signature.length ? `<div class="panel-section"><div class="panel-label">入力らしさの仕掛け</div>${signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')}</div>` : '') +
       (techniques.length ? `<div class="panel-section"><div class="panel-label">${cur && cur.model === 'beat' ? '参照したビート' : '引用した作曲技法(旋律は引用していません)'}</div>` +
         techniques.map((t) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(t.technique)}</span><span class="sketch-device">${t.composer ? `${escapeHtml(t.composer)}${t.work ? `『${escapeHtml(t.work)}』` : ''} — ` : ''}${escapeHtml(t.use)}</span></div>`).join('') + `</div>` : '') +
       (d && d.pitch.system === 'chords' && d.pitch.chords.length ? `<div class="panel-section"><div class="panel-label">コード進行</div><div class="sketch-chords">${d.pitch.chords.map((c) => `<span class="sketch-chord" title="${escapeHtml(T.beatLabel(c.start, m))}から${c.duration}拍">${escapeHtml(c.symbol.replace(/\|/g, ' | '))}${T.parseLayers(c.symbol) ? '' : '(読めず)'}</span>`).join('')}</div></div>` : '') +
@@ -323,5 +365,5 @@
     if (box) bindExportBox(box, card, panel);
   }
 
-  Object.assign(M, { buildCard, describe, panelHtml, bindPanel, summaryLine, pitchLabel, paramSummary, pianoRollSvg });
+  Object.assign(M, { buildCard, describe, panelHtml, bindPanel, summaryLine, pitchLabel, paramSummary, pianoRollSvg, aboutHtml });
 })();

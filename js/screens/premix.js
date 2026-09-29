@@ -279,7 +279,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -310,6 +310,7 @@
       }
       if (el) deactivateEditGuide(el);
       if (action === 'save') saveMidiOf(card);
+      else if (action === 'info') showMidiAbout(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
@@ -706,6 +707,7 @@
     } else {
       el.insertAdjacentHTML('afterbegin',
         `<div class="snd-head"><div class="snd-name" title="${escapeHtml(s.fileName)}">${name}<span class="snd-from"></span></div>` +
+        (isMidi(s) ? `<button type="button" class="snd-info" data-s="info" title="このMIDIについて(使用モデル・スケール・Geminiの意図)">ⓘ</button>` : '') +
         (isMidi(s) ? `<button type="button" class="snd-save" data-s="save" title="元のMIDIを .mid で書き出し先フォルダへ保存(アンサンブルと同じフォルダ。設定画面で変えられます)">⇩</button>` : '') +
         `<button type="button" class="snd-vocab" data-s="vocab" title="この音(切り取った範囲)をGeminiに聴かせて、長文の語彙カードにする(Geminiを1回)">語彙</button>` +
         `<button type="button" class="snd-view" data-s="view" title="スフィア(小さな球)にする" aria-label="スフィアにする">◯</button></div>` +
@@ -747,6 +749,13 @@
       refreshSound(s);
       scheduleAutoSave();
     });
+    const info = el.querySelector('[data-s="info"]');
+    if (info) {
+      info.addEventListener('click', (event) => {
+        event.stopPropagation();
+        showMidiAbout(s);
+      });
+    }
     const save = el.querySelector('[data-s="save"]');
     if (save) {
       save.addEventListener('click', (event) => {
@@ -1244,6 +1253,35 @@
       }
     }
     await M.saveToFolder(target, 'merged');
+  }
+
+  /** 「このMIDIについて」(使用モデル・スケール・Geminiの意図。js/midi/card.js の aboutHtml)を浮いた窓で読む */
+  function showMidiAbout(s) {
+    const M = window.LyraMidi;
+    const card = s.midiInline || findMidiCard(s.midiRef);
+    if (!M || !card || !card.midi) {
+      setStatus('元のMIDIが見つかりません', { important: true });
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible';
+    overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
+      `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
+      `${M.aboutHtml(card)}<div class="modal-actions"><button type="button" class="secondary" data-close>閉じる</button></div></div>`;
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    };
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    attachBackgroundTapToClose(overlay, close);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
   }
 
   /** アクティブなエリア(無ければ最初のエリア、1つも無ければフォルダの無い「MIDI」エリアを作る) */
