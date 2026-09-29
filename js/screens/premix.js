@@ -1269,7 +1269,8 @@
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
       `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
-      `${M.aboutHtml(card)}<div class="modal-actions"><button type="button" class="secondary" data-close>閉じる</button></div></div>`;
+      `${M.aboutHtml(card)}<div class="modal-actions"><button type="button" class="secondary" data-revoice>音色を変えて作り直す</button>` +
+      `<button type="button" class="secondary" data-close>閉じる</button></div></div>`;
     const close = () => {
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
@@ -1281,9 +1282,66 @@
       }
     };
     overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.querySelector('[data-revoice]').addEventListener('click', () => {
+      close();
+      revoiceMidi(s);
+    });
     attachBackgroundTapToClose(overlay, close);
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
+  }
+
+  /**
+   * MIDIのカードの音色を変えて、音を作り直す(2026-09-29、ユーザー要望「ピアノ音色ができたので、プレミックスで作ったMIDI→オーディオを作り直したい」)。
+   * 同じエリアに他のMIDIのカードがあれば、まとめて作り直すかを聞く。位置・切り取り・線はそのまま。MIDIそのものは変えない
+   */
+  async function revoiceMidi(s) {
+    const M = window.LyraMidi;
+    const cur = s.midiVoice || DEFAULT_MIDI_VOICE;
+    const mark = (id) => (id === cur ? '(今)' : '');
+    const options = [
+      ...M.VOICES.filter((v) => v.sampler).map((v) => ({ label: `${v.label}${mark(v.id)}`, value: v.id })),
+      { label: `合成アンサンブル${mark('lyra_mix')}`, value: 'lyra_mix' },
+      { label: `合成ベル${mark('lyra_bell')}`, value: 'lyra_bell' },
+      { label: `合成パッド${mark('lyra_pad')}`, value: 'lyra_pad' },
+      { label: `合成ドローン${mark('lyra_drone')}`, value: 'lyra_drone' },
+    ];
+    const voice = await showChoiceDialog({
+      title: `「${s.fileName.replace(/\.mid$/i, '')}」をどの音色で作り直しますか?`,
+      message: 'MIDIはそのままで、音だけを作り直します。位置・切り取った範囲・線はそのままです。',
+      options,
+    });
+    if (!voice) return;
+    let targets = [s];
+    const others = s.folderId ? soundsOf(s.folderId).filter((x) => isMidi(x) && x.id !== s.id) : [];
+    if (others.length) {
+      const scope = await showChoiceDialog({
+        title: '作り直す範囲',
+        message: `このエリアには、ほかにもMIDIのカードが${others.length}枚あります。`,
+        options: [
+          { label: 'このカードだけ', value: 'one' },
+          { label: `このエリアのMIDI全部(${others.length + 1}枚)`, value: 'all' },
+        ],
+      });
+      if (!scope) return;
+      if (scope === 'all') targets = [s, ...others];
+    }
+    let done = 0;
+    for (const x of targets) {
+      stop(x);
+      stopVoicesOf(x.id);
+      x.midiVoice = voice;
+      const rt = soundRt.get(x.id) || {};
+      Object.assign(rt, { buffer: null, peaks: null, clipPeaks: null, missing: false, loading: false });
+      soundRt.set(x.id, rt);
+      refreshSound(x);
+      setStatus(`音を作り直しています…(${done + 1}/${targets.length})`, { busy: true });
+      await renderMidiSound(x); // 1枚ずつ(まとめて書き出すと重いので)
+      done += 1;
+    }
+    scheduleAutoSave();
+    const label = (M.VOICES.find((v) => v.id === voice) || {}).label || voice;
+    setStatus(`${targets.length}枚のMIDIを「${label}」で作り直しました`);
   }
 
   /** アクティブなエリア(無ければ最初のエリア、1つも無ければフォルダの無い「MIDI」エリアを作る) */
