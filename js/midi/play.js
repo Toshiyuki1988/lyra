@@ -492,7 +492,7 @@
   }
 
   Object.assign(M, {
-    VOICES, DEFAULT_VOICE, voiceOf, roleOf, prepareVoice, scheduleVoiced, beatToSeconds,
+    VOICES, DEFAULT_VOICE, voiceOf, roleOf, prepareVoice, scheduleVoiced, beatToSeconds, secondsToBeat,
     previewVolume, setPreviewVolume, stopAll, togglePlay, isPlaying, encodeWav, exportWav, renderBuffer,
   });
 })();

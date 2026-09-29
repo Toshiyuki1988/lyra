@@ -2170,3 +2170,12 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .fm-hold { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: rgba(255, 255, 255, 0.7); }
 .fold-meter--over { box-shadow: 0 0 0 1px var(--pm-hot), 0 0 8px rgba(255, 93, 82, 0.7); }
 .fold-meter--lim::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: var(--pm-amber); }
+
+/* プレミックスのMIDIのカードの .mid 保存(2026-09-29)。名前の行の「⇩」と、左の「保存」ヘックス(スフィアでも使える) */
+.snd-save {
+  flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid rgba(242, 178, 76, 0.55);
+  background: #1b1d24; color: var(--pm-amber); font-size: 11px; line-height: 1; cursor: pointer;
+}
+.snd-save:hover { background: var(--pm-amber); color: #1a1407; }
+.star-card-hex--save { left: 0; top: 50%; transform: translate(-115%, -50%); background: #8a6a2e; }
+.star-card-hex-strut--save { right: -20px; top: 50%; transform: translateY(-50%); }

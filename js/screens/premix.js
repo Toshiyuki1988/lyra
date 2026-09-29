@@ -55,6 +55,8 @@
 //   - **語彙カード・画像カード(同日、ユーザー要望)**: オーディオカード(「語彙」ボタン/ヘックス)とエリア(見出しの「語彙」=今鳴っている音を録る)
 //     の音をGeminiに聞かせて長文の語彙カードにする。語彙カード・画像カード(道具バーの「画像」=Pixabay)の「MIDI」「ビート」でMIDIを作り、
 //     合成アンサンブルの音のオーディオカードにする(MIDIはカードの midiInline に持つ)。詳しくは「語彙カード」の節
+//   - **MIDIのカードから .mid を保存(同日、ユーザー要望)**: 名前の行の「⇩」(スフィアでは左の「保存」ヘックス)。アンサンブルと同じ
+//     書き出し先フォルダへ、1トラックで(js/midi/export.js の saveToFolder)。切り取ってあれば「全体/切り取った範囲だけ」を選ぶ
 //
 // データ: state.premix = { activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
 //   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, virtual?(フォルダの無いエリア), x, y, width, height, createdAt },
@@ -256,7 +258,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -286,7 +288,8 @@
         return;
       }
       if (el) deactivateEditGuide(el);
-      if (action === 'vocab') soundToVocab(card);
+      if (action === 'save') saveMidiOf(card);
+      else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
       else if (card.type === 'folder') confirmRemoveFolder(card);
@@ -642,6 +645,7 @@
     } else {
       el.insertAdjacentHTML('afterbegin',
         `<div class="snd-head"><div class="snd-name" title="${escapeHtml(s.fileName)}">${name}<span class="snd-from"></span></div>` +
+        (isMidi(s) ? `<button type="button" class="snd-save" data-s="save" title="元のMIDIを .mid で書き出し先フォルダへ保存(アンサンブルと同じフォルダ。設定画面で変えられます)">⇩</button>` : '') +
         `<button type="button" class="snd-vocab" data-s="vocab" title="この音(切り取った範囲)をGeminiに聴かせて、長文の語彙カードにする(Geminiを1回)">語彙</button>` +
         `<button type="button" class="snd-view" data-s="view" title="スフィア(小さな球)にする" aria-label="スフィアにする">◯</button></div>` +
         `<div class="snd-wave no-card-drag" title="ドラッグで鳴らす範囲を切り取る(端をつかむと片側だけ動く。ダブルクリックで外す)">` +
@@ -681,6 +685,13 @@
       refreshSound(s);
       scheduleAutoSave();
     });
+    const save = el.querySelector('[data-s="save"]');
+    if (save) {
+      save.addEventListener('click', (event) => {
+        event.stopPropagation();
+        saveMidiOf(s);
+      });
+    }
     el.querySelector('[data-s="vocab"]').addEventListener('click', (event) => {
       event.stopPropagation();
       soundToVocab(s);
@@ -1132,6 +1143,45 @@
       animateViewportTo(c.x, c.y);
     }
     return s;
+  }
+
+  /**
+   * MIDIのカードの元のMIDIを .mid で保存する(アンサンブルと同じ書き出し先フォルダ、1トラック)。
+   * 切り取ってあれば、全体か切り取った範囲だけかを選ぶ(範囲は秒 → 拍に直して、MIDIの範囲の書き出しと同じ仕組みで切り出す)
+   */
+  async function saveMidiOf(s) {
+    const M = window.LyraMidi;
+    const card = s.midiInline || findMidiCard(s.midiRef);
+    if (!M || !card || !card.midi) {
+      setStatus('元のMIDIが見つかりません', { important: true });
+      return;
+    }
+    const base = { ...card, selection: null };
+    let target = base;
+    const rt = soundRt.get(s.id) || {};
+    if (hasClip(s) && rt.buffer) {
+      const c = clipOf(s, rt);
+      const choice = await showChoiceDialog({
+        title: `「${card.name}」を保存します`,
+        message: `このカードは ${c.start.toFixed(2)}〜${c.end.toFixed(2)}秒を切り取ってあります。どちらを保存しますか?`,
+        options: [
+          { label: 'MIDI全体を保存', value: 'all' },
+          { label: '切り取った範囲だけを保存', value: 'clip' },
+        ],
+      });
+      if (!choice) return;
+      if (choice === 'clip') {
+        const toBeat = M.secondsToBeat(card.midi);
+        const start = Math.max(0, toBeat(c.start));
+        const end = toBeat(c.end);
+        if (end - start < 0.125) {
+          setStatus('切り取った範囲が短すぎて、MIDIの音が入りません', { important: true });
+          return;
+        }
+        target = { ...base, selection: { start, end, low: 0, high: 127 } };
+      }
+    }
+    await M.saveToFolder(target, 'merged');
   }
 
   /** アクティブなエリア(無ければ最初のエリア、1つも無ければフォルダの無い「MIDI」エリアを作る) */
