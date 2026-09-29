@@ -185,7 +185,12 @@
     if (has('chordBars')) L.chordBars = int(raw.chordBars, 1, 8, 1);
     if (has('size')) L.size = int(raw.size, 3, 4, 3);
     if (has('pattern')) L.pattern = pickWord(raw.pattern, E.BASSES, 'root');
-    if (has('gesture')) L.gesture = str(raw.gesture, 24).trim();
+    if (has('gesture')) {
+      // 表記ゆれ・日本語のラベルも型の id に読み替える。読めなければ、層の役割に合う型にする(黙って無音にしない)
+      const key = E.gestureKey ? E.gestureKey(raw.gesture) : null;
+      L.gesture = key || (String(raw.role || '').toLowerCase() === 'ground' ? 'sustained_open' : 'scatter_stab');
+      if (!key && typeof debugLog === 'function') debugLog(`身振りの名前が読めなかったので ${L.gesture} にした: ${String(raw.gesture || '').slice(0, 40)}`);
+    }
     if (has('occurrence')) L.occurrence = E.OCCURRENCES[raw.occurrence] ? raw.occurrence : 'sparse';
     if (has('rule')) L.rule = str(raw.rule, 24).trim();
     L.step = num(raw.step, 0.125, 4, 0.5);

@@ -618,7 +618,15 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const seed = Math.floor(Math.random() * 2 ** 31);
     let midi = renderMidi(design, { seed, gauges: input.gauges, model: preset.id });
     midi = applyFixed(midi, input.fixed);
-    if (!midi.notes.length) throw new Error('音が1つも出てきませんでした');
+    if (!midi.notes.length) {
+      // 原因を事実で特定できるよう、設計図の層の中身を必ず残す(?debug のログにも)
+      const layerLine = design.layers.map((l) => `${l.name || l.generator}[${l.generator}` +
+        `${l.gesture ? ` ${l.gesture}` : ''}${l.patterns ? ` 区間${l.patterns.length}・行${l.patterns.reduce((n, p) => n + p.rows.length, 0)}` : ''}` +
+        `${l.notes ? ` 音${l.notes.length}` : ''}${l.muted ? ' 消音' : ''}]`).join(' / ');
+      if (typeof debugLog === 'function') debugLog(`音が0個: ${layerLine} / Geminiの出力の層: ${JSON.stringify(raw.layers || []).slice(0, 1500)}`);
+      console.warn('音が0個になった設計図', design, raw);
+      throw new Error(`音が1つも出てきませんでした(設計図の層: ${layerLine || 'なし'})`);
+    }
     const card = {
       id: newId(),
       type: 'midi',

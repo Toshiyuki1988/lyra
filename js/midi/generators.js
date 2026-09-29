@@ -648,6 +648,20 @@
     },
   };
 
+  /**
+   * 身振りの名前を、知っている型の id に読み替える(表記ゆれ・日本語のラベルも)。読めなければ null。
+   * 2026-09-29、見立て蔵で「音が1つも出てきませんでした」の調査で追加(以前は書かれた名前をそのまま使い、知らない名前の層は無音だった)
+   */
+  function gestureKey(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return null;
+    const k = raw.toLowerCase().replace(/[\s-]+/g, '_').replace(/[^a-z_]/g, '');
+    if (GESTURES[k]) return k;
+    const ids = Object.keys(GESTURES);
+    const hit = ids.find((id) => k && (k.startsWith(id) || id.startsWith(k))) || ids.find((id) => raw.includes(GESTURE_TYPES[id].label) || GESTURE_TYPES[id].label.includes(raw));
+    return hit || null;
+  }
+
   register('gesture', {
     label: '身振り',
     roles: ['ground', 'figure'],
@@ -1444,11 +1458,24 @@
   };
   const DRUM_DUR = { openhat: 0.45, crash: 1, ride: 0.5, bell: 0.4, triangle: 0.5 };
 
+  // 日本語の楽器名(2026-09-29、プレミックスの「ビート」で「音が1つも出てきませんでした」の調査で追加。以前は英字以外を取り除いてから
+  // 照合していたため、Geminiが「キック」「ハイハット」と日本語で書くと全部の行が捨てられ、音が0個になった)
+  const DRUM_ALIASES_JA = [
+    ['オープンハイハット', 'openhat'], ['オープンハット', 'openhat'], ['ペダルハイハット', 'pedalhat'], ['ペダルハット', 'pedalhat'], ['クローズ', 'hat'],
+    ['ハイハット', 'hat'], ['ハット', 'hat'], ['バスドラム', 'kick'], ['バスドラ', 'kick'], ['キック', 'kick'], ['スネア', 'snare'], ['サイドスティック', 'rim'],
+    ['リムショット', 'rim'], ['リム', 'rim'], ['クラップ', 'clap'], ['手拍子', 'clap'], ['クラッシュ', 'crash'], ['ライドベル', 'bell'], ['ライド', 'ride'],
+    ['フロアタム', 'floortom'], ['ロータム', 'lowtom'], ['ハイタム', 'hightom'], ['タム', 'midtom'], ['タンバリン', 'tamb'], ['カウベル', 'cowbell'],
+    ['シェイカー', 'shaker'], ['マラカス', 'shaker'], ['コンガ', 'conga'], ['ボンゴ', 'bongo'], ['クラベス', 'clave'], ['ウッドブロック', 'woodblock'],
+    ['カバサ', 'cabasa'], ['ティンバレス', 'timbale'], ['アゴゴ', 'agogo'], ['トライアングル', 'triangle'],
+  ];
+
   function drumKey(inst) {
-    const k = String(inst || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const raw = String(inst || '');
+    const k = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (DRUM_MAP[k]) return k;
     if (DRUM_ALIASES[k]) return DRUM_ALIASES[k];
-    return null;
+    const ja = DRUM_ALIASES_JA.find(([name]) => raw.includes(name)); // 長い名前から順に並べてある
+    return ja ? ja[1] : null;
   }
 
   register('drums', {
@@ -1501,5 +1528,6 @@
   E.DRUM_MAP = DRUM_MAP;
   E.DRUM_NAMES_JA = DRUM_NAMES_JA;
   E.drumKey = drumKey;
+  E.gestureKey = gestureKey;
   E.expandLSystem = expandLSystem;
 })();
