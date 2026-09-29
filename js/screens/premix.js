@@ -1,8 +1,8 @@
 // LYRA — プレミックス画面(ランチャー・ソウル・アンサンブルに続く4つ目の画面)。簡易版。
 // 2026-09-27追加(ユーザー要望。ゆくゆくは本格的なシーケンサー・ミキサーに育てる前提の、まずは簡易版)。
 //   - フォルダカード: PCのフォルダを選び、中のオーディオファイルをオーディオカードとして読み込む(1フォルダ最大10個)。
-//     フォルダカードの大きさがそのまま「プレミックスエリア」。アクティブ/待機の属性を持ち、最後に操作したフォルダ
-//     (フォルダカードか、その中のオーディオカードを押した)がアクティブになる。**鳴るのはアクティブなフォルダの音だけ**
+//     フォルダカードの大きさがそのまま「プレミックスエリア」。アクティブ/待機の属性を持ち、**最後に触ったエリア(フォルダカードとその見出し)**
+//     がアクティブになる(オーディオカードを押しても切り替えない。2026-09-29、ユーザー要望「別のエリアから音を取ってくる時に止めないで」)。**鳴るのはアクティブなフォルダの音だけ**
 //     (他のフォルダは再生を止めずに音量だけ0にする。戻すとそのまま聞こえる)
 //   - オーディオカード: 再生/停止・ループ・音量・残響。何枚でも同時に鳴らせて、鳴らしながらどのカードも操作できる
 //   - **音声はDriveに上げない**。フォルダのハンドルはこの端末のIndexedDB(lyra-local の handles、キーは premix:<フォルダカードのid>)、
@@ -11,7 +11,8 @@
 //   - フォルダを動かすと中のオーディオカードも一緒に動く(js/canvas.js の onCardDragging)
 //   - オーディオカードを**別のフォルダの枠の中に落とすと、そのエリアの一員になる**(同日、ユーザー要望「他フォルダのオーディオカードを
 //     アクティブプレミックスエリアに入れたら鳴らせるように」)。folderId =いるエリア(鳴る場所・一緒に動く枠)、sourceFolderId =ファイルの
-//     出どころ(読み込み・「読み直す」・1フォルダ10個の数え方)。落としたエリアをアクティブにし、鳴っている途中なら止めずにつなぎ替える。
+//     出どころ(読み込み・「読み直す」・1フォルダ10個の数え方)。鳴っている途中なら止めずにつなぎ替える。落とした先はアクティブにしない
+//     (2026-09-29に変更。以前は落としたエリアをアクティブにしていた)。
 //     どの枠の中でもない所に落とした時は、今のエリアの中へ戻す
 //   - **2つのモード(フォルダカードごと。2026-09-27、ユーザー要望)**: 「フリー」=これまでの形(カードごとに再生/停止・ループ)。
 //     「タイムライン」=エリアの左端が0秒で、左から右へ時間が流れる。**エリアの幅全体が1ループ**で、ループの長さ(秒)は見出しで指定する
@@ -241,10 +242,11 @@
       else if (card.type === 'vocab') buildVocab(card, el);
       else if (card.type === 'image') buildImage(card, el);
       else buildSound(card, el);
-      // 押したカード(またはその中のオーディオ)のフォルダをアクティブにする
+      // エリア(フォルダカード)を押した時だけ、そのエリアをアクティブにする。オーディオカードを押しても切り替えない
+      // (2026-09-29、ユーザー要望「アクティブなエリアの再生中に、別のエリアから音を取ってくる時に止まる。止まるのは他のエリアを触った時だけに」)
       el.addEventListener('pointerdown', () => {
         if (card.type === 'sound') lastSoundId = card.id;
-        setActive(card.type === 'folder' ? card.id : card.folderId);
+        if (card.type === 'folder') setActive(card.id);
       }, true);
     },
 
@@ -296,7 +298,7 @@
     },
 
     onCardTap(card) {
-      setActive(card.type === 'folder' ? card.id : card.folderId);
+      if (card.type === 'folder') setActive(card.id);
     },
 
     /** フォルダをドラッグしている間、中のオーディオカードも一緒に動かす(js/canvas.js の updateMove から) */
@@ -1144,6 +1146,11 @@
     return f;
   }
 
+  /** 待機中のエリアの音は鳴っていても聞こえない(バスの音量が0)ので、そのことを伝える */
+  function hintIfIdle(f) {
+    if (f && data().activeId !== f.id) setStatus(`「${f.name}」は待機中なので聞こえません。エリアの枠を押すとアクティブになって聞こえます`);
+  }
+
   function toggle(s) {
     const f = folderOf(s);
     if (isChain(f)) {
@@ -1199,6 +1206,7 @@
     rt.playing = true;
     refreshSound(s);
     startTicker();
+    hintIfIdle(folderOf(s));
   }
 
   /**
@@ -1278,9 +1286,10 @@
       if (s.sourceFolderId === s.folderId) delete s.sourceFolderId; // 元のフォルダへ帰った
       stopVoicesOf(s.id);
       reroute(s);
-      setActive(target.id);
+      // 落とした先をアクティブにはしない(アクティブなエリアの再生を止めないように)
       [prev, target].forEach((f) => f && refreshFolder(f));
-      setStatus(`「${s.fileName}」を「${target.name}」のエリアへ${prev ? '移しました' : '戻しました'}`);
+      setStatus(`「${s.fileName}」を「${target.name}」のエリアへ${prev ? '移しました' : '戻しました'}` +
+        (data().activeId === target.id ? '' : '(このエリアは待機中なので、枠を押してアクティブにすると聞こえます)'));
     } else if (!target && s.folderId) {
       if (!isMidi(s)) s.sourceFolderId = sourceOf(s);
       s.folderId = null;
@@ -1585,7 +1594,7 @@
   function toggleTransport(f) {
     const tl = tlOf(f);
     if (tl.playing) stopTransport(f);
-    else if (isChain(f)) startChain(f, beltsOf(f).map((belt) => beltHead(f, belt)));
+    else if (isChain(f)) startChain(f, beltsOf(f).map((belt) => beltHead(f, belt)), true);
     else startTransport(f);
   }
 
@@ -1786,7 +1795,8 @@
     else soundsOf(f.id).forEach((s) => refreshSound(s));
   }
 
-  async function startChain(f, fromIds) {
+  /** activate: 見出しの▶(エリアを触った)の時だけ true。カードの▶・線を引いた時はアクティブを切り替えない */
+  async function startChain(f, fromIds, activate) {
     if (!fromIds.length) {
       setStatus('カードをASTRでつなぐと、アステリズムベルト(反復ループ)になります');
       return;
@@ -1804,7 +1814,8 @@
       if (walkerOnBelt(f, beltOf(f, id))) return; // 同じベルトに流れは1つ
       tl.walkers.push({ start: id, cardId: id, when: t, via: null });
     });
-    setActive(f.id);
+    if (activate) setActive(f.id);
+    else hintIfIdle(f);
     refreshFolder(f);
     soundsOf(f.id).forEach((s) => refreshSound(s));
     startTicker();
