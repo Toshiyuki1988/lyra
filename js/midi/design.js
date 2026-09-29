@@ -157,10 +157,31 @@
     return out.slice(0, 16);
   }
 
+  /**
+   * 層の生成器の名前を、使ってよい生成器の id に読み替える。
+   * 2026-09-29、見立て蔵で「鳴らせる層が1つもありませんでした」(アンサンブル・プレミックスの両方)の対策で強めた。見立て蔵は生成器(generator=gesture)と
+   * 身振り(gesture=bell など)という似た2つの欄を持つため、Liteが生成器の欄に身振りの名前(bell・鐘打ち)を書くと、層が全部捨てられていた。
+   * 読み方: そのまま → 名前を含む(例 gesture_type)→ 生成器の日本語のラベル(例 身振り)→ 身振りの名前・ラベル(→ gesture)→
+   * 層が持っているパラメータ(gesture があれば gesture、patterns があれば drums)→ 使ってよい生成器が1つだけならそれ
+   */
+  function resolveGenerator(raw, presetGenerators) {
+    const allowed = presetGenerators && presetGenerators.length ? presetGenerators : Object.keys(E.GENERATORS);
+    const text = str(raw.generator, 40).trim();
+    const g = text.toLowerCase();
+    if (E.GENERATORS[g] && allowed.includes(g)) return g; // 実在しても、このモデルで使えない生成器(例 motif)はそのまま使わない
+    const byId = allowed.find((id) => g && g.includes(id));
+    if (byId) return byId;
+    const byLabel = allowed.find((id) => text && E.GENERATORS[id] && (text.includes(E.GENERATORS[id].label) || E.GENERATORS[id].label.includes(text)));
+    if (byLabel) return byLabel;
+    if (allowed.includes('gesture') && E.gestureKey && E.gestureKey(text)) return 'gesture';
+    const byParams = allowed.find((id) => ((E.GENERATORS[id] || {}).params || []).some((p) => raw[p] != null && raw[p] !== '' && !(Array.isArray(raw[p]) && !raw[p].length)));
+    if (byParams) return byParams;
+    if (allowed.length === 1) return allowed[0];
+    return g; // 読めなかった(実在する生成器なら、そのまま鳴らす)
+  }
+
   function sanitizeLayer(raw, limit, presetGenerators) {
-    let generator = str(raw.generator, 24).trim().toLowerCase();
-    // 生成器の名前が崩れていても、使ってよい生成器の中から見つける(例: "gesture_type" → gesture)
-    if (!E.GENERATORS[generator]) generator = (presetGenerators || Object.keys(E.GENERATORS)).find((id) => generator.includes(id)) || generator;
+    const generator = resolveGenerator(raw, presetGenerators);
     const L = {
       name: str(raw.name, 20).trim(),
       generator,
@@ -185,12 +206,15 @@
     if (has('chordBars')) L.chordBars = int(raw.chordBars, 1, 8, 1);
     if (has('size')) L.size = int(raw.size, 3, 4, 3);
     if (has('pattern')) L.pattern = pickWord(raw.pattern, E.BASSES, 'root');
+    if (generator === 'gesture' && !has('gesture') && E.gestureKey && E.gestureKey(raw.generator)) raw = { ...raw, gesture: raw.generator };
     if (has('gesture')) {
       // 表記ゆれ・日本語のラベルも型の id に読み替える。読めなければ、層の役割に合う型にする(黙って無音にしない)
       const key = E.gestureKey ? E.gestureKey(raw.gesture) : null;
       L.gesture = key || (String(raw.role || '').toLowerCase() === 'ground' ? 'sustained_open' : 'scatter_stab');
       if (!key && typeof debugLog === 'function') debugLog(`身振りの名前が読めなかったので ${L.gesture} にした: ${String(raw.gesture || '').slice(0, 40)}`);
     }
+    // 身振りの層なのに身振りの名前が無い時も、役割に合う型で鳴らす
+    if (generator === 'gesture' && !L.gesture) L.gesture = L.role === 'ground' ? 'sustained_open' : 'scatter_stab';
     if (has('occurrence')) L.occurrence = E.OCCURRENCES[raw.occurrence] ? raw.occurrence : 'sparse';
     if (has('rule')) L.rule = str(raw.rule, 24).trim();
     L.step = num(raw.step, 0.125, 4, 0.5);

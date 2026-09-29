@@ -608,7 +608,13 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       });
     }
     const playable = design.layers.filter((l) => E.GENERATORS[l.generator]);
-    if (!playable.length) throw new Error('鳴らせる層が1つもありませんでした(生成器の名前が読めなかった可能性があります)');
+    if (!playable.length) {
+      // 原因を事実で特定できるよう、Geminiが書いた層の生成器の名前を必ず残す
+      const names = (raw.layers || []).map((l) => `${l.name || '?'}=${l.generator || '(空)'}`).join(' / ');
+      if (typeof debugLog === 'function') debugLog(`鳴らせる層が0: Geminiの出力の層: ${JSON.stringify(raw.layers || []).slice(0, 1500)}`);
+      console.warn('鳴らせる層が0になった出力', raw);
+      throw new Error(`鳴らせる層が1つもありませんでした(Geminiが書いた層: ${names || '層が空'})`);
+    }
     // 主旋律の反芻(Geminiが主旋律を書いた時。つないだMIDIの旋律を使う時は、ユーザーの旋律なので省く)
     const fixedRoles = new Set((input.fixed || []).flatMap((x) => x.roles));
     const melodyLayer = design.layers.find((l) => l.generator === 'line' && l.role === 'melody' && (l.notes || []).length >= 4);
