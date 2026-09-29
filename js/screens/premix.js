@@ -35,9 +35,15 @@
 //     - ループの長さは −/+(押し続けで連続、Shiftで1秒)・数字の左右ドラッグ/ホイール/↑↓/ダブルクリックで入力・½・×2・
 //       「音に合わせる」(最後に触ったカードの切り取った長さ)で変える
 //     - 見出しの ▶再生/■ は2段目の左端(タイムラインの0秒の側)
+//   - **チェーン(3つ目のモード、2026-09-29、ユーザー要望「アステリズムで繋いだカードが順次再生するループ」)**: オーディオカードのASTRで
+//     線を引くと、線の向き(引き始めのカード → 離したカード。connection.cardIdA → cardIdB)に順に鳴る。前の音(切り取った範囲)が
+//     鳴り終わった瞬間に次が鳴る(隙間なし)。1枚から2本以上出ていたら**毎回ランダムに1本**を選ぶ(毎周少し変わる)。線を輪にすればループ、
+//     行き止まりで止まる。カードの▶はそのカードから流し始め、見出しの▶はどの線にも入ってこないカード(輪だけなら最後に触ったカード)から。
+//     たどるのは同じエリアにいるカードだけ。発音はタイムラインと同じ先読みの予約。線はプレミックスでは流れる点線で向きを見せ、
+//     通った線を光らせる。線はどのモードでも引けるが、鳴らし方に使うのはチェーンだけ
 //
-// データ: state.premix = { activeId, cards: [
-//   { id, type: 'folder', name, mode: 'free'|'timeline', loopSec?, x, y, width, height, createdAt },
+// データ: state.premix = { activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
+//   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, x, y, width, height, createdAt },
 //   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
 //     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, x, y, width, createdAt } ] }
 
@@ -70,6 +76,7 @@
 
   function data() {
     if (!state.premix || !Array.isArray(state.premix.cards)) state.premix = { activeId: null, cards: [] };
+    if (!Array.isArray(state.premix.connections)) state.premix.connections = [];
     return state.premix;
   }
   const folders = () => data().cards.filter((c) => c.type === 'folder');
@@ -79,6 +86,7 @@
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
   const folderName = (id) => (data().cards.find((c) => c.id === id) || {}).name || '';
   const isTimeline = (f) => Boolean(f && f.mode === 'timeline');
+  const isChain = (f) => Boolean(f && f.mode === 'chain');
   const isSphere = (s) => s.view === 'sphere';
   const hasClip = (s) => Number.isFinite(s.clipStart) && Number.isFinite(s.clipEnd);
 
@@ -171,7 +179,7 @@
     fitMaxScale: 1,
 
     enter() {
-      scope = { cards: data().cards, connections: null };
+      scope = { cards: data().cards, connections: data().connections }; // 線はチェーンの順番(js/app.js の ASTR)
       setCrumbs([{ label: 'プレミックス' }]);
       els.overlay.classList.add('screen-overlay--ensemble');
       els.overlay.innerHTML =
@@ -217,8 +225,16 @@
       }, true);
     },
 
-    cardHexes() {
-      return hexHtml('delete', 'Delete');
+    cardHexes(card) {
+      // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)
+      return (card.type === 'sound' ? hexHtml('astr') : '') + hexHtml('delete', 'Delete');
+    },
+
+    onConnectionsChanged() {
+      const conn = data().connections[data().connections.length - 1];
+      const a = conn && data().cards.find((c) => c.id === conn.cardIdA);
+      const f = a && folderOf(a);
+      if (f && !isChain(f)) setStatus('線でつなぎました。エリアを「チェーン」にすると、線の向き(引き始め→引いた先)に順に鳴ります');
     },
 
     onHexAction(action, card, el) {
@@ -243,6 +259,7 @@
           sel.dataset.x = String(s.x);
           sel.dataset.y = String(s.y);
           applyCardTransform(sel);
+          updateAsterismLinesForCard(s.id);
         }
       });
     },
@@ -261,6 +278,7 @@
     const count = fileCount(f.id);
     const cards = soundsOf(f.id).length;
     const tl = isTimeline(f);
+    const chain = isChain(f);
     const guests = soundsOf(f.id).filter((x) => sourceOf(x) !== f.id).length;
     const views = new Set(soundsOf(f.id).map((x) => (isSphere(x) ? 'sphere' : 'card')));
     const viewOn = views.size === 1 ? [...views][0] : '';
@@ -281,13 +299,15 @@
       `</div><div class="fold-row">` +
       // ▶再生/■ は左端(タイムラインの0秒の側)に置く(2026-09-29、ユーザー要望)
       `<span class="fold-transport-group">` +
-      (tl
-        ? `<button type="button" class="btn-small fold-transport${tlOf(f).playing ? ' fold-transport--on' : ''}" data-f="transport" title="プレイヘッドを動かす(エリア全体がループ)">${tlOf(f).playing ? '❚❚ 停止' : '▶ 再生'}</button>`
+      (tl || chain
+        ? `<button type="button" class="btn-small fold-transport${tlOf(f).playing ? ' fold-transport--on' : ''}" data-f="transport" title="${chain
+          ? '線の流れを鳴らす(どの線にも入ってこないカードから)' : 'プレイヘッドを動かす(エリア全体がループ)'}">${tlOf(f).playing ? '❚❚ 停止' : '▶ 再生'}</button>`
         : `<button type="button" class="btn-small" data-f="playall" title="このフォルダの音を全部鳴らす">▶ 全部</button>`) +
       `<button type="button" class="btn-small" data-f="stopall" title="止める">■</button></span>` +
       `<span class="fold-mode" role="group" aria-label="モード">` +
-      `<button type="button" class="fold-mode-btn${tl ? '' : ' fold-mode-btn--on'}" data-f="free">フリー</button>` +
-      `<button type="button" class="fold-mode-btn${tl ? ' fold-mode-btn--on' : ''}" data-f="timeline">タイムライン</button></span>` +
+      `<button type="button" class="fold-mode-btn${tl || chain ? '' : ' fold-mode-btn--on'}" data-f="free">フリー</button>` +
+      `<button type="button" class="fold-mode-btn${tl ? ' fold-mode-btn--on' : ''}" data-f="timeline">タイムライン</button>` +
+      `<button type="button" class="fold-mode-btn${chain ? ' fold-mode-btn--on' : ''}" data-f="chain" title="ASTRで引いた線の向きに順に鳴らす">チェーン</button></span>` +
       (tl ? loopControlHtml(f) : '') +
       `</div></div>` +
       (msg ? `<div class="fold-msg">${msg}</div>` : '') +
@@ -309,7 +329,7 @@
           soundsOf(f.id).forEach((s) => stop(s));
           stopTransport(f);
         } else if (a === 'transport') toggleTransport(f);
-        else if (a === 'free' || a === 'timeline') setMode(f, a);
+        else if (a === 'free' || a === 'timeline' || a === 'chain') setMode(f, a);
         else if (a === 'reload') loadFolder(f, { interactive: true });
         else if (a === 'perm') loadFolder(f, { interactive: true });
         else if (a === 'pick') repickFolder(f);
@@ -657,11 +677,13 @@
     el.classList.toggle('star-card--sound-playing', Boolean(rt.playing));
     el.classList.toggle('star-card--sound-missing', Boolean(rt.missing));
     el.classList.toggle('star-card--sound-tl', isTimeline(f)); // タイムラインではループのボタンを隠す
+    el.classList.toggle('star-card--sound-chain', isChain(f)); // チェーンでもカードのループは使わない
+    const on = Boolean(rt.playing) || (isChain(f) && tlOf(f).playing); // チェーンでは▶が流れ全体の再生/停止
     el.classList.toggle('star-card--sound-out', !f);
     const play = el.querySelector('[data-s="play"]');
     if (play) {
-      play.textContent = rt.playing ? '■' : '▶';
-      play.setAttribute('aria-label', rt.playing ? '停止' : '再生');
+      play.textContent = on ? '■' : '▶';
+      play.setAttribute('aria-label', on ? '停止' : isChain(f) ? 'このカードから流す' : '再生');
       play.disabled = Boolean(rt.missing) || !f;
     }
     const loop = el.querySelector('.snd-loop');
@@ -881,6 +903,12 @@
   }
 
   function toggle(s) {
+    const f = folderOf(s);
+    if (isChain(f)) {
+      if (tlOf(f).playing) stopTransport(f);
+      else startChain(f, [s.id]);
+      return;
+    }
     const rt = soundRt.get(s.id);
     if (rt && rt.playing) stop(s);
     else play(s);
@@ -1288,7 +1316,7 @@
   }
 
   function setMode(f, mode) {
-    const next = mode === 'timeline' ? 'timeline' : 'free';
+    const next = mode === 'timeline' || mode === 'chain' ? mode : 'free';
     if ((f.mode || 'free') === next) return;
     soundsOf(f.id).forEach((s) => stop(s));
     stopTransport(f);
@@ -1300,7 +1328,9 @@
     startTicker();
     setStatus(next === 'timeline'
       ? `「${f.name}」をタイムラインにしました。カードの左端にプレイヘッドが触れると鳴ります(エリアの幅全体が${loopLen(f)}秒のループ。長さは見出しで変えられます)`
-      : `「${f.name}」をフリーにしました`);
+      : next === 'chain'
+        ? `「${f.name}」をチェーンにしました。カードのASTRで線を引くと、線の向きに順に鳴ります(分かれ道はランダムに1本。輪にするとループ)。▶を押したカードから流れ出します`
+        : `「${f.name}」をフリーにしました`);
   }
 
   /** タイムラインでは、カードの左端を0.25秒のグリッドにそろえる */
@@ -1312,6 +1342,7 @@
   function toggleTransport(f) {
     const tl = tlOf(f);
     if (tl.playing) stopTransport(f);
+    else if (isChain(f)) startChain(f, chainHeads(f));
     else startTransport(f);
   }
 
@@ -1347,7 +1378,11 @@
     });
     tl.voices = [];
     tl.scheduled = new Map();
-    if (wasPlaying) refreshFolder(f);
+    tl.walkers = [];
+    if (wasPlaying) {
+      refreshFolder(f);
+      soundsOf(f.id).forEach((s) => refreshSound(s));
+    }
   }
 
   /** 先読みの範囲に入ったカードの発音を予約する(左端にプレイヘッドが触れる時刻で1回。ループの終わりで切る) */
@@ -1379,34 +1414,137 @@
         tl.scheduled.set(s.id, key);
         const loopEnd = tl.t0 + (cyc + 1) * len;
         const clip = clipOf(s, rt);
-        const end = Math.min(when + clip.len, loopEnd);
-        const bus = busOf(f.id);
-        const source = ctx.createBufferSource();
-        source.buffer = rt.buffer;
-        const gain = ctx.createGain();
-        gain.gain.value = volumeGain(s.volume);
-        const send = ctx.createGain();
-        send.gain.value = reverbSend(s.reverb);
-        source.connect(gain);
-        gain.connect(bus.out);
-        gain.connect(send);
-        send.connect(bus.conv);
-        source.start(Math.max(when, now), clip.start, clip.len);
-        if (end < when + clip.len) {
-          // ループの終わりで切る(プチッと鳴らないよう短く消す)
-          gain.gain.setValueAtTime(volumeGain(s.volume), Math.max(when, end - 0.02));
-          gain.gain.linearRampToValueAtTime(0, end);
-          source.stop(end + 0.01);
-        }
-        const voice = { cardId: s.id, source, gain, send, when, end, clip };
-        source.onended = () => {
-          gain.disconnect();
-          send.disconnect();
-          tl.voices = tl.voices.filter((v) => v !== voice);
-        };
-        tl.voices.push(voice);
+        voiceAt(f, s, rt, clip, when, Math.min(when + clip.len, loopEnd));
       }
     });
+  }
+
+  /** 切り取った範囲を when から鳴らす(end がそれより早ければ、そこで短く消して切る)。タイムラインとチェーンで共通 */
+  function voiceAt(f, s, rt, clip, when, end) {
+    const tl = tlOf(f);
+    const now = ctx.currentTime;
+    const bus = busOf(f.id);
+    const source = ctx.createBufferSource();
+    source.buffer = rt.buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = volumeGain(s.volume);
+    const send = ctx.createGain();
+    send.gain.value = reverbSend(s.reverb);
+    source.connect(gain);
+    gain.connect(bus.out);
+    gain.connect(send);
+    send.connect(bus.conv);
+    source.start(Math.max(when, now), clip.start, clip.len);
+    if (end < when + clip.len) {
+      // ループの終わりで切る(プチッと鳴らないよう短く消す)
+      gain.gain.setValueAtTime(volumeGain(s.volume), Math.max(when, end - 0.02));
+      gain.gain.linearRampToValueAtTime(0, end);
+      source.stop(end + 0.01);
+    }
+    const voice = { cardId: s.id, source, gain, send, when, end, clip };
+    source.onended = () => {
+      gain.disconnect();
+      send.disconnect();
+      tl.voices = tl.voices.filter((v) => v !== voice);
+    };
+    tl.voices.push(voice);
+  }
+
+  /* ---------------- チェーンモード(線の向きに順に鳴らす) ---------------- */
+
+  /** そのカードから出ている線のうち、同じエリアのカードへ向かうものを1本ランダムに選ぶ */
+  function nextInChain(f, cardId) {
+    const outs = data().connections
+      .filter((c) => c.cardIdA === cardId)
+      .map((conn) => ({ conn, card: data().cards.find((x) => x.id === conn.cardIdB) }))
+      .filter((o) => o.card && o.card.type === 'sound' && o.card.folderId === f.id);
+    return outs.length ? outs[Math.floor(Math.random() * outs.length)] : null;
+  }
+
+  /** 見出しの▶で流し始めるカード: どの線にも入ってこないカード。輪だけなら最後に触ったカード(無ければ最初のカード) */
+  function chainHeads(f) {
+    const inArea = soundsOf(f.id);
+    const ids = new Set(inArea.map((s) => s.id));
+    const linked = new Set();
+    const incoming = new Set();
+    data().connections.forEach((c) => {
+      if (ids.has(c.cardIdA) && ids.has(c.cardIdB)) {
+        linked.add(c.cardIdA);
+        linked.add(c.cardIdB);
+        incoming.add(c.cardIdB);
+      }
+    });
+    const heads = inArea.filter((s) => linked.has(s.id) && !incoming.has(s.id)).map((s) => s.id);
+    if (heads.length) return heads;
+    const last = inArea.find((s) => s.id === lastSoundId && linked.has(s.id));
+    const first = last || inArea.find((s) => linked.has(s.id)) || inArea[0];
+    return first ? [first.id] : [];
+  }
+
+  async function startChain(f, fromIds) {
+    if (!fromIds.length) {
+      setStatus('このエリアにオーディオカードがありません');
+      return;
+    }
+    const c = audio();
+    for (const s of soundsOf(f.id)) await decodeSound(s);
+    const tl = tlOf(f);
+    if (!tl.playing) {
+      tl.playing = true;
+      tl.walkers = [];
+      tl.voices = [];
+    }
+    const t = c.currentTime + 0.08;
+    fromIds.forEach((id) => tl.walkers.push({ cardId: id, when: t, via: null }));
+    setActive(f.id);
+    refreshFolder(f);
+    soundsOf(f.id).forEach((s) => refreshSound(s));
+    startTicker();
+  }
+
+  /**
+   * 先読みの範囲に入った「次に鳴るカード」を予約して、線をたどって進める。前の音が鳴り終わった瞬間に次を鳴らす。
+   * 行き止まり(同じエリアへの線が無い)で、その流れは終わる。流れが全部終わって音も消えたら止める
+   */
+  function scheduleChain(f) {
+    const tl = tlOf(f);
+    if (!tl.playing || !ctx) return;
+    const now = ctx.currentTime;
+    const horizon = now + LOOKAHEAD;
+    tl.voices = tl.voices.filter((v) => v.end > now - 0.2);
+    tl.walkers = (tl.walkers || []).filter((w) => {
+      for (let guard = 0; w.when < horizon && guard < 32; guard++) {
+        const s = data().cards.find((x) => x.id === w.cardId);
+        if (!s || s.folderId !== f.id) return false; // 枠の外・別のエリアへ出たカードで流れは終わる
+        const rt = soundRt.get(s.id);
+        let len = SNAP_SEC; // まだ読めていない・見つからない音は、短い休みとして通り過ぎる
+        if (rt && rt.buffer && !rt.missing) {
+          const clip = clipOf(s, rt);
+          len = Math.max(0.05, clip.len);
+          voiceAt(f, s, rt, clip, w.when, w.when + clip.len);
+        }
+        if (w.via) flashLineAt(w.via, w.when - now);
+        const next = nextInChain(f, s.id);
+        if (!next) return false;
+        w.via = next.conn.id;
+        w.cardId = next.card.id;
+        w.when += len;
+      }
+      return true;
+    });
+    if (!tl.walkers.length && !tl.voices.some((v) => v.end > now)) stopTransport(f);
+  }
+
+  /** 流れが線を通った瞬間(次のカードが鳴り始める時)に、その線を光らせる */
+  function flashLineAt(connectionId, delaySec) {
+    setTimeout(() => {
+      const line = document.querySelector(`.asterism-layer [data-connection-id="${CSS.escape(String(connectionId))}"]`);
+      if (!line) return;
+      line.classList.remove('pm-line-hot');
+      void line.getBoundingClientRect(); // 続けて通った時もアニメーションをやり直す
+      line.classList.add('pm-line-hot');
+      setTimeout(() => line.classList.remove('pm-line-hot'), 700);
+    }, Math.max(0, delaySec * 1000));
   }
 
   /** プレイヘッド(カードより上に出すので、キャンバスに直に置く) */
@@ -1448,7 +1586,10 @@
     // 発音の予約は描画と別のタイマーで(タブが裏に回って描画が止まっても、予約は続く)
     if (!schedTimer) {
       schedTimer = setInterval(() => {
-        folders().forEach((f) => isTimeline(f) && scheduleTimeline(f));
+        folders().forEach((f) => {
+          if (isTimeline(f)) scheduleTimeline(f);
+          else if (isChain(f)) scheduleChain(f);
+        });
       }, 30);
     }
     if (rafId) return;
@@ -1456,6 +1597,7 @@
       const now = ctx ? ctx.currentTime : 0;
       folders().forEach((f) => {
         if (isTimeline(f)) scheduleTimeline(f);
+        else if (isChain(f)) scheduleChain(f);
         drawPlayhead(f, now);
       });
       // タイムラインで今鳴っている音(カードごとに1つ)。カードの数×音の数にならないよう、1フレームに1回だけ表を作る
@@ -1552,5 +1694,5 @@
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, chainHeads, nextInChain } };
 })();

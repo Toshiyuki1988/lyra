@@ -2066,6 +2066,22 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
   text-align: center; font-size: 10.5px; color: var(--pm-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sph-name .snd-from { margin-left: 0; }
+/* チェーン: カードのループは使わない。線は流れる点線で向き(引き始め→引いた先)を見せ、流れが通った線を光らせる */
+.star-card--sound-chain .snd-loop { display: none; }
+/* 線はフォルダ(z-index 0、半透明の背景)の上、オーディオカード(z-index 2)の下に重ねる。フォルダの下だと透けて見えなかった */
+body[data-screen="premix"] .asterism-layer { z-index: 1; }
+body[data-screen="premix"] .asterism-line--manual {
+  stroke: rgba(242, 178, 76, 0.85); stroke-width: 2.4; stroke-dasharray: 3 6; stroke-linecap: round;
+  animation: pm-line-flow 0.9s linear infinite;
+}
+@keyframes pm-line-flow { from { stroke-dashoffset: 9; } to { stroke-dashoffset: 0; } }
+body[data-screen="premix"] .asterism-line--manual.pm-line-hot {
+  animation: pm-line-flow 0.9s linear infinite, pm-line-hot 0.7s ease-out;
+}
+@keyframes pm-line-hot {
+  0% { stroke: #fff4d6; stroke-width: 4; filter: drop-shadow(0 0 8px rgba(242, 178, 76, 0.95)); }
+  100% { stroke: rgba(242, 178, 76, 0.85); stroke-width: 2.4; filter: none; }
+}
 /* タイムラインでは左端=鳴り始めの印 */
 .star-card--sphere.star-card--sound-tl .sph::after {
   content: ""; position: absolute; left: -3px; top: 28%; height: 44%; width: 2px; border-radius: 1px;
