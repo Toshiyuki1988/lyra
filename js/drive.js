@@ -26,14 +26,6 @@ async function driveFetch(path, options = {}) {
   return res;
 }
 
-/** Googleアカウント全体のストレージ使用量を取得する(drive.fileスコープでも呼べる)。
- *  無料アカウント15GBの制約を意識するため(ハンドオフ8節)。 */
-async function getDriveStorageQuota() {
-  const res = await driveFetch('/about?fields=storageQuota');
-  const data = await res.json();
-  return data.storageQuota || {};
-}
-
 /** アプリ専用フォルダ(CONFIG.APP_FOLDER_NAME)を探し、なければ作成してIDを返す */
 async function findOrCreateAppFolder() {
   const q = encodeURIComponent(
@@ -78,15 +70,6 @@ async function findOrCreateSubfolder(name, parentId) {
   return created.id;
 }
 
-/** Drive上のフォルダの表示名を変更する */
-async function renameDriveFolder(folderId, newName) {
-  await driveFetch(`/files/${folderId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: newName }),
-  });
-}
-
 async function findDataFile(folderId) {
   const q = encodeURIComponent(
     `name='${CONFIG.DATA_FILE_NAME}' and '${folderId}' in parents and trashed=false`
@@ -112,34 +95,6 @@ async function loadData(folderId) {
  */
 async function saveData(folderId, fileId, data) {
   return saveNamedData(folderId, fileId, data, CONFIG.DATA_FILE_NAME);
-}
-
-/** 任意のファイル名でJSONを探す(APP_FOLDER_NAME直下)。saveData/loadDataが暗黙に
- *  CONFIG.DATA_FILE_NAMEを対象にしているのに対し、こちらはソウルごとの本体ファイルのように、
- *  メインのデータファイルとは独立して読み書きしたいものに使う。 */
-async function findFileByName(folderId, fileName) {
-  const q = encodeURIComponent(
-    `name='${fileName}' and '${folderId}' in parents and trashed=false`
-  );
-  const res = await driveFetch(`/files?q=${q}&fields=files(id,name)`);
-  const { files } = await res.json();
-  return files && files[0] ? files[0].id : null;
-}
-
-/** loadData()の汎用版。ファイルが無ければ{fileId:null, data:null}を返す(呼び出し側で
- *  初期値・移行処理を判断できるよう、loadData()のような既定値は持たせない)。 */
-async function loadNamedData(folderId, fileName) {
-  const fileId = await findFileByName(folderId, fileName);
-  if (!fileId) return { fileId: null, data: null };
-  const res = await driveFetch(`/files/${fileId}?alt=media`);
-  const data = await res.json();
-  return { fileId, data };
-}
-
-/** 既に分かっているfileIdからJSONを直接取得する(名前検索を1回省ける)。 */
-async function loadFileContentById(fileId) {
-  const res = await driveFetch(`/files/${fileId}?alt=media`);
-  return res.json();
 }
 
 /** saveData()の汎用版。任意のファイル名でJSONを作成/上書き保存する。

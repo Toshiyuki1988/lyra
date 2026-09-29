@@ -66,7 +66,7 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 | ファイル | 由来 | 変更点 |
 |---|---|---|
 | `js/auth.js` | そのままコピー | なし |
-| `js/drive.js` | コピー | ヘッダーコメント、`moveFile()`(移行専用)を削除、`loadData()`の初期値をnullに |
+| `js/drive.js` | コピー | ヘッダーコメント、`moveFile()`(移行専用)を削除、`loadData()`の初期値をnullに。2026-09-29の見直しで、使っていなかった `getDriveStorageQuota`・`renameDriveFolder`・`loadNamedData`・`loadFileContentById`・`findFileByName` も削除 |
 | `js/canvas.js` | コピー | Flight Engineer/Star Pencil/座談会など、CONSTELLATIONのモジュール固有のガードを除去 |
 | `js/sound.js` | 先頭の共通部分のみ | 編集ガイド・ASTR・カード移動の4音だけ残した |
 | `js/gemini.js` | `askGemini()`のみ流用し書き換え | `files`(PDF/画像のインライン入力)・`responseSchema`対応、`askGeminiJson()`追加、タイムアウト90秒、`tools`撤去 |
