@@ -2266,3 +2266,9 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .sampler-field { display: grid; grid-template-columns: 3.5em 1fr; align-items: center; gap: 8px; font-size: 12px; }
 .sampler-howto { font-size: 11.5px; line-height: 1.7; color: var(--text); background: rgba(120, 100, 60, 0.07); border-radius: 8px; padding: 8px 10px; }
 .sampler-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 設定画面の「接続の設定」(APIキーなど)。間違って書き換えないよう、ふだんは折りたたむ(2026-09-29) */
+.settings-keys { margin: 4px 0 12px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; background: #fbf9f4; }
+.settings-keys > summary { cursor: pointer; padding: 10px 0; font-size: 12.5px; font-weight: 600; color: var(--muted); list-style: revert; }
+.settings-keys[open] > summary { color: var(--ink); border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.settings-keys[open] { padding-bottom: 6px; }

@@ -128,6 +128,9 @@ function openSettings() {
   els.settingsPixabayKey.value = CONFIG.PIXABAY_API_KEY;
   els.settingsError.hidden = true;
   els.settingsCancelBtn.hidden = !isConfigured(); // 初回の必須設定中は閉じる手段を出さない
+  // 接続の設定(キーやID)は折りたたみの奥。まだ設定していない時と、入力の誤りを伝える時だけ開いておく
+  const keys = document.getElementById('settings-keys');
+  if (keys) keys.open = !isConfigured();
   // 日次課題のオン/オフはDriveのデータ(state.prefs)に保存するため、読み込み後だけ出す
   els.settingsDailyRow.hidden = !dataLoaded;
   els.settingsDaily.checked = Boolean(state.prefs.dailyTask);
@@ -166,8 +169,10 @@ function handleSaveSettings() {
   const clientId = els.settingsClientId.value.trim();
   const apiKey = els.settingsApiKey.value.trim();
   if (!clientId || !apiKey) {
-    els.settingsError.textContent = '両方とも入力してください';
+    els.settingsError.textContent = '接続の設定の、GoogleのクライアントIDとGeminiのキーを両方とも入力してください';
     els.settingsError.hidden = false;
+    const keys = document.getElementById('settings-keys');
+    if (keys) keys.open = true;
     return;
   }
   saveUserConfig({ clientId, apiKey, pixabayKey: els.settingsPixabayKey.value });
