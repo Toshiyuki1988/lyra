@@ -1973,11 +1973,13 @@
    * 「語彙カードからのシンセMIDI化・ビート化」。Geminiの無料枠は音声の入力も無料(料金ページで確認)。
    *   - オーディオカード: 切り取った範囲(最大60秒)を16kHzモノラルのWAVにしてGeminiに1回聞かせる
    *   - エリア: アクティブにして、そのエリアのバスの音を録る(タイムラインは1ループ、ほかは12秒。最大30秒)。カードの語彙メモ・並びも添える
-   *   - 返すのは見立て・音の事実・時間の流れ・質感語彙・情景・感情・美学的連想・作曲での使い方・合わないもの(合計2500〜3500字程度)。
-   *     ありきたりな形容詞で済ませない。聞き取れないことは書かない。曲名・人物の特定はしない
-   *   - 語彙カードは上の「MIDI」「ビート」で、その長文を文脈にしてMIDIを作り(js/midi/compose.js の onCard)、
-   *     合成アンサンブルの音でオーディオカードにしてアクティブなエリアに置く(生んだカードから線を結ぶ)
-   * データ: { id, type: 'vocab', title, summary, mitate[], facts, timeline[{at, text}], texture[], scene, emotion, aesthetic, music, avoid,
+   *   - **見立ては厳選した1つ**(同日、ユーザー判断。最初は「見立て6〜8個・合計2500〜3500字」にしたが、「語彙も見立ても多すぎて美辞麗句の
+   *     羅列になり、ピンポイントな創造が薄れる」という指摘で改めた)。候補を考えた上で最も鋭い1つと、その理由、それを音にする具体的な
+   *     仕掛け2〜3個(=芯)。ほかは音の事実・時間の流れ・質感語彙(8〜12)・情景・感情・美学的連想・作曲での使い方・合わないもの。
+   *     全体1000〜1500字、量より密度。飾りの言葉・ありきたりな形容詞で済ませない。聞き取れないことは書かない。曲名・人物の特定はしない
+   *   - 語彙カードは上の「MIDI」「ビート」で、**芯(見立て・理由・仕掛け)と音の事実・作曲での使い方・合わないものだけ**を文脈にしてMIDIを作り
+   *     (全文を渡すと、生成が全部を少しずつ満たそうとしてぼやける)、合成アンサンブルの音でオーディオカードにしてエリアに置く
+   * データ: { id, type: 'vocab', title, summary, mitate(1つ。古いカードは配列), why, devices[], facts, timeline[{at, text}], texture[], scene, emotion, aesthetic, music, avoid,
    *   source: { kind: 'sound'|'area', name, seconds }, x, y, width, createdAt }
    */
   const LISTEN_MAX_SEC = 60;
@@ -1990,7 +1992,9 @@
     properties: {
       title: { type: 'STRING' },
       summary: { type: 'STRING' },
-      mitate: { type: 'ARRAY', items: { type: 'STRING' } },
+      mitate: { type: 'STRING' },
+      why: { type: 'STRING' },
+      devices: { type: 'ARRAY', items: { type: 'STRING' } },
       facts: { type: 'STRING' },
       timeline: { type: 'ARRAY', items: { type: 'OBJECT', properties: { at: { type: 'NUMBER' }, text: { type: 'STRING' } }, required: ['at', 'text'] } },
       texture: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -2000,19 +2004,35 @@
       music: { type: 'STRING' },
       avoid: { type: 'STRING' },
     },
-    required: ['title', 'summary', 'mitate', 'facts', 'timeline', 'texture', 'scene', 'emotion', 'aesthetic', 'music', 'avoid'],
+    required: ['title', 'summary', 'mitate', 'why', 'devices', 'facts', 'timeline', 'texture', 'scene', 'emotion', 'aesthetic', 'music', 'avoid'],
   };
 
+  // 本文(スクロール)に出す欄。見立て・理由・仕掛け(芯)は本文の上に目立たせて出す。古いカードの見立て(配列)は本文に並べる
   const VOCAB_SECTIONS = [
-    ['mitate', '見立て'], ['facts', '音の事実'], ['timeline', '時間の流れ'], ['texture', '質感の語彙'], ['scene', '情景・物語'],
+    ['mitateList', '見立て'], ['facts', '音の事実'], ['timeline', '時間の流れ'], ['texture', '質感の語彙'], ['scene', '情景・物語'],
     ['emotion', '感情・身体感覚'], ['aesthetic', '美学的な連想'], ['music', '作曲での使い方'], ['avoid', '合わないもの'],
   ];
 
-  /** 語彙カードの全文(MIDIを作る時の文脈) */
+  const mitateOne = (v) => (Array.isArray(v.mitate) ? v.mitate[0] || '' : v.mitate || '');
+
+  /** MIDIを作る時の文脈: 芯(見立て・理由・仕掛け)と、音の事実・作曲での使い方・合わないものだけ(全文だと生成がぼやける) */
+  function vocabBrief(v) {
+    const from = v.source && v.source.kind === 'area' ? 'プレミックスのエリアで鳴っていた音' : '音';
+    return [
+      `語彙カード「${v.title}」(${from}を聴いて書いた語彙): ${v.summary}`,
+      `見立て(この音の芯。これを最優先に、一聴で分かる形で音にする): ${mitateOne(v)}${v.why ? `(${v.why})` : ''}`,
+      (v.devices || []).length ? `芯を音にする仕掛け: ${v.devices.join(' / ')}` : '',
+      v.facts ? `音の事実: ${v.facts}` : '',
+      v.music ? `作曲での使い方: ${v.music}` : '',
+      v.avoid ? `合わないもの(避ける): ${v.avoid}` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  /** 語彙カードの全文(字数の表示用) */
   function vocabText(v) {
-    const lines = [`語彙カード「${v.title}」(${v.source && v.source.kind === 'area' ? 'プレミックスのエリアで鳴っていた音' : '音'}を聞いて書いた長文の語彙): ${v.summary}`];
+    const lines = [`${v.title}: ${v.summary}`, mitateOne(v), v.why || '', ...(v.devices || [])];
     VOCAB_SECTIONS.forEach(([key, label]) => {
-      const val = v[key];
+      const val = key === 'mitateList' ? (Array.isArray(v.mitate) ? v.mitate : null) : v[key];
       if (!val || (Array.isArray(val) && !val.length)) return;
       if (key === 'timeline') lines.push(`${label}: ${val.map((t) => `${Number(t.at).toFixed(1)}秒 ${t.text}`).join(' / ')}`);
       else if (Array.isArray(val)) lines.push(`${label}: ${val.join(key === 'texture' ? '、' : ' / ')}`);
@@ -2036,30 +2056,33 @@
   }
 
   function vocabPrompt({ subject, seconds, memo, extra }) {
-    return `あなたは作曲支援アプリLYRAの「聴き手」です。添付の音(${seconds.toFixed(1)}秒)を注意深く聴き、この音を言葉だけで他の人(と別のAI)に伝えられるよう、できるだけ豊かで長い「語彙」を書いてください。
-ユーザーはこの語彙を、美学(視覚・雰囲気の特徴)と掛け合わせて、MIDIやビート、音の配置を作る材料にします。
+    return `あなたは作曲支援アプリLYRAの「聴き手」です。添付の音(${seconds.toFixed(1)}秒)を注意深く聴き、この音を言葉だけで他の人(と別のAI)に伝えるための「語彙」を書いてください。
+ユーザーはこの語彙を、美学(視覚・雰囲気の特徴)と掛け合わせて、MIDIやビート、音の配置を作る材料にします。ピンポイントな創造の起点にしたいので、量より密度を優先します。
 
 対象: ${subject}
 ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる): ${memo}\n` : ''}${extra ? `${extra}\n` : ''}
 書き方の約束:
-- 「温かい」「落ち着いた」「綺麗」のような、どの音にも当てはまる形容詞だけで済ませない。何が・どこで・どう鳴っているかまで具体的に
+- 美辞麗句・飾りの言葉を並べない。「温かい」「落ち着いた」「綺麗」のような、どの音にも当てはまる形容詞で済ませない。何が・何秒目に・どう鳴っているかを具体的に
+- 字数を埋めるために書き足さない。言うことが無い欄は短くてよい
 - 「音の事実」と「時間の流れ」には実際に聞こえたことだけを書く。聞き取れないことは書かない。音程は分かる範囲で(音名・音域・調の気配)
-- 「見立て」は大胆に。何に聞こえるか・どんな場面の音に聞こえるかを、互いに違う方向で
+- 見立ては頭の中で候補をいくつか考え、この音にしか当てはまらない、最も鋭い1つだけを書く(他の候補は書かない)。無難な見立て・誰でも思いつく見立ては選ばない
 - 曲名・アーティスト名・人物を特定しない。歌詞や言葉が聞こえても書き写さない
-- 全体で2500〜3500字程度。各欄の分量の目安に従う
+- 全体で1000〜1500字が目安
 
 出力:
 - title: この音の呼び名(20字以内)
 - summary: ひと言でいうと(60字以内)
-- mitate: 見立てを6〜8個(それぞれ40〜80字)
-- facts: 音の事実(500〜700字): 音色と倍音、立ち上がりと減衰、音域と音程、音量の変化、リズム・拍感・テンポ感、空間(残響・距離・広がり)、ノイズや質感、層の重なり
-- timeline: 時間の流れ(何秒目に何が起きるか)を5〜12個。at は秒
-- texture: 質感の語彙を20〜30語(名詞・動詞・オノマトペ・形容詞を混ぜて)
-- scene: 情景・物語(300〜500字): この音が流れる場所・時間・出来事
-- emotion: 感情・温度・身体感覚(200〜300字)
-- aesthetic: 美学的な連想(200〜300字): 色・光・素材・形・時代・文化の気配。音の言葉に置き換えず、視覚・雰囲気の言葉のまま
-- music: 作曲での使い方(300〜500字): MIDIやビートに翻訳するなら、テンポの目安・拍子・音階/旋法・和声の色・リズムの型・音域・層の役割。この音と組み合わせるなら何が合うか
-- avoid: この音に合わないもの(100字以内)`;
+- mitate: 厳選した見立て1つ(40〜100字)。何に聞こえるか・どんな場面の音か
+- why: その見立てを選んだ理由。音のどの事実がそう聞かせるか(80字以内)
+- devices: その見立てを音楽で再現する具体的な仕掛けを2〜3個(それぞれ60字以内。音域・音価・リズムの置き方・間・和声・強弱など、MIDIにそのまま直せる言葉で)
+- facts: 音の事実(250〜450字): 音色と倍音、立ち上がりと減衰、音域と音程、音量の変化、リズム・拍感、空間(残響・距離)、ノイズや質感、層の重なり
+- timeline: 時間の流れ(何秒目に何が起きるか)を3〜8個。at は秒
+- texture: 質感の語彙を8〜12語(この音にしか当てはまらないものを)
+- scene: 情景(100〜200字): 見立てと同じ方向で
+- emotion: 感情・温度・身体感覚(60〜120字)
+- aesthetic: 美学的な連想(80〜160字): 色・光・素材・形。音の言葉に置き換えず、視覚・雰囲気の言葉のまま
+- music: 作曲での使い方(150〜300字): テンポの目安・拍子・音階/旋法・和声の色・リズムの型・音域・層の役割
+- avoid: この音に合わないもの(80字以内)`;
   }
 
   /** Geminiの答え → 語彙カード(生んだカードの右隣に置き、線を結ぶ) */
@@ -2072,14 +2095,16 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       type: 'vocab',
       title: str(raw.title, 40) || '語彙',
       summary: str(raw.summary, 120),
-      mitate: (Array.isArray(raw.mitate) ? raw.mitate : []).map((x) => str(x, 160)).filter(Boolean).slice(0, 10),
-      facts: str(raw.facts, 1200),
-      timeline: (Array.isArray(raw.timeline) ? raw.timeline : []).filter((t) => t && Number.isFinite(Number(t.at))).map((t) => ({ at: Math.max(0, Number(t.at)), text: str(t.text, 120) })).slice(0, 16),
-      texture: (Array.isArray(raw.texture) ? raw.texture : []).map((x) => str(x, 20)).filter(Boolean).slice(0, 40),
-      scene: str(raw.scene, 900),
-      emotion: str(raw.emotion, 600),
-      aesthetic: str(raw.aesthetic, 600),
-      music: str(raw.music, 900),
+      mitate: str(Array.isArray(raw.mitate) ? raw.mitate[0] : raw.mitate, 160),
+      why: str(raw.why, 140),
+      devices: (Array.isArray(raw.devices) ? raw.devices : []).map((x) => str(x, 100)).filter(Boolean).slice(0, 3),
+      facts: str(raw.facts, 700),
+      timeline: (Array.isArray(raw.timeline) ? raw.timeline : []).filter((t) => t && Number.isFinite(Number(t.at))).map((t) => ({ at: Math.max(0, Number(t.at)), text: str(t.text, 100) })).slice(0, 10),
+      texture: (Array.isArray(raw.texture) ? raw.texture : []).map((x) => str(x, 20)).filter(Boolean).slice(0, 14),
+      scene: str(raw.scene, 400),
+      emotion: str(raw.emotion, 240),
+      aesthetic: str(raw.aesthetic, 300),
+      music: str(raw.music, 500),
       avoid: str(raw.avoid, 200),
       source,
       x: near ? near.x + (near.width || SOUND_W) + 60 : newCardSpawnPos().x,
@@ -2087,7 +2112,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       width: VOCAB_W,
       createdAt: new Date().toISOString(),
     };
-    if (!card.facts && !card.mitate.length) throw new Error('語彙が返ってきませんでした');
+    if (!card.facts && !card.mitate) throw new Error('語彙が返ってきませんでした');
     data().cards.push(card);
     const el = renderCard(card);
     if (fromId) linkCards(fromId, card.id);
@@ -2220,10 +2245,10 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   function buildVocab(v, el) {
     el.classList.add('star-card--pm-vocab', 'star-card--pm-src');
     const sec = (key, label) => {
-      const val = v[key];
+      const val = key === 'mitateList' ? (Array.isArray(v.mitate) && v.mitate.length > 1 ? v.mitate.slice(1) : null) : v[key];
       if (!val || (Array.isArray(val) && !val.length)) return '';
       let body;
-      if (key === 'mitate') body = `<ul>${val.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+      if (key === 'mitateList') body = `<ul>${val.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
       else if (key === 'timeline') body = `<ul class="pmv-time">${val.map((t) => `<li><b>${Number(t.at).toFixed(1)}s</b>${escapeHtml(t.text)}</li>`).join('')}</ul>`;
       else if (key === 'texture') body = `<div class="pmv-tags">${val.map((x) => `<span>${escapeHtml(x)}</span>`).join('')}</div>`;
       else body = `<p>${escapeHtml(val)}</p>`;
@@ -2234,6 +2259,9 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       `<div class="pmv-head"><span class="pmv-kind">語彙</span><span class="pmv-title">${escapeHtml(v.title)}</span></div>` +
       `<div class="pmv-src">${src.kind === 'area' ? `エリア「${escapeHtml(src.name || '')}」の音` : `「${escapeHtml(src.name || '')}」`}から · ${src.seconds || ''}秒を聴いて</div>` +
       `<div class="pmv-summary">${escapeHtml(v.summary)}</div>` +
+      (mitateOne(v) ? `<div class="pmv-core"><div class="pmv-core-label">見立て</div><div class="pmv-mitate">${escapeHtml(mitateOne(v))}</div>` +
+        (v.why ? `<div class="pmv-why">${escapeHtml(v.why)}</div>` : '') +
+        ((v.devices || []).length ? `<ul class="pmv-devices">${v.devices.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>` : '') + '</div>' : '') +
       `<div class="pmv-body no-card-drag">${VOCAB_SECTIONS.map(([k, l]) => sec(k, l)).join('')}</div>`;
     // 本文はスクロールを優先(キャンバスのズームにしない)
     el.querySelector('.pmv-body').addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
@@ -2354,7 +2382,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     };
     const common = card.type === 'image'
       ? { images: [card], storyDefault: card.impression || '' }
-      : { contextText: vocabText(card), storyDefault: [card.summary, card.scene].filter(Boolean).join(' ').slice(0, 300) };
+      : { contextText: vocabBrief(card), storyDefault: mitateOne(card).slice(0, 300) };
     if (kind === 'beat') M.createBeat({ ...common, onCard });
     else M.createSketch({ ...common, onCard });
   }
@@ -2426,5 +2454,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

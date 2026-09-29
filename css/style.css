@@ -2143,3 +2143,10 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .pmi-name { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pmi-name span { font-weight: 400; font-size: 10px; color: var(--pm-faint); }
 .pmi-imp { font-size: 11px; line-height: 1.6; color: var(--pm-muted); }
+/* 語彙カードの芯(厳選した見立て1つ・理由・仕掛け)。本文の上に目立たせる */
+.pmv-core { padding: 9px 10px; border-radius: 8px; background: rgba(127, 166, 201, 0.1); border-left: 3px solid #7fa6c9; }
+.pmv-core-label { font-size: 9.5px; letter-spacing: 0.16em; color: #7fa6c9; margin-bottom: 3px; }
+.pmv-mitate { font-family: var(--serif); font-size: 14px; line-height: 1.6; color: #eef4fa; }
+.pmv-why { margin-top: 4px; font-size: 10.5px; line-height: 1.6; color: var(--pm-muted); }
+.pmv-devices { margin: 6px 0 0; padding-left: 1.1em; }
+.pmv-devices li { font-size: 11px; line-height: 1.6; color: #c6d8ea; }
