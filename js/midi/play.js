@@ -5,6 +5,9 @@
 //   - 試聴の音は必ず previewMaster() のゲイン(全カード共通の音量 state.prefs.previewVolume)を通る。WAVは通さない
 //   - 編集画面の再生位置の表示のため、予約した時刻と拍↔秒の変換を返す
 // ファイル名はフラット表記(C#4.mp3 は404、Db4.mp3 が正しい)。一部のGM名(例: nylon_string_guitar)は無く、acoustic_guitar_nylon。
+//   - 合成の音色(2026-09-29、ユーザー要望「プレミックスの確認用に作った音がけっこう高品質。MIDIをこの音に」): ベル(減衰するサイン波)・
+//     パッド(ゆっくり立ち上がる、わずかにずらした2つのサイン波)・ドローン(ゆっくり揺れるサイン波)と、パートごとに振り分ける
+//     「合成アンサンブル」(旋律=ベル、和音=パッド、ベース=ドローン、ドラム=簡易の打楽器)。読み込みが要らない(synth)
 
 (function () {
   const M = (window.LyraMidi = window.LyraMidi || {});
@@ -17,8 +20,14 @@
     { id: 'guitar', label: 'ナイロンギター', gm: 'acoustic_guitar_nylon' },
     { id: 'strings', label: 'ストリングス', gm: 'string_ensemble_1' },
     { id: 'pad', label: 'シンセパッド', gm: 'pad_2_warm' },
+    { id: 'lyra_mix', label: '合成アンサンブル(旋律ベル・和音パッド・ベースドローン)', gm: null, synth: 'mix' },
+    { id: 'lyra_bell', label: '合成ベル', gm: null, synth: 'bell' },
+    { id: 'lyra_pad', label: '合成パッド', gm: null, synth: 'pad' },
+    { id: 'lyra_drone', label: '合成ドローン', gm: null, synth: 'drone' },
     { id: 'synth', label: '簡易シンセ(読み込みなし)', gm: null },
   ];
+  // 合成アンサンブルの振り分け(役割 → 音色)
+  const MIX_KIND = { melody: 'bell', counter: 'bell', figure: 'bell', cantus: 'bell', harmony: 'pad', texture: 'pad', ground: 'pad', bass: 'drone' };
   const DEFAULT_VOICE = 'flute';
   const SAMPLE_BASE = 'https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/FluidR3_GM/';
   // 役割ごとの音量(和音は数が多いぶん小さく、主旋律を前に)
@@ -140,7 +149,7 @@
       if (needsLoad) setStatus(useSamples ? `音色(${voice.label})を読み込みました` : `音色(${voice.label})を読み込めなかったので、簡易シンセで鳴らします`, { important: !useSamples });
     }
     const ctx = typeof ctxOrMake === 'function' ? ctxOrMake() : ctxOrMake;
-    return scheduleSynth(ctx, card, typeof startAt === 'function' ? startAt(ctx) : startAt, useSamples ? voice : null);
+    return scheduleSynth(ctx, card, typeof startAt === 'function' ? startAt(ctx) : startAt, useSamples || voice.synth ? voice : null);
   }
 
   /**
@@ -180,7 +189,12 @@
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, t0);
       const gain = ROLE_GAIN[role] || 0.7;
-      const sample = voice ? cachedSample(voice, n.pitch) : null;
+      if (voice && voice.synth) {
+        const kind = voice.synth === 'mix' ? MIX_KIND[role] || 'bell' : voice.synth;
+        nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
+        return;
+      }
+      const sample = voice && voice.gm ? cachedSample(voice, n.pitch) : null;
       if (sample) {
         const src = ctx.createBufferSource();
         src.buffer = sample;
@@ -212,7 +226,7 @@
       nodes.push(osc);
     });
     const end = m.notes.reduce((e, n) => Math.max(e, n.start + n.duration), 0);
-    const duration = toSec(Math.max(end, 0.5)) + 0.6;
+    const duration = toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : 0.6); // 合成の音色は余韻(ベル・パッドの消え際)が長い
     const toBeat = secondsToBeat(m);
     return {
       duration,
@@ -230,6 +244,82 @@
         out.disconnect();
       },
     };
+  }
+
+  /**
+   * 合成の音色で1音を鳴らす。env は呼び出し側で作った音量の包絡(0から始まる)。dest へつなぐ。
+   *   bell: サイン波+かすかな3倍音。すぐ立ち上がり、音を離しても余韻が指数的に消える
+   *   pad: 上下に6セントずらした2つのサイン波+オクターブ上を少し。ゆっくり立ち上がり、ゆっくり消える
+   *   drone: サイン波の高さを0.5Hzでゆっくり揺らし(±1.4%)、音量も0.32Hzで揺らす。やや遅い立ち上がり
+   */
+  function synthNote(ctx, kind, f, t0, t1, level, env, dest) {
+    const nodes = [];
+    const len = Math.max(0.05, t1 - t0);
+    const osc = (type, freq, amp) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.value = amp;
+      o.connect(g);
+      g.connect(env);
+      nodes.push(o);
+      return o;
+    };
+    let stopAt;
+    if (kind === 'pad') {
+      const attack = Math.min(0.6, len * 0.4) + 0.02;
+      const peak = level * 0.55;
+      osc('sine', f * Math.pow(2, -6 / 1200), 0.5);
+      osc('sine', f * Math.pow(2, 6 / 1200), 0.5);
+      osc('sine', f * 2, 0.12);
+      env.gain.linearRampToValueAtTime(peak, t0 + attack);
+      env.gain.setValueAtTime(peak, Math.max(t0 + attack, t1));
+      env.gain.linearRampToValueAtTime(0, Math.max(t0 + attack, t1) + 0.8);
+      stopAt = Math.max(t0 + attack, t1) + 0.85;
+    } else if (kind === 'drone') {
+      const attack = Math.min(0.3, len * 0.3) + 0.02;
+      const peak = level * 0.6;
+      // 音量の揺れは包絡とは別の段で(包絡が0になった後に揺れが残らないように)
+      const tremStage = ctx.createGain();
+      tremStage.gain.value = 0.65;
+      tremStage.connect(env);
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      o.connect(tremStage);
+      const vib = ctx.createOscillator();
+      vib.frequency.value = 0.5;
+      const depth = ctx.createGain();
+      depth.gain.value = f * 0.0136;
+      vib.connect(depth);
+      depth.connect(o.frequency);
+      const trem = ctx.createOscillator();
+      trem.frequency.value = 0.32;
+      const tremDepth = ctx.createGain();
+      tremDepth.gain.value = 0.35;
+      trem.connect(tremDepth);
+      tremDepth.connect(tremStage.gain);
+      nodes.push(o, vib, trem);
+      env.gain.linearRampToValueAtTime(peak, t0 + attack);
+      env.gain.setValueAtTime(peak, Math.max(t0 + attack, t1));
+      env.gain.linearRampToValueAtTime(0, Math.max(t0 + attack, t1) + 0.6);
+      stopAt = Math.max(t0 + attack, t1) + 0.65;
+    } else {
+      const peak = level * 0.75;
+      osc('sine', f, 1);
+      osc('sine', f * 3, 0.06);
+      env.gain.linearRampToValueAtTime(peak, t0 + 0.004);
+      env.gain.setTargetAtTime(0, t0 + 0.004, 0.66); // 余韻(約1.5秒で消える)
+      env.gain.setTargetAtTime(0, Math.max(t0 + 0.01, t1), 0.25); // 音を離したら少し早く消す
+      stopAt = Math.max(t0 + 0.01, t1) + 1.4;
+    }
+    env.connect(dest);
+    nodes.forEach((node) => {
+      node.start(t0);
+      node.stop(stopAt);
+    });
+    return nodes;
   }
 
   /** GMドラムの音番号 → 簡単な合成音(どの楽器がどこで鳴っているかを聞き分けるためのもの) */
@@ -377,15 +467,21 @@
     return new Blob([view], { type: 'audio/wav' });
   }
 
+  /** カードの音を AudioBuffer に書き出す(WAVとプレミックスへの持ち込みで共通)。voiceId を渡すとその音色で */
+  async function renderBuffer(card, voiceId) {
+    const target = voiceId ? { ...card, voice: voiceId } : card;
+    const rate = 44100;
+    const probe = scheduleSynth(new OfflineAudioContext(1, 1, rate), target, 0, voiceOf(target).synth ? voiceOf(target) : null);
+    const ctx = new OfflineAudioContext(2, Math.ceil(probe.duration * rate), rate);
+    await scheduleVoiced(ctx, target, 0);
+    return ctx.startRendering();
+  }
+
   async function exportWav(card) {
     setStatus('WAVを書き出しています…', { busy: true });
     try {
-      const rate = 44100;
-      const probe = scheduleSynth(new OfflineAudioContext(1, 1, rate), card, 0);
-      const ctx = new OfflineAudioContext(2, Math.ceil(probe.duration * rate), rate);
-      await scheduleVoiced(ctx, card, 0);
+      const rendered = await renderBuffer(card);
       setStatus('WAVを書き出しています…', { busy: true });
-      const rendered = await ctx.startRendering();
       const filename = card.name.replace(/\.mid$/i, '') + '.wav';
       M.downloadBlob(encodeWav(rendered), filename);
       setStatus(`${filename}を書き出しました`);
@@ -397,6 +493,6 @@
 
   Object.assign(M, {
     VOICES, DEFAULT_VOICE, voiceOf, roleOf, prepareVoice, scheduleVoiced, beatToSeconds,
-    previewVolume, setPreviewVolume, stopAll, togglePlay, isPlaying, encodeWav, exportWav,
+    previewVolume, setPreviewVolume, stopAll, togglePlay, isPlaying, encodeWav, exportWav, renderBuffer,
   });
 })();

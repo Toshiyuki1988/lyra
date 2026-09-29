@@ -2087,3 +2087,6 @@ body[data-screen="premix"] .asterism-line--manual.pm-line-hot {
   content: ""; position: absolute; left: -3px; top: 28%; height: 44%; width: 2px; border-radius: 1px;
   background: var(--pm-amber); box-shadow: 0 0 6px rgba(242, 178, 76, 0.6);
 }
+/* プレミックスの Shift+A(アンサンブルのMIDIを持ち込む)の一覧 */
+.pm-midi-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+.pm-midi-name small { font-size: 10.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

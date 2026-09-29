@@ -46,11 +46,17 @@
 //     ベルトごとに流れ(歩き手)を1つ持ち、**複数のベルトが同時に鳴る**。カードの▶/■はそのカードのベルトだけを鳴らす/止める。
 //     見出しの▶は全部のベルトを、それぞれの頭(線が入ってこないカード。輪なら最後に触ったカードか左上のカード)から鳴らし、■で全部止める。
 //     ベルトをつないで1本にした時は、流れを1つに減らす
+//   - **Shift+A でアンサンブルのMIDIを持ち込む(同日、ユーザー要望)**: 全舞台のMIDIカードの一覧から選び、音色(既定は合成アンサンブル=
+//     旋律ベル・和音パッド・ベースドローン。js/midi/play.js)を選ぶと、アクティブなエリアにオーディオカードとして置く(エリアが無ければ
+//     フォルダの無い「MIDI」エリアを作る)。**音はDriveにもファイルにも残さない**: カードは MIDIカードへの参照(midiRef)と音色(midiVoice)
+//     だけを持ち、開くたびにその場で書き出し直す(アンサンブルでMIDIを直せば、開き直した時に新しい音になる)。元のMIDIカードが消えたら
+//     「見つかりません」。フォルダのファイルとしては数えない(1フォルダ10個・読み直しの対象外)。エリアを外すと、中のMIDIのカードも外れる
 //
 // データ: state.premix = { activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
-//   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, x, y, width, height, createdAt },
+//   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, virtual?(フォルダの無いエリア), x, y, width, height, createdAt },
 //   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
-//     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, x, y, width, createdAt } ] }
+//     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiVoice?,
+//     x, y, width, createdAt } ] }
 
 (function () {
   const MAX_SOUNDS = 10;
@@ -87,7 +93,8 @@
   }
   const folders = () => data().cards.filter((c) => c.type === 'folder');
   const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
-  const sourceOf = (sound) => sound.sourceFolderId || sound.folderId;
+  const isMidi = (sound) => Boolean(sound && sound.midiRef); // アンサンブルから持ち込んだMIDI(ファイルは無い)
+  const sourceOf = (sound) => (isMidi(sound) ? null : sound.sourceFolderId || sound.folderId);
   const soundsFrom = (folderId) => data().cards.filter((c) => c.type === 'sound' && sourceOf(c) === folderId); // そのフォルダのファイルのカード
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
   const folderName = (id) => (data().cards.find((c) => c.id === id) || {}).name || '';
@@ -207,8 +214,9 @@
 
     afterRender() {
       folders().forEach((f) => {
-        if (!folderRt.get(f.id) || !folderRt.get(f.id).handle) loadFolder(f, { interactive: false });
+        if (!f.virtual && (!folderRt.get(f.id) || !folderRt.get(f.id).handle)) loadFolder(f, { interactive: false });
       });
+      data().cards.filter((c) => isMidi(c)).forEach((c) => decodeSound(c)); // 持ち込んだMIDIは開くたびに音にし直す
       renderActive();
       startTicker();
     },
@@ -296,11 +304,13 @@
     const cards = soundsOf(f.id).length;
     const tl = isTimeline(f);
     const chain = isChain(f);
-    const guests = soundsOf(f.id).filter((x) => sourceOf(x) !== f.id).length;
+    const guests = soundsOf(f.id).filter((x) => !isMidi(x) && sourceOf(x) !== f.id).length;
+    const midis = soundsOf(f.id).filter(isMidi).length;
     const views = new Set(soundsOf(f.id).map((x) => (isSphere(x) ? 'sphere' : 'card')));
     const viewOn = views.size === 1 ? [...views][0] : '';
     let msg = '';
-    if (rt.status === 'nohandle') msg = `この端末ではフォルダを覚えていません。<button type="button" class="btn-small" data-f="pick">フォルダを選び直す</button>`;
+    if (f.virtual) msg = '';
+    else if (rt.status === 'nohandle') msg = `この端末ではフォルダを覚えていません。<button type="button" class="btn-small" data-f="pick">フォルダを選び直す</button>`;
     else if (rt.status === 'needperm') msg = `フォルダを読むには許可が要ります。<button type="button" class="btn-small btn-small--accent" data-f="perm">アクセスを許可</button>`;
     else if (rt.status === 'loading') msg = '読み込んでいます…';
     else if (rt.status === 'error') msg = `読み込めませんでした: ${escapeHtml(rt.error || '')}`;
@@ -311,8 +321,8 @@
       `<button type="button" class="fold-mode-btn${viewOn === 'card' ? ' fold-mode-btn--on' : ''}" data-f="view-card" title="このエリアのカードを全部カードの見た目に(▭)">▭</button>` +
       `<button type="button" class="fold-mode-btn${viewOn === 'sphere' ? ' fold-mode-btn--on' : ''}" data-f="view-sphere" title="このエリアのカードを全部スフィア(小さな球)に(◯)">◯</button></span>` +
       (tl ? `<span class="tl-time"></span>` : '') +
-      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}</span>` +
-      `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す">読み直す</button>` +
+      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}${midis ? `(MIDI ${midis})` : ''}</span>` +
+      (f.virtual ? '' : `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す">読み直す</button>`) +
       `</div><div class="fold-row">` +
       // ▶再生/■ は左端(タイムラインの0秒の側)に置く(2026-09-29、ユーザー要望)
       `<span class="fold-transport-group">` +
@@ -446,6 +456,7 @@
   async function loadFolder(f, { interactive, handle } = {}) {
     const rt = folderRt.get(f.id) || {};
     folderRt.set(f.id, rt);
+    if (f.virtual) return; // フォルダの無いエリア(MIDIの持ち込み用)
     try {
       rt.handle = handle || rt.handle || (await getHandle(f.id));
       if (!rt.handle) {
@@ -502,7 +513,7 @@
     }
   }
 
-  function placeSound(f, fileName, slot) {
+  function placeSound(f, fileName, slot, extra) {
     const cols = Math.max(1, Math.floor(((f.width || 700) - PAD) / SLOT_W));
     const s = {
       id: newId(),
@@ -516,6 +527,7 @@
       y: (f.y || 0) + HEAD_H + Math.floor(slot / cols) * SLOT_H,
       width: SOUND_W,
       createdAt: new Date().toISOString(),
+      ...(extra || {}),
     };
     data().cards.push(s);
     renderCard(s);
@@ -525,14 +537,15 @@
 
   /** フォルダを外す時に一緒に外すカード(そのフォルダのファイルのカード。どこのエリアにいても) */
   function removableWith(f) {
-    return soundsFrom(f.id);
+    return [...soundsFrom(f.id), ...soundsOf(f.id).filter(isMidi)];
   }
 
   async function confirmRemoveFolder(f) {
     const choice = await showChoiceDialog({
       title: `フォルダ「${f.name}」を外しますか?`,
       message: `このフォルダカードと、中のオーディオカード${removableWith(f).length}枚を外します` +
-        '(他のエリアへ移した、このフォルダのファイルのカードも外れます。このエリアに入れた他のフォルダのカードは、元のフォルダへ戻ります)。PCのファイルはそのまま残ります。',
+        '(他のエリアへ移した、このフォルダのファイルのカードも外れます。このエリアに入れた他のフォルダのカードは、元のフォルダへ戻ります。' +
+        '持ち込んだMIDIのカードも外れます)。PCのファイルとアンサンブルのMIDIはそのまま残ります。',
       options: [
         { label: 'やめる', value: 'cancel', secondary: true },
         { label: '外す', value: 'remove', danger: true },
@@ -546,7 +559,7 @@
     });
     // このエリアに入れていた他のフォルダのカードは、出どころのフォルダの枠へ戻す
     soundsOf(f.id).forEach((s) => {
-      const home = data().cards.find((c) => c.id === sourceOf(s));
+      const home = data().cards.find((c) => c.id === sourceOf(s) && c.id !== f.id);
       if (!home) return;
       stop(s);
       s.folderId = home.id;
@@ -706,7 +719,9 @@
     const loop = el.querySelector('.snd-loop');
     if (loop) loop.classList.toggle('snd-loop--on', Boolean(s.loop));
     const from = el.querySelector('.snd-from');
-    if (from) from.textContent = !f ? ' · 枠の外(鳴りません)' : sourceOf(s) !== s.folderId ? ` ← ${folderName(sourceOf(s))}` : '';
+    if (from) {
+      from.textContent = !f ? ' · 枠の外(鳴りません)' : isMidi(s) ? ` · MIDI(${midiVoiceLabel(s)})` : sourceOf(s) !== s.folderId ? ` ← ${folderName(sourceOf(s))}` : '';
+    }
     const c = clipOf(s, rt);
     const time = el.querySelector('.snd-time');
     if (time) {
@@ -716,7 +731,7 @@
     const unclip = el.querySelector('.snd-unclip');
     if (unclip) unclip.hidden = !hasClip(s);
     const msg = el.querySelector('.snd-msg');
-    if (msg) msg.textContent = rt.missing ? 'フォルダに見つかりません' : rt.loading ? '読み込み中…' : '';
+    if (msg) msg.textContent = rt.missing ? (isMidi(s) ? '元のMIDIが見つかりません' : 'フォルダに見つかりません') : rt.loading ? (isMidi(s) ? '音にしています…' : '読み込み中…') : '';
     if (isSphere(s)) {
       el.title = [s.fileName, s.memo, rt.buffer ? `${c.len.toFixed(2)}秒` : '', !f ? '枠の外(鳴りません)' : ''].filter(Boolean).join('\n');
       drawSphere(s, el);
@@ -893,6 +908,7 @@
   }
 
   async function decodeSound(s) {
+    if (isMidi(s)) return renderMidiSound(s);
     const rt = soundRt.get(s.id);
     if (!rt || rt.buffer || rt.missing || !rt.fileHandle || rt.loading) return;
     rt.loading = true;
@@ -901,14 +917,7 @@
       const file = await rt.fileHandle.getFile();
       const buf = await audio().decodeAudioData(await file.arrayBuffer());
       rt.buffer = buf;
-      const ch = buf.getChannelData(0);
-      const step = Math.max(1, Math.floor(ch.length / PEAKS));
-      rt.peaks = [];
-      for (let i = 0; i < PEAKS; i++) {
-        let peak = 0;
-        for (let j = i * step, end = Math.min(ch.length, (i + 1) * step); j < end; j += 8) peak = Math.max(peak, Math.abs(ch[j]));
-        rt.peaks.push(peak);
-      }
+      rt.peaks = peaksOf(buf);
     } catch (err) {
       console.error(err);
       rt.error = err.message;
@@ -916,6 +925,178 @@
     } finally {
       rt.loading = false;
       refreshSound(s);
+    }
+  }
+
+  function peaksOf(buf) {
+    const ch = buf.getChannelData(0);
+    const step = Math.max(1, Math.floor(ch.length / PEAKS));
+    const peaks = [];
+    for (let i = 0; i < PEAKS; i++) {
+      let peak = 0;
+      for (let j = i * step, end = Math.min(ch.length, (i + 1) * step); j < end; j += 8) peak = Math.max(peak, Math.abs(ch[j]));
+      peaks.push(peak);
+    }
+    return peaks;
+  }
+
+  /* ---------------- アンサンブルのMIDIを持ち込む(Shift+A) ---------------- */
+
+  const DEFAULT_MIDI_VOICE = 'lyra_mix';
+
+  /** 全舞台のMIDIカード({stageId, stageName, card}) */
+  function ensembleMidis() {
+    const list = [];
+    Object.entries(state.ensembles || {}).forEach(([stageId, ens]) => {
+      const stageSoul = (state.souls || []).find((x) => x.id === stageId);
+      (ens.cards || []).filter((c) => c.type === 'midi' && c.midi && Array.isArray(c.midi.notes) && c.midi.notes.length).forEach((card) => {
+        list.push({ stageId, stageName: stageSoul ? stageSoul.name : '(舞台)', card });
+      });
+    });
+    return list;
+  }
+
+  function findMidiCard(ref) {
+    if (!ref) return null;
+    const ens = (state.ensembles || {})[ref.stageId];
+    const card = ens && (ens.cards || []).find((c) => c.id === ref.cardId && c.type === 'midi');
+    return card || ensembleMidis().map((x) => x.card).find((c) => c.id === ref.cardId) || null; // 舞台をまたいで動いていても探す
+  }
+
+  function midiVoiceLabel(s) {
+    const M = window.LyraMidi;
+    const v = M && M.VOICES.find((x) => x.id === s.midiVoice);
+    return v ? v.label.replace(/\(.*\)$/, '') : '合成アンサンブル';
+  }
+
+  /** 持ち込んだMIDIを、選んだ音色で AudioBuffer に書き出す(ファイルにもDriveにも残さない) */
+  async function renderMidiSound(s) {
+    const rt = soundRt.get(s.id) || {};
+    soundRt.set(s.id, rt);
+    if (rt.buffer || rt.loading) return;
+    const card = findMidiCard(s.midiRef);
+    if (!card || !window.LyraMidi) {
+      rt.missing = true;
+      refreshSound(s);
+      return;
+    }
+    rt.missing = false;
+    rt.loading = true;
+    refreshSound(s);
+    try {
+      rt.buffer = await window.LyraMidi.renderBuffer(card, s.midiVoice || DEFAULT_MIDI_VOICE);
+      rt.peaks = peaksOf(rt.buffer);
+      rt.clipPeaks = null;
+    } catch (err) {
+      console.error(err);
+      rt.missing = true;
+      setStatus(`MIDI「${card.name}」を音にできませんでした: ${err.message}`, { important: true });
+    } finally {
+      rt.loading = false;
+      refreshSound(s);
+    }
+  }
+
+  function openMidiPicker() {
+    const list = ensembleMidis();
+    const groups = [];
+    list.forEach((x) => {
+      let g = groups.find((y) => y.stageId === x.stageId);
+      if (!g) groups.push((g = { stageId: x.stageId, stageName: x.stageName, items: [] }));
+      g.items.push(x);
+    });
+    const M = window.LyraMidi;
+    const stars = (card) => {
+      const r = M && M.ratingOf ? M.ratingOf(card) : 0;
+      return r ? '★'.repeat(r) : '';
+    };
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible';
+    overlay.innerHTML =
+      `<div class="modal soul-picker"><h2>アンサンブルのMIDIを持ち込む</h2>` +
+      `<p class="modal-desc">選んだMIDIを音にして、アクティブなエリアにオーディオカードとして置きます(Shift+A)。音はこの画面を開くたびに作り直し、保存しません</p>` +
+      `<div class="soul-picker-list">${groups.length ? groups.map((g) => `<div class="soul-picker-cat">アンサンブル in ${escapeHtml(g.stageName)}</div>` +
+        g.items.map((x) => `<button type="button" class="soul-picker-item pm-midi-item" data-stage="${x.stageId}" data-card="${x.card.id}">` +
+          `<span class="pm-midi-name">${escapeHtml(x.card.name || 'MIDI')}${x.card.concept ? `<small>${escapeHtml(x.card.concept)}</small>` : ''}</span>` +
+          `<span class="soul-picker-count">${stars(x.card)}</span></button>`).join('')).join('')
+        : '<div class="panel-empty">アンサンブルにMIDIカードがまだありません</div>'}</div>` +
+      `<div class="modal-actions"><button type="button" class="secondary" data-close>閉じる</button></div></div>`;
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        close();
+      }
+    };
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    overlay.querySelectorAll('[data-card]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        close();
+        const hit = list.find((x) => x.card.id === btn.dataset.card);
+        if (hit) chooseVoiceAndPlace(hit);
+      });
+    });
+    attachBackgroundTapToClose(overlay, close);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    const first = overlay.querySelector('.soul-picker-item');
+    if (first) first.focus();
+  }
+
+  async function chooseVoiceAndPlace(hit) {
+    const M = window.LyraMidi;
+    const own = M.voiceOf(hit.card);
+    const options = [
+      { label: '合成アンサンブル(旋律ベル・和音パッド・ベースドローン)', value: 'lyra_mix' },
+      { label: '合成ベル', value: 'lyra_bell' },
+      { label: '合成パッド', value: 'lyra_pad' },
+      { label: '合成ドローン', value: 'lyra_drone' },
+    ];
+    if (!own.synth) options.push({ label: `カードの音色(${own.label})`, value: own.id });
+    const voice = await showChoiceDialog({
+      title: `「${hit.card.name}」をどの音で持ち込みますか?`,
+      message: '選んだ音色でMIDIを音にして置きます。ドラムのパートは簡易の打楽器の音になります。',
+      options,
+    });
+    if (!voice) return;
+    placeMidiSound(hit, voice);
+  }
+
+  /** アクティブなエリア(無ければフォルダの無い「MIDI」エリアを作って)に置く */
+  function placeMidiSound(hit, voice) {
+    let f = folders().find((x) => x.id === data().activeId) || folders()[0];
+    if (!f) {
+      const pos = newCardSpawnPos(40);
+      const w = PAD + 3 * SLOT_W;
+      const h = HEAD_H + 2 * SLOT_H;
+      f = { id: newId(), type: 'folder', name: 'MIDI', virtual: true, x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h, createdAt: new Date().toISOString() };
+      data().cards.unshift(f);
+      folderRt.set(f.id, { status: 'ready' });
+      const empty = els.overlay.querySelector('.premix-empty');
+      if (empty) empty.remove();
+      els.content.insertBefore(renderCard(f), els.content.querySelector('.star-card--sound') || null);
+    }
+    const s = placeSound(f, hit.card.name || 'MIDI', soundsOf(f.id).length, { midiRef: { stageId: hit.stageId, cardId: hit.card.id }, midiVoice: voice, loop: true });
+    soundRt.set(s.id, {});
+    const el = cardElById(s.id);
+    if (el) {
+      clampIntoFolder(s, el);
+      snapToGrid(s, el);
+    }
+    lastSoundId = s.id;
+    setActive(f.id);
+    refreshFolder(f);
+    scheduleAutoSave();
+    renderMidiSound(s).then(() => {
+      const rt = soundRt.get(s.id) || {};
+      if (rt.buffer) setStatus(`MIDI「${hit.card.name}」を${midiVoiceLabel(s)}で音にして、「${f.name}」に置きました(${rt.buffer.duration.toFixed(1)}秒)`);
+    });
+    if (el) {
+      const c = getCardCenterFromEl(el);
+      animateViewportTo(c.x, c.y);
     }
   }
 
@@ -1047,7 +1228,7 @@
     const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
     const prev = folderOf(s);
     if (target && target.id !== s.folderId) {
-      s.sourceFolderId = sourceOf(s);
+      if (!isMidi(s)) s.sourceFolderId = sourceOf(s);
       s.folderId = target.id;
       delete s.tlStart; // 移った先のタイムラインでは、置いた位置から時刻を決め直す
       if (s.sourceFolderId === s.folderId) delete s.sourceFolderId; // 元のフォルダへ帰った
@@ -1057,7 +1238,7 @@
       [prev, target].forEach((f) => f && refreshFolder(f));
       setStatus(`「${s.fileName}」を「${target.name}」のエリアへ${prev ? '移しました' : '戻しました'}`);
     } else if (!target && s.folderId) {
-      s.sourceFolderId = sourceOf(s);
+      if (!isMidi(s)) s.sourceFolderId = sourceOf(s);
       s.folderId = null;
       delete s.tlStart;
       stop(s);
@@ -1746,10 +1927,17 @@
   /* ---------------- Shift+D で複製 ---------------- */
 
   function onKeydown(event) {
-    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || (event.key !== 'D' && event.key !== 'd')) return;
+    if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'd' && key !== 'a') return;
     const t = event.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     if (document.querySelector('.modal-overlay.visible:not(#settings-modal)')) return;
+    if (key === 'a') {
+      event.preventDefault();
+      openMidiPicker();
+      return;
+    }
     const guide = getEditGuideCard();
     const guideCard = guide && getCardById(guide.dataset.id);
     const s = guideCard && guideCard.type === 'sound' ? guideCard : data().cards.find((c) => c.id === lastSoundId && c.type === 'sound');
@@ -1794,5 +1982,5 @@
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis } };
 })();
