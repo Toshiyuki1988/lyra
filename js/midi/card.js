@@ -110,12 +110,13 @@
       d && d.arc && d.arc.story ? `<div class="midi-about-sub">時間の設計図 · ${escapeHtml(d.arc.form)}</div><div class="midi-about-text">${escapeHtml(d.arc.story)}</div>` : '',
       techniques.length ? `<div class="midi-about-sub">${cur && cur.model === 'beat' ? '参照したビート' : '引用した作曲技法'}</div><div class="midi-about-text">${escapeHtml(techniques.map((t) => `${t.technique}${t.composer ? `(${t.composer})` : ''}`).join(' / '))}</div>` : '',
     ].filter(Boolean).join('');
+    const kairos = m.model === 'kairos'; // プレミックスの KAIROS の即興の記録(js/kairos.js。Geminiは使っていない)
     return `<div class="midi-about">` +
-      row('使用モデル', preset ? `${escapeHtml(preset.label)}${preset.text ? `<span class="midi-about-notes">${escapeHtml(preset.text)}</span>` : ''}` : '(2026-09-26より前の形式)') +
+      row('使用モデル', kairos ? 'KAIROS(プレミックスでの即興の記録)<span class="midi-about-notes">流れていた音を聴いて、人造人間がピアノで即興した演奏。Geminiは使っていません</span>' : preset ? `${escapeHtml(preset.label)}${preset.text ? `<span class="midi-about-notes">${escapeHtml(preset.text)}</span>` : ''}` : '(2026-09-26より前の形式)') +
       row('スケール', scale || (cur && cur.model === 'beat' ? '(ドラムのビートのため無し)' : '')) +
       row('テンポ・拍子', `${Math.round(m.tempo)} BPM · ${escapeHtml(T.meterLabel(m))} · ${bars}小節 · ${m.notes.length}音`) +
       (cur && cur.gauges ? row('ゲージ', escapeHtml(M.gaugeLabel(cur.gauges))) : '') +
-      `<div class="midi-about-intent"><div class="midi-about-key">Geminiの意図</div>${intent || '<div class="midi-about-text">(意図の記録がありません)</div>'}</div>` +
+      `<div class="midi-about-intent"><div class="midi-about-key">${kairos ? 'KAIROSの記録' : 'Geminiの意図'}</div>${intent || '<div class="midi-about-text">(意図の記録がありません)</div>'}</div>` +
       `</div>`;
   }
 

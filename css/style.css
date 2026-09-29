@@ -2229,6 +2229,60 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
   .neb-album-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* ---------- PLANETES(LFOの天体、js/planetes.js、2026-10-01) ----------
+   奥の層はキャンバスの中身の下(影響範囲のにじみ・線)、手前の層は中身の上(輪・本体・名前)。どちらも押せない(当たり判定は premix.js) */
+.pl-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pl-layer--front { z-index: 3; }
+.pl-album-list { display: flex; flex-direction: column; gap: 2px; }
+.pl-item { display: grid; grid-template-columns: 70px 1fr; gap: 9px; padding: 8px; border-radius: 8px; cursor: grab; }
+.pl-item:hover { background: #121520; }
+.pl-item canvas { width: 70px; height: 70px; border-radius: 6px; background: #000; }
+.pl-en { font-size: 8px; letter-spacing: 0.2em; }
+.pl-jp { font-size: 12px; font-weight: 600; }
+.pl-item p { margin: 3px 0 0; font-size: 10px; line-height: 1.5; color: #8b91a0; }
+
+/* ---------- KAIROS(即興する人造人間、js/kairos.js、2026-10-01) ----------
+   プレミックスの上に浮かぶ小窓(見出しをつかんで動かす)。⤢で画面いっぱいに */
+.kairos {
+  position: fixed; right: 16px; bottom: 76px; z-index: 65; width: 460px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; border-radius: 14px; overflow: hidden;
+  background: #05060b; border: 1px solid #262a36; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.75); color: #e6e8f0;
+}
+.kairos[hidden] { display: none; }
+.kairos--big { inset: 12px !important; width: auto; max-width: none; }
+.kairos-head { display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 14px; cursor: move; touch-action: none; border-bottom: 1px solid #161a24; }
+.kairos--big .kairos-head { cursor: default; }
+.kairos-title { font-size: 12px; letter-spacing: 0.5em; font-weight: 600; color: #7fe0ff; }
+.kairos-sub { flex: 1; font-size: 10.5px; color: #545a6c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kairos-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid #2c3242; background: #11141c; color: #8a90a2; cursor: pointer; font-size: 12px; }
+.kairos-icon:hover { border-color: #7fe0ff; color: #7fe0ff; }
+.kairos-stage { position: relative; height: 330px; max-height: calc(100vh - 360px); min-height: 170px; }
+.kairos--big .kairos-stage { flex: 1; height: auto; max-height: none; }
+.kairos-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.kairos-thought { position: absolute; left: 0; right: 0; top: 10px; text-align: center; pointer-events: none; }
+.kairos-line { font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; font-size: 15px; color: #dfe9ff; text-shadow: 0 0 18px rgba(127, 224, 255, 0.35); min-height: 1.6em; transition: opacity 0.4s; }
+.kairos--big .kairos-line { font-size: 19px; }
+.kairos-hear { margin-top: 3px; font: 10px var(--mono, ui-monospace, monospace); color: #8a90a2; }
+.kairos-controls { padding: 10px 14px 12px; border-top: 1px solid #161a24; background: rgba(12, 14, 22, 0.9); }
+.kairos--big .kairos-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.kairos-row { display: grid; grid-template-columns: 4.6em 1fr 2.4em; align-items: center; gap: 8px; font-size: 11.5px; color: #8a90a2; margin: 5px 0; }
+.kairos-row output { text-align: right; font: 11px var(--mono, ui-monospace, monospace); color: #e6e8f0; }
+.kairos-row input[type="range"] { width: 100%; accent-color: #7fe0ff; }
+.kairos-row select { min-width: 0; font: inherit; font-size: 11.5px; padding: 3px 6px; border-radius: 6px; border: 1px solid #2c3242; background: #11141c; color: #e6e8f0; }
+.kairos-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.kairos-btns button { font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 8px; border: 1px solid #333a4a; background: #161a25; color: #e6e8f0; cursor: pointer; }
+.kairos-btns button:hover:not(:disabled) { border-color: #7fe0ff; color: #7fe0ff; }
+.kairos-btns button:disabled { opacity: 0.4; cursor: default; }
+.kairos-btns .kairos-primary { background: #7fe0ff; border-color: #7fe0ff; color: #04121a; font-weight: 700; }
+.kairos-btns .kairos-primary:hover { color: #04121a !important; }
+.kairos-btns .kairos-primary.on { background: #ff5d52; border-color: #ff5d52; color: #fff; }
+.kairos-rec, .kairos-note { margin-top: 6px; font-size: 10.5px; color: #545a6c; line-height: 1.5; }
+.kairos-rec { color: #8a90a2; }
+@media (max-width: 700px) {
+  .kairos { right: 8px; left: 8px; width: auto; bottom: 64px; }
+  .kairos-stage { height: 240px; }
+}
+
 /* 「このMIDIについて」(js/midi/card.js の aboutHtml。アンサンブルのパネルと、プレミックスの「ⓘ」、2026-09-29) */
 .midi-about { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.6; }
 .midi-about-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; }

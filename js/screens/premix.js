@@ -67,7 +67,11 @@
 //     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiInline?(MIDIカード), midiVoice?,
 //     x, y, width, createdAt },
 //   { id, type: 'vocab', ... }(語彙カード), { id, type: 'image', ... }(画像カード),
-//   { id, type: 'nebula', nebula(js/nebula.js の星雲のid), seed, x, y, width, height }(ネビュラ。音響エフェクトの星雲) ] }
+//   { id, type: 'nebula', nebula(js/nebula.js の星雲のid), seed, x, y, width, height }(ネビュラ。音響エフェクトの星雲) ],
+//   planets: [{ id, body(js/planetes.js の天体のid), x, y(中心。キャンバス座標), radius(影響範囲) }](PLANETES。カードではなく独自の層に描く) }
+//   - **PLANETES(2026-10-01)**: 道具バーの「プラネテス」のアルバムから天体を置くと、影響範囲の中のオーディオカードの音量をLFOのカーブで揺らす。
+//     「PLANETES」の節と js/planetes.js
+//   - **KAIROS(2026-10-01)**: 道具バーの「カイロス」。アクティブなエリアの音を聴いてピアノで即興する人造人間。js/kairos.js
 
 (function () {
   const MAX_SOUNDS = 10;
@@ -107,6 +111,7 @@
   function data() {
     if (!state.premix || !Array.isArray(state.premix.cards)) state.premix = { activeId: null, cards: [] };
     if (!Array.isArray(state.premix.connections)) state.premix.connections = [];
+    if (!Array.isArray(state.premix.planets)) state.premix.planets = [];
     return state.premix;
   }
   const folders = () => data().cards.filter((c) => c.type === 'folder');
@@ -227,9 +232,12 @@
       document.addEventListener('keydown', onKeydown);
       els.viewport.addEventListener('dragover', onNebulaDragOver);
       els.viewport.addEventListener('drop', onNebulaDrop);
+      attachPlanetLayer();
       setTools([
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
-        { id: 'nebula', label: 'ネビュラ', icon: '<ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="1.6"/>', onClick: () => (window.LyraNebula.isOpen() ? window.LyraNebula.close() : window.LyraNebula.open((id) => placeNebula(id, null))) },
+        { id: 'nebula', label: 'ネビュラ', icon: '<ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="1.6"/>', onClick: () => toggleAlbum('nebula') },
+        { id: 'planetes', label: 'プラネテス', icon: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/><path d="M4 16c3-2 6-2 8 0s5 2 8 0"/>', onClick: () => toggleAlbum('planetes') },
+        { id: 'kairos', label: 'カイロス', icon: '<path d="M6 4h12v7a6 6 0 0 1-12 0z"/><path d="M4 20a8 5 0 0 1 16 0"/><circle cx="9.5" cy="9" r="1"/><circle cx="14.5" cy="9" r="1"/>', onClick: () => window.LyraKairos && window.LyraKairos.toggle(kairosHost) },
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
       ]);
@@ -252,8 +260,11 @@
       document.removeEventListener('keydown', onKeydown);
       if (window.LyraImageSearch && window.LyraImageSearch.isOpen()) window.LyraImageSearch.close();
       if (window.LyraNebula) window.LyraNebula.close();
+      if (window.LyraPlanetes) window.LyraPlanetes.close();
+      if (window.LyraKairos) window.LyraKairos.close();
       els.viewport.removeEventListener('dragover', onNebulaDragOver);
       els.viewport.removeEventListener('drop', onNebulaDrop);
+      detachPlanetLayer();
       stopAll();
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -2178,6 +2189,7 @@
           else if (isChain(f)) scheduleChain(f);
         });
         nebulaTick();
+        planetTick();
       }, 30);
     }
     if (rafId) return;
@@ -2191,6 +2203,7 @@
       });
       drawNebulae();
       drawNebulaChips();
+      drawPlanets();
       // タイムラインで今鳴っている音(カードごとに1つ)。カードの数×音の数にならないよう、1フレームに1回だけ表を作る
       const sounding = new Map();
       folderRt.forEach((rt) => (rt.tl ? rt.tl.voices : []).forEach((v) => {
@@ -2671,7 +2684,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
    * エフェクトがかかる(同じエフェクトの星雲が重なったら、強い方)。
    * 音の道すじ: オーディオカードの音はすべて(フリーの再生・タイムライン・チェーンの発音)、カードごとの「エフェクトの通り道」を通る:
    *   入口 → dry(粒の効果の時は下げる)─┐
-   *   粒(逆再生・フリーズ・グラニュラー・スタッター)┴→ [ディストーション] → [グリッチの粗さ] → フィルター → パルサーのゲート → 出口 → エリアのバス
+   *   粒(逆再生・フリーズ・グラニュラー・スタッター)┴→ [ディストーション] → [グリッチの粗さ] → フィルター → パルサーのゲート → PLANETESの音量 → 出口 → エリアのバス
    *                                                                                              └→ 星雲の残響・こだま(エリアのバスの中。待機中のエリアでは聞こえない)
    * 粒の効果は、カードの今の再生位置から切り出すので、フリー・タイムライン・チェーンのどれでも同じように効く。テープストップは鳴っている音の速さを変える。
    * 音量: ディストーションは歪ませても出口の大きさが変わらないよう混ぜる量で決め、高域を削る。出口は js/sound.js のリミッターを通る */
@@ -2711,10 +2724,29 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   function onNebulaDrop(event) {
+    const planet = window.LyraPlanetes && window.LyraPlanetes.idFromDrop(event.dataTransfer);
+    if (planet) {
+      event.preventDefault();
+      placePlanet(planet, clientToContent(event.clientX, event.clientY));
+      return;
+    }
     const id = window.LyraNebula && window.LyraNebula.idFromDrop(event.dataTransfer);
     if (!id) return;
     event.preventDefault();
     placeNebula(id, clientToContent(event.clientX, event.clientY));
+  }
+
+  /** ネビュラとプラネテスのアルバムは同じ場所(画面の左端)に出るので、片方を開いたらもう片方を閉じる */
+  function toggleAlbum(which) {
+    const N = window.LyraNebula;
+    const P = window.LyraPlanetes;
+    if (which === 'nebula') {
+      if (P) P.close();
+      if (N) (N.isOpen() ? N.close() : N.open((id) => placeNebula(id, null)));
+    } else {
+      if (N) N.close();
+      if (P) (P.isOpen() ? P.close() : P.open((id) => placePlanet(id, null)));
+    }
   }
 
   /** 毎フレーム: 星雲の見た目(大きさが変わったら描き直す・動く光) */
@@ -2767,7 +2799,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
         n.gain.value = v;
         return n;
       };
-      st = { input: g(), dry: g(), grains: g(), ins: g(), sum1: g(), clean: g(), sum2: g(), crushClean: g(), gate: g(), out: g(), revSend: g(0), echoSend: g(0) };
+      st = { input: g(), dry: g(), grains: g(), ins: g(), sum1: g(), clean: g(), sum2: g(), crushClean: g(), gate: g(), lfo: g(), out: g(), revSend: g(0), echoSend: g(0) };
       st.filter = c.createBiquadFilter();
       st.filter.type = 'lowpass';
       st.filter.frequency.value = 20000;
@@ -2781,7 +2813,8 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       st.crushClean.connect(st.sum2);
       st.sum2.connect(st.filter);
       st.filter.connect(st.gate);
-      st.gate.connect(st.out);
+      st.gate.connect(st.lfo); // PLANETES の音量(天体のカーブ。星の届かないカードでは1)
+      st.lfo.connect(st.out);
       Object.assign(st, { folderId: undefined, rate: 1, tapeUntil: 0, freezePos: null, nextFreeze: 0, revPos: null, nextRev: 0, stutterUntil: 0, neutral: true });
       stripRt.set(s.id, st);
     }
@@ -3087,13 +3120,23 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       const rt = soundRt.get(s.id);
       if (!el || !rt) return;
       const list = Object.entries(rt.nebFx || {}).filter(([, m]) => m.a > 0.03).sort((a, b) => b[1].a - a[1].a).slice(0, 4);
+      // PLANETES: 届いている天体(帯=深さ)。ネビュラの行の後ろに並べる
+      const P = window.LyraPlanetes;
+      const planetRows = P ? (rt.planetFx || []).slice(0, 3).map((x) => [`pl-${x.id}`, { a: x.depth, label: `☄ ${P.BODY[x.body].jp}`, c: P.BODY[x.body].color }]) : [];
+      const rows = [...list.map(([k, m]) => [k, { a: m.a, label: N.FX[k].label, c: N.FX[k].c }]), ...planetRows];
       const box = el.querySelector('.snd-fx');
       if (box) {
-        const key = list.map(([k]) => k).join('|');
+        const key = rows.map(([k]) => k).join('|');
         if (box.dataset.key !== key) {
           box.dataset.key = key;
-          box.innerHTML = list.map(([k]) => `<div class="snd-fx-row" data-k="${k}"><span>${escapeHtml(N.FX[k].label)}</span><i style="--c:${N.FX[k].c}"></i><output></output></div>`).join('');
+          box.innerHTML = rows.map(([k, m]) => `<div class="snd-fx-row" data-k="${k}"><span>${escapeHtml(m.label)}</span><i style="--c:${m.c}"></i><output></output></div>`).join('');
         }
+        planetRows.forEach(([k, m]) => {
+          const row = box.querySelector(`[data-k="${k}"]`);
+          if (!row) return;
+          row.querySelector('i').style.setProperty('--a', m.a.toFixed(3));
+          row.querySelector('output').textContent = `${Math.round(m.a * 100)}%`;
+        });
         list.forEach(([k, m]) => {
           const row = box.querySelector(`[data-k="${k}"]`);
           if (!row) return;
@@ -3106,6 +3149,299 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       if (top) el.style.setProperty('--neb', N.FX[top[0]].c);
     });
   }
+
+  /* ---------------- PLANETES(LFOの天体、2026-10-01、js/planetes.js) ----------------
+   * 天体は state.premix.planets に { id, body, x, y, radius }(キャンバス座標)で持ち、カードではなく独自の2枚の層に描く:
+   * 奥の層(キャンバスの中身の下)=影響範囲のにじみと届いているカードへの線、手前の層(中身の上、pointer-events なし)=輪・本体・名前・オシロ。
+   * 当たり判定は viewport の捕獲フェーズの pointerdown で星を先に見る(矩形選択 js/marquee.js と同じやり方。パンは lockPan で止める)。
+   * カードの上では星の中心だけに反応し、輪の端をつかめるのはカードの外(フォルダ・星雲の上はよい)。カードの上で星を掴んだ時は、続くクリックも飲み込む。
+   * 音量: オーディオカードの中心が輪の中なら、深さ = 1 − 距離/半径、音量 = Π(1 − 深さ × (1 − カーブの値))。エフェクトの通り道の lfo ゲインに掛ける */
+  const planets = () => data().planets;
+  const PLANET_T0 = performance.now();
+  const planetTime = () => (performance.now() - PLANET_T0) / 1000;
+  let skyCv = null;
+  let frontCv = null;
+  let planetDrag = null; // { planet, mode: 'move'|'resize', dx, dy, pointerId, moved }
+  let selectedPlanetId = null;
+  let swallowClick = false;
+
+  function attachPlanetLayer() {
+    if (!skyCv) {
+      skyCv = document.createElement('canvas');
+      skyCv.className = 'pl-layer pl-layer--sky';
+      frontCv = document.createElement('canvas');
+      frontCv.className = 'pl-layer pl-layer--front';
+    }
+    els.viewport.insertBefore(skyCv, els.viewport.firstChild);
+    els.viewport.appendChild(frontCv);
+    els.viewport.addEventListener('pointerdown', onPlanetPointerDown, true);
+    window.addEventListener('pointermove', onPlanetPointerMove);
+    window.addEventListener('pointerup', onPlanetPointerUp);
+    window.addEventListener('pointercancel', onPlanetPointerUp);
+    els.viewport.addEventListener('click', onPlanetClickCapture, true);
+    els.viewport.addEventListener('dblclick', onPlanetDblClick, true);
+    els.viewport.addEventListener('wheel', onPlanetWheel, { capture: true, passive: false });
+  }
+
+  function detachPlanetLayer() {
+    if (skyCv) skyCv.remove();
+    if (frontCv) frontCv.remove();
+    els.viewport.removeEventListener('pointerdown', onPlanetPointerDown, true);
+    window.removeEventListener('pointermove', onPlanetPointerMove);
+    window.removeEventListener('pointerup', onPlanetPointerUp);
+    window.removeEventListener('pointercancel', onPlanetPointerUp);
+    els.viewport.removeEventListener('click', onPlanetClickCapture, true);
+    els.viewport.removeEventListener('dblclick', onPlanetDblClick, true);
+    els.viewport.removeEventListener('wheel', onPlanetWheel, { capture: true });
+    planetDrag = null;
+    els.viewport.style.cursor = '';
+  }
+
+  /** 天体を置く(pos はキャンバス座標の中心。無ければ画面の真ん中) */
+  function placePlanet(bodyId, pos) {
+    const P = window.LyraPlanetes;
+    if (!P || !P.BODY[bodyId]) return;
+    const b = P.BODY[bodyId];
+    const at = pos || newCardSpawnPos(0);
+    const planet = { id: newId(), body: bodyId, x: Math.round(at.x), y: Math.round(at.y), radius: b.radius };
+    planets().push(planet);
+    selectedPlanetId = planet.id;
+    scheduleAutoSave();
+    startTicker();
+    setStatus(`${b.jp}を置きました(${b.desc.split('。').pop()})。点線の輪の中のオーディオカードの音量を、このカーブで揺らします。` +
+      '中心のドラッグで移動、輪のドラッグで範囲、ダブルクリックか✕で外します');
+  }
+
+  function removePlanet(planet) {
+    const i = planets().indexOf(planet);
+    if (i < 0) return;
+    planets().splice(i, 1);
+    if (selectedPlanetId === planet.id) selectedPlanetId = null;
+    scheduleAutoSave();
+    setStatus(`${window.LyraPlanetes.BODY[planet.body].jp}を外しました`);
+  }
+
+  /** キャンバス座標 → viewport の中の画面座標 */
+  const toView = (x, y) => ({ x: x * viewportState.scale + viewportState.x, y: y * viewportState.scale + viewportState.y });
+
+  function viewPoint(event) {
+    const rect = els.viewport.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /** 画面上の点に当たる星(手前=後に置いた星を優先)。{ planet, mode } */
+  function planetHit(event, overCard) {
+    const pt = viewPoint(event);
+    const touch = event.pointerType === 'touch';
+    const hitR = touch ? 36 : 24;
+    const edgeTol = touch ? 20 : 12;
+    const list = [...planets()].reverse();
+    const R = window.LyraPlanetes.REMOVE_OFFSET;
+    for (const p of list) {
+      if (p.id !== selectedPlanetId) continue;
+      const v = toView(p.x, p.y);
+      if (Math.hypot(v.x + R.x - pt.x, v.y + R.y - pt.y) < R.r + (touch ? 6 : 0)) return { planet: p, mode: 'remove' };
+    }
+    for (const p of list) {
+      const v = toView(p.x, p.y);
+      if (Math.hypot(v.x - pt.x, v.y - pt.y) < hitR) return { planet: p, mode: 'move', v, pt };
+    }
+    if (overCard) return null;
+    for (const p of list) {
+      const v = toView(p.x, p.y);
+      if (Math.abs(Math.hypot(v.x - pt.x, v.y - pt.y) - p.radius * viewportState.scale) < edgeTol) return { planet: p, mode: 'resize' };
+    }
+    return null;
+  }
+
+  /** オーディオカード・語彙カードなど(フォルダと星雲は除く)の上か */
+  const onCardTarget = (target) => Boolean(target && target.closest && target.closest('.star-card:not(.star-card--folder):not(.star-card--nebula), .star-card-hex, button, input, textarea, select'));
+
+  function onPlanetPointerDown(event) {
+    if (!planets().length || event.shiftKey) return; // Shift は矩形選択
+    if (event.button !== undefined && event.button !== 0) return;
+    const overCard = onCardTarget(event.target);
+    const hit = planetHit(event, overCard);
+    if (!hit) {
+      // 星の外を押したら選択を外す(✕が出たままにならないように)
+      if (selectedPlanetId && !overCard) selectedPlanetId = null;
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+    swallowClick = overCard; // カードの上で星を掴んだ時は、続くクリック(▶など)を飲み込む
+    if (hit.mode === 'remove') {
+      removePlanet(hit.planet);
+      return;
+    }
+    selectedPlanetId = hit.planet.id;
+    const c = clientToContent(event.clientX, event.clientY);
+    planetDrag = { planet: hit.planet, mode: hit.mode, dx: hit.planet.x - c.x, dy: hit.planet.y - c.y, pointerId: event.pointerId, moved: false };
+    lockPlanetPan(true);
+  }
+
+  function lockPlanetPan(lock) {
+    if (typeof interact === 'function') interact(els.viewport).draggable({ enabled: !lock }).gesturable({ enabled: !lock });
+  }
+
+  function onPlanetPointerMove(event) {
+    const P = window.LyraPlanetes;
+    if (!planetDrag) {
+      // カーソル: 輪の上ではリサイズ、中心の上ではつかむ
+      if (!planets().length || event.buttons || !els.viewport.contains(event.target)) return;
+      const hit = planetHit(event, onCardTarget(event.target));
+      const cur = !hit ? '' : hit.mode === 'resize' ? 'ew-resize' : hit.mode === 'remove' ? 'pointer' : 'grab';
+      if (els.viewport.style.cursor !== cur) els.viewport.style.cursor = cur;
+      return;
+    }
+    if (event.pointerId !== planetDrag.pointerId) return;
+    const c = clientToContent(event.clientX, event.clientY);
+    const p = planetDrag.planet;
+    planetDrag.moved = true;
+    if (planetDrag.mode === 'move') {
+      p.x = Math.round(c.x + planetDrag.dx);
+      p.y = Math.round(c.y + planetDrag.dy);
+    } else {
+      p.radius = Math.round(Math.max(P.MIN_R, Math.min(P.MAX_R, Math.hypot(p.x - c.x, p.y - c.y))));
+    }
+  }
+
+  function onPlanetPointerUp(event) {
+    if (!planetDrag || event.pointerId !== planetDrag.pointerId) return;
+    if (planetDrag.moved) scheduleAutoSave();
+    planetDrag = null;
+    lockPlanetPan(false);
+    setTimeout(() => (swallowClick = false), 0);
+  }
+
+  function onPlanetClickCapture(event) {
+    if (!swallowClick) return;
+    swallowClick = false;
+    event.stopPropagation();
+    event.preventDefault();
+  }
+
+  function onPlanetDblClick(event) {
+    const hit = planets().length && planetHit(event, true);
+    if (!hit || hit.mode === 'resize') return;
+    event.stopPropagation();
+    event.preventDefault();
+    removePlanet(hit.planet);
+  }
+
+  /** 中心(または輪)の上のホイールで影響範囲を変える。それ以外はいつものズーム */
+  function onPlanetWheel(event) {
+    if (!planets().length) return;
+    const hit = planetHit(event, false);
+    if (!hit || hit.mode === 'remove') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const P = window.LyraPlanetes;
+    const p = hit.planet;
+    p.radius = Math.round(Math.max(P.MIN_R, Math.min(P.MAX_R, p.radius * (event.deltaY < 0 ? 1.08 : 0.93))));
+    selectedPlanetId = p.id;
+    scheduleAutoSave();
+  }
+
+  /** オーディオカードの中心(キャンバス座標) */
+  function cardCenter(s) {
+    const el = cardElById(s.id);
+    const w = el ? el.offsetWidth : s.width || SOUND_W;
+    const h = el ? el.offsetHeight : s.height || 100;
+    return { x: (s.x || 0) + w / 2, y: (s.y || 0) + h / 2 };
+  }
+
+  /** そのカードに届いている天体 [{ id, body, depth, v }] と、掛け合わせた音量 */
+  function planetInfluence(s, t) {
+    const P = window.LyraPlanetes;
+    const c = cardCenter(s);
+    let gain = 1;
+    const list = [];
+    planets().forEach((p) => {
+      if (!P.BODY[p.body]) return;
+      const depth = Math.max(0, Math.min(1, 1 - Math.hypot(p.x - c.x, p.y - c.y) / p.radius));
+      if (depth <= 0) return;
+      const v = P.valueAt(p.body, t);
+      gain *= 1 - depth * (1 - v);
+      list.push({ id: p.id, body: p.body, depth, v });
+    });
+    return { gain, list, c };
+  }
+
+  /** 30msごと: 星の届くカードの音量をカーブに沿って動かす */
+  function planetTick() {
+    if (!ctx || !window.LyraPlanetes) return;
+    const now = ctx.currentTime;
+    const t = planetTime();
+    data().cards.forEach((s) => {
+      if (s.type !== 'sound') return;
+      const rt = soundRt.get(s.id);
+      const st = stripRt.get(s.id);
+      if (!rt) return;
+      const inf = planets().length && s.folderId ? planetInfluence(s, t) : { gain: 1, list: [] };
+      rt.planetFx = inf.list;
+      if (!st) return;
+      if (!inf.list.length && st.lfoNeutral) return;
+      st.lfoNeutral = !inf.list.length;
+      st.lfo.gain.setTargetAtTime(inf.gain, now, 0.012);
+    });
+  }
+
+  function fitLayer(cv, w, h, dp) {
+    if (cv.width !== Math.round(w * dp) || cv.height !== Math.round(h * dp)) {
+      cv.width = Math.round(w * dp);
+      cv.height = Math.round(h * dp);
+    }
+    const g = cv.getContext('2d');
+    g.setTransform(dp, 0, 0, dp, 0, 0);
+    g.clearRect(0, 0, w, h);
+    return g;
+  }
+
+  /** 毎フレーム: 天体の2枚の層を描く */
+  function drawPlanets() {
+    const P = window.LyraPlanetes;
+    if (!P || !skyCv || !skyCv.isConnected) return;
+    const list = planets();
+    if (!list.length && !skyCv.dataset.dirty) return;
+    const w = els.viewport.clientWidth;
+    const h = els.viewport.clientHeight;
+    const dp = window.devicePixelRatio || 1;
+    const gs = fitLayer(skyCv, w, h, dp);
+    const gf = fitLayer(frontCv, w, h, dp);
+    skyCv.dataset.dirty = list.length ? '1' : ''; // 最後の星を外した時に1回だけ消し直す
+    if (!list.length) return;
+    const t = planetTime();
+    const sounds = data().cards.filter((c) => c.type === 'sound' && c.folderId);
+    const items = list.map((p) => {
+      const v = toView(p.x, p.y);
+      const links = [];
+      sounds.forEach((s) => {
+        const c = cardCenter(s);
+        const depth = 1 - Math.hypot(p.x - c.x, p.y - c.y) / p.radius;
+        if (depth > 0) {
+          const cv = toView(c.x, c.y);
+          links.push({ x: cv.x, y: cv.y, depth });
+        }
+      });
+      return { planet: p, x: v.x, y: v.y, r: p.radius * viewportState.scale, v: P.valueAt(p.body, t), p: P.phaseAt(p.body, t), selected: p.id === selectedPlanetId, links };
+    });
+    P.drawSky(gs, items);
+    P.drawFront(gf, items);
+  }
+
+  /* ---------------- KAIROS へ渡す窓口(js/kairos.js) ----------------
+   * 聴く音はプレミックスの master(全エリアのバスの合計。待機中のエリアは音量0なので、実際にはアクティブなエリアの音)。
+   * リミッターの後ではなく手前から取る: KAIROS のピアノも同じ出口(リミッター)を通るので、後ろから取ると自分の演奏を聴いてしまうため */
+  const kairosHost = {
+    audioCtx: () => audio(),
+    listenFrom: () => {
+      audio();
+      return master;
+    },
+    placeMidi: (midiCard) => placeGeneratedMidi(midiCard, null),
+    status: (text) => setStatus(text),
+  };
 
   /* ---------------- Shift+D で複製 ---------------- */
 
@@ -3165,5 +3501,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
