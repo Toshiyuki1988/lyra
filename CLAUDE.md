@@ -655,6 +655,15 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 4. LYRAをデスクトップアプリ(Electron/Tauri)にしてVSTを内蔵: 大がかりで、ログインの問題もAと同じ。今はおすすめしない
 - 共通: 別のソフト・仮想ポートを起動しておく前提(スマホ不可)。Web MIDIは初回に許可が要る(https の GitHub Pages なら使える)
 
+**C. 1トラックのVSTホストアプリ `lyra-host` を別に作る(2026-09-30、ユーザー決定。着手済み)**: LYRAをまるごとPCアプリにするのでなく、
+「Cubaseを1トラックだけで単体起動した」ような小さなWindowsアプリ(JUCE)を横に立てる。VST3音源を1つ読み込み、MIDIをループでリアルタイムに鳴らし
+(つまみを回すとその場で変わる。オートメーションの記録はしない)、オートメーションのカーブを描き、WAV・`.vstpreset`・`.mid`を書き出してCubaseへ渡す。
+リポジトリは https://github.com/Toshiyuki1988/lyra-host (非公開、ローカルは`Desktop\lyra-host`)。**クラウドセッション(別のClaude)が`BRIEF.md`に沿って作る**
+(Windowsのexeは GitHub Actions でビルド。クレジットが尽きたら、このPCに Visual Studio Community を入れて`lyra-host`のフォルダのClaude Codeで微調整)。
+**LYRA側の担当**: M3(`lyrahost://`での起動、localhostのWebSocketでMIDI・VST・オートメーションを送り、ホストの「LYRAへ送る」で返ったWAVなどをカードにする、
+カードのIDで同じ状態を開き直す)が届いたら、`lyra-host`の`PROTOCOL.md`に沿って MIDIカードの「ホストで開く」と受け取りを作る。受け取った音をアンサンブルの
+オーディオカードにするかプレミックスのカードにするかは、その時に決める。httpsのLYRAから`ws://127.0.0.1`へつなげるかは実機で未確認
+
 **ほかに今すぐできる手前の手**: ブラウザの音を仮想オーディオケーブルで Cubase に録る(開発不要)/プレミックスに「エリアの1ループを
 ネビュラ込みでWAVに書き出す」を足す/Max 9 の RNBO で同じ音の処理から Web用と VST3用を書き出す(RNBOの書き出しの条件は要確認)
 
