@@ -325,7 +325,7 @@
       if (!player || player.cardId !== card.id) return; // 読み込み中に停止された
       const source = ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(ctx.destination);
+      source.connect(safeOut(ctx)); // リミッターを通す(js/sound.js)
       source.onended = () => {
         if (player && player.source === source) stop();
       };

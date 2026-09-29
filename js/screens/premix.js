@@ -153,7 +153,7 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain();
       master.gain.value = 0.9;
-      master.connect(ctx.destination);
+      master.connect(safeOut(ctx)); // リミッターとピークメーターを通す(js/sound.js)
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
@@ -182,7 +182,11 @@
       conv.buffer = reverbImpulse();
       conv.connect(out);
       out.connect(master);
-      rt.bus = { out, conv };
+      // エリアのピークメーター用(バスの後=このエリアが実際に出している音。待機中は0)
+      const an = c.createAnalyser();
+      an.fftSize = 1024;
+      out.connect(an);
+      rt.bus = { out, conv, an };
       folderRt.set(folderId, rt);
     }
     return rt.bus;
@@ -345,6 +349,7 @@
     el.innerHTML =
       `<div class="fold-head"><div class="fold-row"><span class="fold-badge"></span>` +
       `<span class="fold-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>` +
+      `<span class="fold-meter" title="このエリアの音のピーク(リミッターの手前)。赤=0dBFSを超えた、LIM=リミッターが効いている"><i class="fm-bar"></i><i class="fm-hold"></i></span>` +
       `<span class="fold-mode fold-view" role="group" aria-label="このエリアのカードの見た目">` +
       `<button type="button" class="fold-mode-btn${viewOn === 'card' ? ' fold-mode-btn--on' : ''}" data-f="view-card" title="このエリアのカードを全部カードの見た目に(▭)">▭</button>` +
       `<button type="button" class="fold-mode-btn${viewOn === 'sphere' ? ' fold-mode-btn--on' : ''}" data-f="view-sphere" title="このエリアのカードを全部スフィア(小さな球)に(◯)">◯</button></span>` +
@@ -1916,6 +1921,34 @@
     if (time) time.textContent = `${pos.toFixed(1)} / ${len.toFixed(1)}s`;
   }
 
+  /* ---------------- エリアのピークメーター(2026-09-29) ----------------
+   * 見出しの小さなバー。バスの後(このエリアが出している音、リミッターの手前)のピークを -48〜0dBFS で出し、0dBFSを超えたら2秒赤く、
+   * アクティブなエリアでリミッター(js/sound.js の safeOut)が1dB以上かかっている間は「LIM」の印を付ける */
+  const meterBuf = new Float32Array(1024);
+
+  function drawAreaMeter(f) {
+    const rt = folderRt.get(f.id);
+    const el = cardElById(f.id);
+    const m = el && el.querySelector('.fold-meter');
+    if (!m) return;
+    const st = (rt && (rt.meter || (rt.meter = { level: 0, held: 0, heldAt: 0, overUntil: 0 }))) || null;
+    if (!st) return;
+    const peak = rt.bus && ctx && ctx.state === 'running' ? analyserPeak(rt.bus.an, meterBuf) : 0;
+    const t = performance.now();
+    const pos = meterPos(peak);
+    st.level = Math.max(pos, st.level - 0.02);
+    if (pos >= st.held || t - st.heldAt > 1500) {
+      st.held = pos;
+      st.heldAt = t;
+    }
+    if (peak >= 1) st.overUntil = t + 2000;
+    m.querySelector('.fm-bar').style.transform = `scaleX(${st.level.toFixed(3)})`;
+    m.querySelector('.fm-hold').style.left = `${(st.held * 100).toFixed(1)}%`;
+    m.classList.toggle('fold-meter--over', t < st.overUntil);
+    const reduction = ctx ? outputChain(ctx).comp.reduction || 0 : 0;
+    m.classList.toggle('fold-meter--lim', data().activeId === f.id && reduction <= -1);
+  }
+
   /* ---------------- 描画と予約のループ ---------------- */
 
   function startTicker() {
@@ -1935,6 +1968,7 @@
         if (isTimeline(f)) scheduleTimeline(f);
         else if (isChain(f)) scheduleChain(f);
         drawPlayhead(f, now);
+        drawAreaMeter(f);
       });
       // タイムラインで今鳴っている音(カードごとに1つ)。カードの数×音の数にならないよう、1フレームに1回だけ表を作る
       const sounding = new Map();
@@ -1983,7 +2017,7 @@
    * 2026-09-29、ユーザー要望「オーディオカードからフルマックスの長文語彙カード化」「今エリアで鳴っている音からの長文語彙カード化」
    * 「語彙カードからのシンセMIDI化・ビート化」。Geminiの無料枠は音声の入力も無料(料金ページで確認)。
    *   - オーディオカード: 切り取った範囲(最大60秒)を16kHzモノラルのWAVにしてGeminiに1回聞かせる
-   *   - エリア: アクティブにして、そのエリアのバスの音を録る(タイムラインは1ループ、ほかは12秒。最大30秒)。カードの語彙メモ・並びも添える
+   *   - エリア: アクティブにして、リミッターの後(実際に聞こえている音)を録る(タイムラインは1ループ、ほかは12秒。最大30秒)。カードの語彙メモ・並びも添える
    *   - **見立ては厳選した1つ**(同日、ユーザー判断。最初は「見立て6〜8個・合計2500〜3500字」にしたが、「語彙も見立ても多すぎて美辞麗句の
    *     羅列になり、ピンポイントな創造が薄れる」という指摘で改めた)。候補を考えた上で最も鋭い1つと、その理由、それを音にする具体的な
    *     仕掛け2〜3個(=芯)。ほかは音の事実・時間の流れ・質感語彙(8〜12)・情景・感情・美学的連想・作曲での使い方・合わないもの。
@@ -2184,7 +2218,8 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     setActive(f.id);
     const sec = Math.min(AREA_LISTEN_MAX, isTimeline(f) ? Math.max(4, loopLen(f)) : AREA_LISTEN_SEC);
     const c = audio();
-    const bus = busOf(f.id);
+    busOf(f.id);
+    const tap = outputChain(c).clip; // リミッターの後(実際にスピーカーへ出ている音。鳴っているのはアクティブなこのエリアだけ)
     const proc = c.createScriptProcessor(4096, 2, 2);
     const left = [];
     const right = [];
@@ -2194,7 +2229,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     };
     const mute = c.createGain();
     mute.gain.value = 0;
-    bus.out.connect(proc);
+    tap.connect(proc);
     proc.connect(mute);
     mute.connect(c.destination);
     const el = cardElById(f.id);
@@ -2205,7 +2240,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
         await new Promise((r) => setTimeout(r, 1000));
       }
     } finally {
-      bus.out.disconnect(proc);
+      tap.disconnect(proc);
       proc.disconnect();
       mute.disconnect();
       if (el) el.classList.remove('star-card--folder-listening');

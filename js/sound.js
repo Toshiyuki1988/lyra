@@ -10,12 +10,132 @@
 //   playCardMoveTickSound()    カード移動中の1回ぶんの「ピ」
 //   playMidiCreatedSound()     MIDIカードができた時の「ポロロン」(2026-09-25、LYRA独自)
 //   playChatReplySound()       専門AIチャットの返事が届いた時の「シュコッ」(CONSTELLATIONの座談会と同じ音)
+// アプリのすべての音の出口 safeOut(ctx)(リミッターとピークメーター、2026-09-29)もここに置く
 
 let soundCtx = null;
 function soundAudioCtx() {
   if (!soundCtx) soundCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (soundCtx.state === 'suspended') soundCtx.resume();
   return soundCtx;
+}
+
+/* ---------------- 出力のリミッターとピークメーター(2026-09-29) ----------------
+ * ユーザー要望「耳と機材を守るため、音響のリミッターをピークメーターと一緒に入れておいて」。
+ * アプリの音は必ず safeOut(ctx) を通してスピーカーへ出す(効果音・MIDIの試聴・オーディオカード・プレミックス)。
+ * AudioContext ごとに1本:  入力 → リミッター(DynamicsCompressor: -3dB・20:1・アタック2ms)→ 最後の防波堤(WaveShaper の
+ * ソフトクリップ。-2dBまでは素通し、そこから-0.3dBの天井へなめらかに頭打ち)→ スピーカー。
+ * DynamicsCompressor は本物のブリックウォールではなく立ち上がりの一瞬すり抜けることがあるので、後ろのソフトクリップで
+ * 0dBFS を超えないようにしている。WAV・.mid の書き出し(OfflineAudioContext)には入れない(音そのものを変えないため)。
+ * メーター: ヘッダーの #out-meter に全体の出口のピーク(リミッターの後)、リミッターが1dB以上かかっている時は「LIM」、
+ * リミッターの手前で0dBFSを超えた時は「OVER」(2秒点灯)。 */
+const OUTPUT_THRESHOLD_DB = -3;
+const outputChains = new Map(); // AudioContext → { input, comp, clip, post, pre, buf }
+
+function softClipCurve() {
+  const n = 4096;
+  const curve = new Float32Array(n);
+  const knee = Math.pow(10, -2 / 20); // -2dB までは素通し
+  const ceil = Math.pow(10, -0.3 / 20); // 天井 -0.3dB
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const a = Math.abs(x);
+    const y = a <= knee ? a : knee + (ceil - knee) * Math.tanh((a - knee) / (ceil - knee));
+    curve[i] = Math.sign(x) * y;
+  }
+  return curve;
+}
+
+/** その AudioContext の安全な出口(リミッターの入口)。スピーカーへ直接 destination につながず、必ずここへつなぐ */
+function safeOut(ctx) {
+  return outputChain(ctx).input;
+}
+
+function outputChain(ctx) {
+  let ch = outputChains.get(ctx);
+  if (!ch) {
+    const input = ctx.createGain();
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = OUTPUT_THRESHOLD_DB;
+    comp.knee.value = 0;
+    comp.ratio.value = 20;
+    comp.attack.value = 0.002;
+    comp.release.value = 0.15;
+    const clip = ctx.createWaveShaper();
+    clip.curve = softClipCurve();
+    clip.oversample = '4x';
+    const post = ctx.createAnalyser();
+    post.fftSize = 1024;
+    const pre = ctx.createAnalyser();
+    pre.fftSize = 1024;
+    input.connect(comp);
+    input.connect(pre);
+    comp.connect(clip);
+    clip.connect(ctx.destination);
+    clip.connect(post);
+    ch = { input, comp, clip, post, pre, buf: new Float32Array(1024) };
+    outputChains.set(ctx, ch);
+    startOutputMeter();
+  }
+  return ch;
+}
+
+function analyserPeak(analyser, buf) {
+  analyser.getFloatTimeDomainData(buf);
+  let p = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const v = Math.abs(buf[i]);
+    if (v > p) p = v;
+  }
+  return p;
+}
+
+/** ピーク(0〜)→ メーターの位置(0〜1)。-48dBFS〜0dBFS */
+function meterPos(peak) {
+  if (!(peak > 0)) return 0;
+  const db = 20 * Math.log10(peak);
+  return Math.max(0, Math.min(1, (db + 48) / 48));
+}
+
+let outMeterRaf = null;
+function startOutputMeter() {
+  if (outMeterRaf) return;
+  const el = document.getElementById('out-meter');
+  if (!el) return;
+  el.hidden = false;
+  const bar = el.querySelector('.out-meter-bar');
+  const hold = el.querySelector('.out-meter-hold');
+  let level = 0;
+  let held = 0;
+  let heldAt = 0;
+  let overUntil = 0;
+  const tick = () => {
+    outMeterRaf = requestAnimationFrame(tick);
+    if (document.visibilityState !== 'visible') return;
+    let post = 0;
+    let pre = 0;
+    let reduction = 0;
+    outputChains.forEach((ch, ctx) => {
+      if (ctx.state !== 'running') return;
+      post = Math.max(post, analyserPeak(ch.post, ch.buf));
+      pre = Math.max(pre, analyserPeak(ch.pre, ch.buf));
+      reduction = Math.min(reduction, ch.comp.reduction || 0);
+    });
+    const now = performance.now();
+    const pos = meterPos(post);
+    level = Math.max(pos, level - 0.02); // 落ちる時はゆっくり
+    if (pos >= held || now - heldAt > 1500) {
+      held = pos;
+      heldAt = now;
+    }
+    if (pre >= 1) overUntil = now + 2000;
+    bar.style.transform = `scaleX(${level.toFixed(3)})`;
+    hold.style.left = `${(held * 100).toFixed(1)}%`;
+    el.classList.toggle('out-meter--lim', reduction <= -1);
+    el.classList.toggle('out-meter--over', now < overUntil);
+    el.title = `出力のピーク ${post > 0 ? (20 * Math.log10(post)).toFixed(1) : '-∞'} dBFS` +
+      `${reduction <= -0.1 ? ` / リミッター ${reduction.toFixed(1)} dB` : ''}(耳と機材を守るため、0dBFSを超えないようにしています)`;
+  };
+  outMeterRaf = requestAnimationFrame(tick);
 }
 
 // カメラ起動・ファイル選択ダイアログなどでページが一時的にバックグラウンド化すると、
@@ -70,8 +190,8 @@ function playGuideRevealSound() {
   wetGain.gain.value = 0.28;
   const convolver = c.createConvolver();
   convolver.buffer = getSoundReverbImpulse(c);
-  highpass.connect(dryGain).connect(c.destination);
-  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+  highpass.connect(dryGain).connect(safeOut(c));
+  highpass.connect(wetGain).connect(convolver).connect(safeOut(c));
 
   osc.start(now);
   osc.stop(now + 0.12);
@@ -99,8 +219,8 @@ function playAstrPressSound() {
   wetGain.gain.value = 0.42;
   const convolver = c.createConvolver();
   convolver.buffer = getSoundReverbImpulse(c);
-  highpass.connect(dryGain).connect(c.destination);
-  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+  highpass.connect(dryGain).connect(safeOut(c));
+  highpass.connect(wetGain).connect(convolver).connect(safeOut(c));
 
   [
     { detune: 0, vibHz: 6, vibDepth: 10, level: 1 },
@@ -144,8 +264,8 @@ function playAstrConnectSound() {
   wetGain.gain.value = 0.55;
   const convolver = c.createConvolver();
   convolver.buffer = getSoundReverbImpulse(c);
-  highpass.connect(dryGain).connect(c.destination);
-  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+  highpass.connect(dryGain).connect(safeOut(c));
+  highpass.connect(wetGain).connect(convolver).connect(safeOut(c));
 
   // 1760Hz(A6)を基準に5度・オクターブ上の倍音だけを重ねる(低い基音を含めない構成)
   [[1, 0.22, 1.0], [1.5, 0.15, 0.85], [2, 0.09, 0.7]].forEach(([mult, peak, dur]) => {
@@ -185,8 +305,8 @@ function playCardMoveTickSound() {
   wetGain.gain.value = 0.2;
   const convolver = c.createConvolver();
   convolver.buffer = getSoundReverbImpulse(c);
-  highpass.connect(dryGain).connect(c.destination);
-  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+  highpass.connect(dryGain).connect(safeOut(c));
+  highpass.connect(wetGain).connect(convolver).connect(safeOut(c));
 
   osc.connect(gain).connect(highpass);
   osc.start(now);
@@ -206,8 +326,8 @@ function playMidiCreatedSound() {
   wetGain.gain.value = 0.5;
   const convolver = c.createConvolver();
   convolver.buffer = getSoundReverbImpulse(c);
-  highpass.connect(dryGain).connect(c.destination);
-  highpass.connect(wetGain).connect(convolver).connect(c.destination);
+  highpass.connect(dryGain).connect(safeOut(c));
+  highpass.connect(wetGain).connect(convolver).connect(safeOut(c));
 
   // C6・E6・G6・D7(ドミソ+9度)を70msずつずらして上へ
   [1046.5, 1318.5, 1568.0, 2349.3].forEach((freq, i) => {
@@ -243,7 +363,7 @@ function playChatReplySound() {
   filter.Q.value = 0.9;
   const noiseGain = c.createGain();
   noiseGain.gain.value = 0.1;
-  src.connect(filter).connect(noiseGain).connect(c.destination);
+  src.connect(filter).connect(noiseGain).connect(safeOut(c));
   src.start(now);
 
   const osc = c.createOscillator();
@@ -253,7 +373,7 @@ function playChatReplySound() {
   clickGain.gain.setValueAtTime(0.0001, now + 0.045);
   clickGain.gain.exponentialRampToValueAtTime(0.07, now + 0.05);
   clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-  osc.connect(clickGain).connect(c.destination);
+  osc.connect(clickGain).connect(safeOut(c));
   osc.start(now + 0.045);
   osc.stop(now + 0.1);
 }

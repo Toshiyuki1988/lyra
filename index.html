@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LYRA</title>
 <!-- JS/CSSを編集したら、対応するタグの ?v= を必ず新しい値に変更すること(キャッシュバスティング) -->
-<link rel="stylesheet" href="css/style.css?v=20260929f">
+<link rel="stylesheet" href="css/style.css?v=20260929g">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
@@ -63,6 +63,8 @@
     <!-- 4つ目の画面「プレミックス」(js/screens/premix.js、2026-09-27) -->
     <a id="premix-tab" class="ensemble-tab premix-tab" href="#/premix" hidden title="プレミックス(フォルダの音を重ねて試す)"><span class="premix-tab-icon">◧</span>プレミックス</a>
     <div class="toolbar-actions">
+      <!-- 出力のピークメーター(js/sound.js の safeOut。リミッターの後の音。LIM=リミッターが効いている、OVER=手前で0dBFSを超えた) -->
+      <div id="out-meter" class="out-meter" hidden><span class="out-meter-track"><i class="out-meter-bar"></i><i class="out-meter-hold"></i></span><b class="out-meter-lim">LIM</b><b class="out-meter-over">OVER</b></div>
       <button id="sign-in-btn" hidden>Googleでサインイン</button>
       <button id="sign-out-btn" class="secondary" hidden>サインアウト</button>
       <button id="trash-btn" class="secondary icon-btn" title="削除履歴(まとめて削除したカードを戻す)" aria-label="削除履歴"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg></button>
@@ -131,7 +133,7 @@
   <script src="js/auth.js?v=20260924a"></script>
   <script src="js/drive.js?v=20260924a"></script>
   <script src="js/gemini.js?v=20260925j"></script>
-  <script src="js/sound.js?v=20260927a"></script>
+  <script src="js/sound.js?v=20260929a"></script>
   <script src="js/canvas.js?v=20260929a"></script>
   <script src="js/app.js?v=20260927c"></script>
   <script src="js/decompose.js?v=20260925l"></script>
@@ -141,20 +143,20 @@
   <script src="js/midi/generators.js?v=20260926c"></script>
   <script src="js/midi/design.js?v=20260926c"></script>
   <script src="js/midi/presets.js?v=20260927a"></script>
-  <script src="js/midi/play.js?v=20260929a"></script>
+  <script src="js/midi/play.js?v=20260929b"></script>
   <script src="js/midi/export.js?v=20260926a"></script>
   <script src="js/midi/compose.js?v=20260929a"></script>
   <script src="js/midi/editor.js?v=20260926a"></script>
   <script src="js/midi/card.js?v=20260926c"></script>
   <script src="js/midi/feedback.js?v=20260927a"></script>
   <script src="js/imagesearch.js?v=20260926a"></script>
-  <script src="js/audio.js?v=20260925b"></script>
+  <script src="js/audio.js?v=20260929a"></script>
   <script src="js/daily.js?v=20260925c"></script>
   <script src="js/soulchat.js?v=20260927c"></script>
   <script src="js/screens/home.js?v=20260925h"></script>
   <script src="js/screens/soul.js?v=20260927d"></script>
   <script src="js/screens/ensemble.js?v=20260927c"></script>
-  <script src="js/screens/premix.js?v=20260929j"></script>
+  <script src="js/screens/premix.js?v=20260929k"></script>
   <script src="js/trash.js?v=20260927a"></script>
   <script src="js/marquee.js?v=20260927d"></script>
 </body>

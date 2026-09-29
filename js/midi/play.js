@@ -127,7 +127,7 @@
   function previewMaster(ctx) {
     if (!masterGain || masterGain.context !== ctx) {
       masterGain = ctx.createGain();
-      masterGain.connect(ctx.destination);
+      masterGain.connect(safeOut(ctx)); // リミッターを通す(js/sound.js)
     }
     masterGain.gain.value = previewVolume() / 80;
     return masterGain;
