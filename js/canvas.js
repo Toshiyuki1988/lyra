@@ -539,7 +539,8 @@ function attachCardGestures(el) {
     if (handleResize.edges.top) height = handleResize.startHeight - dy;
 
     // プレミックスのフォルダカードは「エリア」なので、ふつうのカードより大きく広げられる
-    const maxSize = el.classList.contains('star-card--folder') ? 2600 : CARD_MAX_SIZE;
+    // ネビュラ(星雲)もエフェクトの場なので大きめまで
+    const maxSize = el.classList.contains('star-card--folder') ? 2600 : el.classList.contains('star-card--nebula') ? 1800 : CARD_MAX_SIZE;
     width = clamp(width, CARD_MIN_WIDTH, maxSize);
     height = clamp(height, CARD_MIN_HEIGHT, maxSize);
 

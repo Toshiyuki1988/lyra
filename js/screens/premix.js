@@ -55,6 +55,9 @@
 //   - **語彙カード・画像カード(同日、ユーザー要望)**: オーディオカード(「語彙」ボタン/ヘックス)とエリア(見出しの「語彙」=今鳴っている音を録る)
 //     の音をGeminiに聞かせて長文の語彙カードにする。語彙カード・画像カード(道具バーの「画像」=Pixabay)の「MIDI」「ビート」でMIDIを作り、
 //     合成アンサンブルの音のオーディオカードにする(MIDIはカードの midiInline に持つ)。詳しくは「語彙カード」の節
+//   - **ネビュラ(同日、ユーザー要望)**: 道具バーの「ネビュラ」のアルバムから星雲をドラッグ&ドロップで置く。再生中のオーディオカードを近づけると、
+//     星の濃さと脈動に応じてエフェクト(リバース・スーパーリバーブ・フリーズ・グリッチ・テープストップ・パルサー・グラニュラー・ディストーション・
+//     ダブ・エコー・潮汐フィルター)がかかる。詳しくは「ネビュラ(星雲)のエフェクト」の節と js/nebula.js
 //   - **MIDIのカードから .mid を保存(同日、ユーザー要望)**: 名前の行の「⇩」(スフィアでは左の「保存」ヘックス)。アンサンブルと同じ
 //     書き出し先フォルダへ、1トラックで(js/midi/export.js の saveToFolder)。切り取ってあれば「全体/切り取った範囲だけ」を選ぶ
 //
@@ -63,7 +66,8 @@
 //   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
 //     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiInline?(MIDIカード), midiVoice?,
 //     x, y, width, createdAt },
-//   { id, type: 'vocab', ... }(語彙カード), { id, type: 'image', ... }(画像カード) ] }
+//   { id, type: 'vocab', ... }(語彙カード), { id, type: 'image', ... }(画像カード),
+//   { id, type: 'nebula', nebula(js/nebula.js の星雲のid), seed, x, y, width, height }(ネビュラ。音響エフェクトの星雲) ] }
 
 (function () {
   const MAX_SOUNDS = 10;
@@ -214,8 +218,11 @@
           `<p>下の「フォルダ」でPCのフォルダを選ぶと、中のオーディオ(最大${MAX_SOUNDS}個)がカードになります。` +
           `フォルダカードの枠がプレミックスエリアで、最後に触ったフォルダの音だけが鳴ります。</p></div>`);
       document.addEventListener('keydown', onKeydown);
+      els.viewport.addEventListener('dragover', onNebulaDragOver);
+      els.viewport.addEventListener('drop', onNebulaDrop);
       setTools([
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
+        { id: 'nebula', label: 'ネビュラ', icon: '<ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="1.6"/>', onClick: () => (window.LyraNebula.isOpen() ? window.LyraNebula.close() : window.LyraNebula.open((id) => placeNebula(id, null))) },
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
       ]);
@@ -225,6 +232,7 @@
     },
 
     afterRender() {
+      if (nebulaCards().length) startTicker();
       folders().forEach((f) => {
         if (!f.virtual && (!folderRt.get(f.id) || !folderRt.get(f.id).handle)) loadFolder(f, { interactive: false });
       });
@@ -236,6 +244,9 @@
     leave() {
       document.removeEventListener('keydown', onKeydown);
       if (window.LyraImageSearch && window.LyraImageSearch.isOpen()) window.LyraImageSearch.close();
+      if (window.LyraNebula) window.LyraNebula.close();
+      els.viewport.removeEventListener('dragover', onNebulaDragOver);
+      els.viewport.removeEventListener('drop', onNebulaDrop);
       stopAll();
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -247,6 +258,7 @@
       if (card.type === 'folder') buildFolder(card, el);
       else if (card.type === 'vocab') buildVocab(card, el);
       else if (card.type === 'image') buildImage(card, el);
+      else if (card.type === 'nebula') buildNebula(card, el);
       else buildSound(card, el);
       // エリア(フォルダカード)を押した時だけ、そのエリアをアクティブにする。オーディオカードを押しても切り替えない
       // (2026-09-29、ユーザー要望「アクティブなエリアの再生中に、別のエリアから音を取ってくる時に止まる。止まるのは他のエリアを触った時だけに」)
@@ -293,8 +305,9 @@
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
       else if (card.type === 'folder') confirmRemoveFolder(card);
-      else if (card.type === 'vocab') {
+      else if (card.type === 'vocab' || card.type === 'nebula') {
         removeCardFromScope(card);
+        nebRt.delete(card.id);
         scheduleAutoSave();
       } else if (card.type === 'image') {
         removeCardFromScope(card);
@@ -655,6 +668,7 @@
         `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
         `<span class="snd-time"></span>` +
         `<button type="button" class="snd-unclip" data-s="unclip" title="切り取った範囲を外して、音の全体に戻す" hidden>✕</button></div>` +
+        `<div class="snd-fx" aria-label="かかっているネビュラのエフェクト"></div>` +
         `<textarea class="snd-memo" data-s="memo" rows="1" spellcheck="false" ` +
         `placeholder="音のイメージを言葉で(例: 乾いた木の打音、遠くで滲む金属)">${escapeHtml(s.memo || '')}</textarea>` +
         `<label class="snd-param"><span>音量</span><input type="range" min="0" max="100" data-s="volume" value="${s.volume}"><output>${s.volume}</output></label>` +
@@ -1242,7 +1256,7 @@
     const send = c.createGain();
     send.gain.value = reverbSend(s.reverb);
     source.connect(gain);
-    gain.connect(bus.out);
+    gain.connect(stripOf(s).input); // ネビュラのエフェクトの通り道を通ってエリアのバスへ
     gain.connect(send);
     send.connect(bus.conv);
     source.onended = () => {
@@ -1316,6 +1330,11 @@
   function removeSound(s) {
     stop(s);
     stopVoicesOf(s.id);
+    const st = stripRt.get(s.id);
+    if (st) {
+      setTimeout(() => [st.out, st.revSend, st.echoSend].forEach((n) => n.disconnect()), 300);
+      stripRt.delete(s.id);
+    }
     soundRt.delete(s.id);
     removeCardFromScope(s);
     const f = folderOf(s);
@@ -1367,12 +1386,10 @@
     const rt = soundRt.get(s.id);
     if (!rt || !rt.node) return;
     const bus = busOf(s.folderId);
-    const { gain, send } = rt.node;
-    gain.disconnect();
+    const { send } = rt.node;
     send.disconnect();
-    gain.connect(bus.out);
-    gain.connect(send);
     send.connect(bus.conv);
+    stripOf(s); // エフェクトの通り道の出口を、新しいエリアのバスへつなぎ替える
   }
 
   /** オーディオカードは今いるフォルダの枠(プレミックスエリア)の中に留める */
@@ -1738,7 +1755,7 @@
     const send = ctx.createGain();
     send.gain.value = reverbSend(s.reverb);
     source.connect(gain);
-    gain.connect(bus.out);
+    gain.connect(stripOf(s).input); // ネビュラのエフェクトの通り道を通ってエリアのバスへ
     gain.connect(send);
     send.connect(bus.conv);
     source.start(Math.max(when, now), clip.start, clip.len);
@@ -2009,6 +2026,7 @@
           if (isTimeline(f)) scheduleTimeline(f);
           else if (isChain(f)) scheduleChain(f);
         });
+        nebulaTick();
       }, 30);
     }
     if (rafId) return;
@@ -2020,6 +2038,8 @@
         drawPlayhead(f, now);
         drawAreaMeter(f);
       });
+      drawNebulae();
+      drawNebulaChips();
       // タイムラインで今鳴っている音(カードごとに1つ)。カードの数×音の数にならないよう、1フレームに1回だけ表を作る
       const sounding = new Map();
       folderRt.forEach((rt) => (rt.tl ? rt.tl.voices : []).forEach((v) => {
@@ -2492,6 +2512,447 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     afterMidiPlaced(f, s, `「${midiCard.name}」を合成アンサンブルの音にして`);
   }
 
+  /* ---------------- ネビュラ(星雲)のエフェクト(2026-09-29、js/nebula.js) ----------------
+   * 星雲のカード(type 'nebula')を置き、再生中のオーディオカードの中心が星雲の枠の中に入ると、その位置の「濃さ」と「脈動」で
+   * エフェクトがかかる(同じエフェクトの星雲が重なったら、強い方)。
+   * 音の道すじ: オーディオカードの音はすべて(フリーの再生・タイムライン・チェーンの発音)、カードごとの「エフェクトの通り道」を通る:
+   *   入口 → dry(粒の効果の時は下げる)─┐
+   *   粒(逆再生・フリーズ・グラニュラー・スタッター)┴→ [ディストーション] → [グリッチの粗さ] → フィルター → パルサーのゲート → 出口 → エリアのバス
+   *                                                                                              └→ 星雲の残響・こだま(エリアのバスの中。待機中のエリアでは聞こえない)
+   * 粒の効果は、カードの今の再生位置から切り出すので、フリー・タイムライン・チェーンのどれでも同じように効く。テープストップは鳴っている音の速さを変える。
+   * 音量: ディストーションは歪ませても出口の大きさが変わらないよう混ぜる量で決め、高域を削る。出口は js/sound.js のリミッターを通る */
+  const NEB_T0 = performance.now();
+  const nebTime = () => (performance.now() - NEB_T0) / 1000;
+  const nebulaCards = () => data().cards.filter((c) => c.type === 'nebula');
+  const nebRt = new Map(); // 星雲カードid → { key(描いた大きさ), glow(描画の使い回し) }
+  const stripRt = new Map(); // オーディオカードid → エフェクトの通り道
+  const revBuffers = new WeakMap(); // AudioBuffer → 逆向きにしたもの
+  const NEB_SIZE = 380;
+  const NEB_BEAT = 0.6; // スタッターの断片の長さの目安(100BPMの1拍)
+
+  function buildNebula(card, el) {
+    const N = window.LyraNebula;
+    const def = N && N.NEB[card.nebula];
+    el.classList.add('star-card--nebula');
+    el.innerHTML = `<canvas class="neb-base"></canvas><canvas class="neb-glow"></canvas>` +
+      (def ? `<div class="neb-label"><span class="en">${def.en}</span>${escapeHtml(def.jp)} — ${escapeHtml(N.FX[def.fx].label)}</div>` : '');
+    nebRt.delete(card.id); // 描き直させる
+  }
+
+  /** 星雲を置く(pos はキャンバス座標の中心。無ければ画面の真ん中) */
+  function placeNebula(defId, pos) {
+    const N = window.LyraNebula;
+    if (!N || !N.NEB[defId]) return;
+    const at = pos || newCardSpawnPos(40);
+    const card = { id: newId(), type: 'nebula', nebula: defId, seed: Math.floor(Math.random() * 1000), x: at.x - NEB_SIZE / 2, y: at.y - NEB_SIZE / 2, width: NEB_SIZE, height: NEB_SIZE, createdAt: new Date().toISOString() };
+    data().cards.push(card);
+    renderCard(card);
+    scheduleAutoSave();
+    const def = N.NEB[defId];
+    setStatus(`${def.jp}(${N.FX[def.fx].label})を置きました。再生中のオーディオカードを近づけると効きます。長押しで大きさの変更・削除`);
+  }
+
+  function onNebulaDragOver(event) {
+    if ([...(event.dataTransfer?.types || [])].includes('text/plain')) event.preventDefault();
+  }
+
+  function onNebulaDrop(event) {
+    const id = window.LyraNebula && window.LyraNebula.idFromDrop(event.dataTransfer);
+    if (!id) return;
+    event.preventDefault();
+    placeNebula(id, clientToContent(event.clientX, event.clientY));
+  }
+
+  /** 毎フレーム: 星雲の見た目(大きさが変わったら描き直す・動く光) */
+  function drawNebulae() {
+    const N = window.LyraNebula;
+    if (!N) return;
+    const t = nebTime();
+    nebulaCards().forEach((card) => {
+      const el = cardElById(card.id);
+      const def = N.NEB[card.nebula];
+      if (!el || !def) return;
+      const rt = nebRt.get(card.id) || { glow: {} };
+      nebRt.set(card.id, rt);
+      const key = `${Math.round(card.width)}x${Math.round(card.height)}`;
+      if (rt.key !== key) {
+        rt.key = key;
+        N.renderBase(el.querySelector('.neb-base'), def, card.width, card.height, card.seed || 1);
+      }
+      N.drawGlow(el.querySelector('.neb-glow'), def, card.width, card.height, t, rt.glow);
+    });
+  }
+
+  /** カードの中心で、星雲ごとの場の値を読む(エフェクトごとに強い方) */
+  function nebulaAmounts(s, t, nebs) {
+    const N = window.LyraNebula;
+    const el = cardElById(s.id);
+    const w = el ? el.offsetWidth : s.width || SOUND_W;
+    const h = el ? el.offsetHeight : s.height || 100;
+    const cx = s.x + w / 2;
+    const cy = s.y + h / 2;
+    const out = {};
+    nebs.forEach((n) => {
+      const def = N.NEB[n.nebula];
+      if (!def) return;
+      const m = N.amountAt(def, ((cx - n.x) / n.width) * 2 - 1, ((cy - n.y) / n.height) * 2 - 1, t);
+      if (!m) return;
+      const prev = out[def.fx];
+      if (!prev || m.a > prev.a) out[def.fx] = { a: m.a, p: m.p };
+    });
+    return out;
+  }
+
+  /** カードのエフェクトの通り道(初めて鳴る時に作る)。出口は今いるエリアのバスへ(枠の外ならどこにもつながない) */
+  function stripOf(s) {
+    const c = audio();
+    let st = stripRt.get(s.id);
+    if (!st) {
+      const g = (v = 1) => {
+        const n = c.createGain();
+        n.gain.value = v;
+        return n;
+      };
+      st = { input: g(), dry: g(), grains: g(), ins: g(), sum1: g(), clean: g(), sum2: g(), crushClean: g(), gate: g(), out: g(), revSend: g(0), echoSend: g(0) };
+      st.filter = c.createBiquadFilter();
+      st.filter.type = 'lowpass';
+      st.filter.frequency.value = 20000;
+      st.filter.Q.value = 0.7;
+      st.input.connect(st.dry);
+      st.dry.connect(st.ins);
+      st.grains.connect(st.ins);
+      st.ins.connect(st.clean);
+      st.clean.connect(st.sum1);
+      st.sum1.connect(st.crushClean);
+      st.crushClean.connect(st.sum2);
+      st.sum2.connect(st.filter);
+      st.filter.connect(st.gate);
+      st.gate.connect(st.out);
+      Object.assign(st, { folderId: undefined, rate: 1, tapeUntil: 0, freezePos: null, nextFreeze: 0, revPos: null, nextRev: 0, stutterUntil: 0, neutral: true });
+      stripRt.set(s.id, st);
+    }
+    if (st.folderId !== s.folderId) {
+      [st.out, st.revSend, st.echoSend].forEach((n) => n.disconnect());
+      if (s.folderId) {
+        const bus = busOf(s.folderId);
+        st.out.connect(bus.out);
+        st.out.connect(st.revSend);
+        st.out.connect(st.echoSend);
+        st.revSend.connect(nebReverbOf(bus));
+        st.echoSend.connect(nebEchoOf(bus));
+      }
+      st.folderId = s.folderId;
+    }
+    return st;
+  }
+
+  /** ディストーションとグリッチの粗さは、初めて使う時に作る(WaveShaper の4倍オーバーサンプルは軽くないので) */
+  function ensureDrive(st) {
+    if (st.drivePre) return;
+    const c = audio();
+    st.drivePre = c.createGain();
+    const shaper = c.createWaveShaper();
+    const k = new Float32Array(2048);
+    for (let i = 0; i < 2048; i++) k[i] = Math.tanh(((i / 2047) * 2 - 1) * 3);
+    shaper.curve = k;
+    shaper.oversample = '4x';
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200; // 歪みの耳に痛い高域を削る
+    st.driveOut = c.createGain();
+    st.driveOut.gain.value = 0;
+    st.ins.connect(st.drivePre);
+    st.drivePre.connect(shaper);
+    shaper.connect(lp);
+    lp.connect(st.driveOut);
+    st.driveOut.connect(st.sum1);
+    // 音量の自動合わせ用: 歪ませる前と後の大きさを測る(静かな音を強く歪ませると、頭打ちの音が元より大きくなるため)
+    st.driveInAn = c.createAnalyser();
+    st.driveInAn.fftSize = 512;
+    st.driveWetAn = c.createAnalyser();
+    st.driveWetAn.fftSize = 512;
+    st.ins.connect(st.driveInAn);
+    lp.connect(st.driveWetAn);
+    st.driveBuf = new Float32Array(512);
+    st.driveMatch = 0.3;
+  }
+
+  function rmsOf(an, buf) {
+    an.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    return Math.sqrt(sum / buf.length);
+  }
+
+  function ensureCrush(st) {
+    if (st.crushGain) return;
+    const c = audio();
+    const crush = c.createWaveShaper();
+    const q = new Float32Array(2048);
+    for (let i = 0; i < 2048; i++) q[i] = Math.round(((i / 2047) * 2 - 1) * 6) / 6;
+    crush.curve = q;
+    st.crushGain = c.createGain();
+    st.crushGain.gain.value = 0;
+    st.sum1.connect(crush);
+    crush.connect(st.crushGain);
+    st.crushGain.connect(st.sum2);
+  }
+
+  /** エリアのバスの中の、星雲の残響(9秒)とこだま(付点8分)。初めて使う時に作る */
+  function nebReverbOf(bus) {
+    if (!bus.nebRev) {
+      const c = audio();
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 180;
+      const conv = c.createConvolver();
+      const len = Math.floor(c.sampleRate * 9);
+      const ir = c.createBuffer(2, len, c.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < len; i++) {
+          lp = lp * 0.6 + (Math.random() * 2 - 1) * 0.4;
+          d[i] = lp * Math.pow(1 - i / len, 2.2);
+        }
+      }
+      conv.buffer = ir;
+      const ret = c.createGain();
+      ret.gain.value = 0.55;
+      hp.connect(conv);
+      conv.connect(ret);
+      ret.connect(bus.out);
+      bus.nebRev = hp;
+    }
+    return bus.nebRev;
+  }
+
+  function nebEchoOf(bus) {
+    if (!bus.nebEcho) {
+      const c = audio();
+      const input = c.createGain();
+      const dl = c.createDelay(2);
+      dl.delayTime.value = 0.45;
+      const fb = c.createGain();
+      fb.gain.value = 0.55;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2200;
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 250;
+      input.connect(dl);
+      dl.connect(lp);
+      lp.connect(hp);
+      hp.connect(fb);
+      fb.connect(dl);
+      hp.connect(bus.out);
+      bus.nebEcho = input;
+    }
+    return bus.nebEcho;
+  }
+
+  function reversedOf(buf) {
+    let r = revBuffers.get(buf);
+    if (!r) {
+      r = audio().createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+        const a = buf.getChannelData(ch);
+        const b = r.getChannelData(ch);
+        for (let i = 0, n = a.length; i < n; i++) b[i] = a[n - 1 - i];
+      }
+      revBuffers.set(buf, r);
+    }
+    return r;
+  }
+
+  /** 今そのカードが鳴っている位置(元の音の秒)。鳴っていなければ null */
+  function playheadOf(s, now) {
+    const rt = soundRt.get(s.id);
+    if (!rt || !rt.buffer) return null;
+    if (rt.playing && rt.playClip && rt.playClip.len > 0) return { pos: rt.playClip.start + ((now - rt.startedAt) % rt.playClip.len), clip: rt.playClip };
+    const v = voicesOf(s.id).find((x) => x.when <= now && x.end > now && x.clip);
+    return v ? { pos: v.clip.start + (now - v.when), clip: v.clip } : null;
+  }
+
+  /** 粒を1つ(窓はなめらかな山形)。buffer の offset 秒から dur 秒 */
+  function nebGrain(st, buffer, offset, dur, gain, rate, when) {
+    const c = audio();
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = rate || 1;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(gain, when + dur * 0.45);
+    g.gain.linearRampToValueAtTime(0, when + dur);
+    src.connect(g);
+    g.connect(st.grains);
+    const d = buffer.duration;
+    src.start(when, ((offset % d) + d) % d, dur * (rate || 1) + 0.01);
+    src.stop(when + dur + 0.02);
+    src.onended = () => g.disconnect();
+  }
+
+  /** 30msごと: 星雲の中のカードにエフェクトをかける */
+  function nebulaTick() {
+    if (!ctx) return;
+    const nebs = nebulaCards();
+    const now = ctx.currentTime;
+    const vt = nebTime();
+    data().cards.forEach((s) => {
+      if (s.type !== 'sound') return;
+      const rt = soundRt.get(s.id);
+      if (!rt) return;
+      rt.nebFx = nebs.length && s.folderId ? nebulaAmounts(s, vt, nebs) : {};
+      const st = stripRt.get(s.id);
+      if (!st) return;
+      applyNebula(s, rt, st, rt.nebFx, now);
+    });
+  }
+
+  function applyNebula(s, rt, st, fx, t) {
+    const any = Object.keys(fx).length > 0;
+    if (!any && st.neutral) return; // 星雲の外で、もう素通しになっている
+    st.neutral = !any;
+    const A = (k) => (fx[k] ? fx[k].a : 0);
+    const P = (k) => (fx[k] ? fx[k].p : 0);
+    const tc = 0.03;
+    const head = playheadOf(s, t);
+    const sources = [...(rt.node ? [rt.node.source] : []), ...voicesOf(s.id).map((v) => v.source)];
+    // テープストップ: くびれほど遅く、砂の光が通るとガクッと止まって戻る
+    const tape = A('tape');
+    const rate = Math.max(0.04, 1 - 0.96 * tape);
+    if (tape > 0.1 && P('tape') > 0.55 && t > st.tapeUntil) {
+      st.tapeUntil = t + 0.9;
+      sources.forEach((src) => {
+        src.playbackRate.cancelScheduledValues(t);
+        src.playbackRate.setValueAtTime(src.playbackRate.value, t);
+        src.playbackRate.linearRampToValueAtTime(0.02, t + 0.4);
+        src.playbackRate.linearRampToValueAtTime(rate, t + 0.85);
+      });
+    } else if (t > st.tapeUntil) sources.forEach((src) => src.playbackRate.setTargetAtTime(rate, t, 0.08));
+    // 粒の効果(カードの今の再生位置から)
+    const rev = LyraNebula.clamp01(A('reverse') * (0.75 + 0.35 * P('reverse')));
+    const fr = A('freeze');
+    const gr = A('granular');
+    const gl = A('glitch');
+    if (head) {
+      // リバース: 逆向きにした音を、重ね合わせの粒で途切れずに鳴らす
+      if (rev > 0.03) {
+        const rbuf = reversedOf(rt.buffer);
+        const d = rt.buffer.duration;
+        if (st.revPos == null) {
+          st.revPos = d - head.pos;
+          st.nextRev = t;
+        }
+        const lo = d - head.clip.end;
+        const hi = d - head.clip.start;
+        while (st.nextRev < t + 0.12) {
+          const w = Math.max(st.nextRev, t);
+          if (st.revPos < lo || st.revPos >= hi) st.revPos = lo + (((st.revPos - lo) % (hi - lo)) + (hi - lo)) % (hi - lo);
+          nebGrain(st, rbuf, st.revPos, 0.24, 0.62 * rev, 1, w);
+          st.revPos += 0.12;
+          st.nextRev = w + 0.12;
+        }
+      } else st.revPos = null;
+      // フリーズ: 入った瞬間の位置で凍らせ、粒で伸ばし続ける(霜がきらめくと少し動く)
+      if (fr > 0.12) {
+        if (st.freezePos == null) {
+          st.freezePos = head.pos;
+          st.nextFreeze = t;
+        }
+        if (P('freeze') > 0.8) st.freezePos += 0.004;
+        while (st.nextFreeze < t + 0.1) {
+          const w = Math.max(st.nextFreeze, t);
+          nebGrain(st, rt.buffer, st.freezePos + (Math.random() - 0.5) * 0.02, 0.14, 0.4 * fr, 1, w);
+          st.nextFreeze = w + 0.045;
+        }
+      } else st.freezePos = null;
+      // グラニュラー: 粒の数・散らばり・音程の揺れ
+      if (gr > 0.05) {
+        const per = (6 + 45 * gr * (0.7 + 0.6 * P('granular'))) * 0.03;
+        let n = Math.floor(per) + (Math.random() < per % 1 ? 1 : 0);
+        while (n-- > 0) {
+          const dur = 0.05 + 0.14 * Math.random();
+          const cents = (Math.random() - 0.5) * 1400 * gr;
+          nebGrain(st, rt.buffer, head.pos + (Math.random() - 0.5) * 1.6 * gr, dur, (0.5 * gr) / Math.sqrt(1 + per * 4), Math.pow(2, cents / 1200), t + Math.random() * 0.03);
+        }
+      }
+      // グリッチ: 今の位置の短い断片を繰り返す(ブロックが瞬くと起きやすい)
+      if (gl > 0.05 && t > st.stutterUntil && Math.random() < gl * (0.06 + 0.25 * P('glitch'))) {
+        const slice = [NEB_BEAT / 8, NEB_BEAT / 4, NEB_BEAT / 2][Math.floor(Math.random() * 3)];
+        const reps = 2 + Math.floor(Math.random() * 5);
+        const start = head.pos;
+        for (let i = 0; i < reps; i++) nebGrain(st, rt.buffer, start, slice, 0.9, 1, t + i * slice);
+        st.stutterUntil = t + reps * slice;
+      }
+    } else {
+      st.revPos = null;
+      st.freezePos = null;
+    }
+    const stutter = t < st.stutterUntil;
+    // 元の音の量(粒の効果の分だけ下げる)
+    st.dry.gain.setTargetAtTime((1 - rev) * (1 - 0.88 * fr) * (1 - 0.6 * gr) * (stutter ? 0.08 : 1), t, tc);
+    if (gl > 0.01 || st.crushGain) {
+      ensureCrush(st);
+      st.crushGain.gain.setTargetAtTime(0.7 * gl, t, tc);
+      st.crushClean.gain.setTargetAtTime(1 - 0.7 * gl, t, tc);
+    }
+    // ディストーション: 熱い点のちらつきで強まる。出口の大きさは変えない
+    const dr = LyraNebula.clamp01(A('drive') * (0.75 + 0.45 * P('drive')));
+    if (dr > 0.01 || st.drivePre) {
+      ensureDrive(st);
+      st.drivePre.gain.setTargetAtTime(1 + 14 * dr, t, tc);
+      // 歪ませた音を、元の音の大きさ(RMS)に合わせてから混ぜる。元より大きくはしない
+      const inRms = rmsOf(st.driveInAn, st.driveBuf);
+      const wetRms = rmsOf(st.driveWetAn, st.driveBuf);
+      if (inRms > 1e-4 && wetRms > 1e-4) st.driveMatch = Math.min(1, (inRms / wetRms) * 0.95);
+      st.driveOut.gain.setTargetAtTime(dr * st.driveMatch, t, 0.06);
+    }
+    st.clean.gain.setTargetAtTime(1 - dr, t, tc);
+    // 潮汐フィルター: 波が通るたびに開閉(共振の分だけ出口を少し下げる)
+    const fl = A('filter');
+    st.filter.frequency.setTargetAtTime(20000 * (1 - fl) + 220 * Math.pow(2, 6 * P('filter')) * fl, t, 0.04);
+    st.filter.Q.setTargetAtTime(0.7 + 5 * fl, t, 0.05);
+    // パルサー: 光線が通る瞬間だけ開く
+    const pu = A('pulsar');
+    st.gate.gain.setTargetAtTime(1 - pu + pu * P('pulsar'), t, 0.012);
+    // 送り: 残響(呼吸で寄せては返す)・こだま(さざ波で強まる)
+    st.revSend.gain.setTargetAtTime(A('reverb') * (0.6 + 0.5 * P('reverb')), t, 0.1);
+    st.echoSend.gain.setTargetAtTime(A('echo') * (0.5 + 0.45 * P('echo')), t, 0.05);
+    st.out.gain.setTargetAtTime((1 - 0.18 * fl) * (1 - 0.15 * A('reverb')), t, 0.05);
+  }
+
+  /** 毎フレーム: オーディオカードに、かかっているエフェクトを出す(カード=帯、スフィア=色の輪) */
+  function drawNebulaChips() {
+    const N = window.LyraNebula;
+    if (!N) return;
+    data().cards.forEach((s) => {
+      if (s.type !== 'sound') return;
+      const el = cardElById(s.id);
+      const rt = soundRt.get(s.id);
+      if (!el || !rt) return;
+      const list = Object.entries(rt.nebFx || {}).filter(([, m]) => m.a > 0.03).sort((a, b) => b[1].a - a[1].a).slice(0, 4);
+      const box = el.querySelector('.snd-fx');
+      if (box) {
+        const key = list.map(([k]) => k).join('|');
+        if (box.dataset.key !== key) {
+          box.dataset.key = key;
+          box.innerHTML = list.map(([k]) => `<div class="snd-fx-row" data-k="${k}"><span>${escapeHtml(N.FX[k].label)}</span><i style="--c:${N.FX[k].c}"></i><output></output></div>`).join('');
+        }
+        list.forEach(([k, m]) => {
+          const row = box.querySelector(`[data-k="${k}"]`);
+          if (!row) return;
+          row.querySelector('i').style.setProperty('--a', m.a.toFixed(3));
+          row.querySelector('output').textContent = `${Math.round(m.a * 100)}%`;
+        });
+      }
+      const top = list[0];
+      el.classList.toggle('star-card--neb-on', Boolean(top));
+      if (top) el.style.setProperty('--neb', N.FX[top[0]].c);
+    });
+  }
+
   /* ---------------- Shift+D で複製 ---------------- */
 
   function onKeydown(event) {
@@ -2550,5 +3011,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
