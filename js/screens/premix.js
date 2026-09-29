@@ -77,7 +77,14 @@
   const SLOT_W = 226;
   const SLOT_H = 226;
   const PAD = 16;
-  const HEAD_H = 96; // フォルダの見出し(2段)+タイムラインの秒数の帯の高さ。オーディオカードはこの下から並べる
+  const HEAD_H = 96;
+  // エリアは角の丸い平行四辺形(2026-09-29、ユーザー要望「長方形がなんか合わない。角丸平行四辺形に」)。傾きは角度でなく一定のずらし幅にする
+  // (角度だと縦に長いエリアほど上下の端が大きくずれ、見出しやカードが形の外へはみ出すため)。上の辺が右へ SLANT ずれた「/」の形
+  const SLANT = 34;
+  const SHAPE_R = 16;
+  /** エリアの中の高さ y(エリアの上端から)での、左の辺・右の辺の位置(エリアの左端から) */
+  const leftAt = (f, y) => SLANT * (1 - Math.min(1, Math.max(0, y / Math.max(1, f.height || 1))));
+  const rightAt = (f, y) => (f.width || 0) - SLANT * Math.min(1, Math.max(0, y / Math.max(1, f.height || 1))); // フォルダの見出し(2段)+タイムラインの秒数の帯の高さ。オーディオカードはこの下から並べる
   const HANDLE_DB = 'lyra-local'; // js/midi/export.js と同じDB・ストア(書き出し先フォルダのハンドルと同居)
   const HANDLE_STORE = 'handles';
   const PEAKS = 90;
@@ -255,8 +262,10 @@
     },
 
     buildCard(card, el) {
-      if (card.type === 'folder') buildFolder(card, el);
-      else if (card.type === 'vocab') buildVocab(card, el);
+      if (card.type === 'folder') {
+        buildFolder(card, el);
+        if (shapeObserver) shapeObserver.observe(el);
+      } else if (card.type === 'vocab') buildVocab(card, el);
       else if (card.type === 'image') buildImage(card, el);
       else if (card.type === 'nebula') buildNebula(card, el);
       else buildSound(card, el);
@@ -363,6 +372,7 @@
     else if (rt.status === 'loading') msg = '読み込んでいます…';
     else if (rt.status === 'error') msg = `読み込めませんでした: ${escapeHtml(rt.error || '')}`;
     el.innerHTML =
+      `<svg class="fold-shape" aria-hidden="true"><path class="fold-shape-body"></path><path class="fold-shape-line"></path></svg>` +
       `<div class="fold-head"><div class="fold-row"><span class="fold-badge"></span>` +
       `<span class="fold-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>` +
       `<span class="fold-meter" title="このエリアの音のピーク(リミッターの手前)。赤=0dBFSを超えた、LIM=リミッターが効いている"><i class="fm-bar"></i><i class="fm-hold"></i></span>` +
@@ -415,6 +425,43 @@
     });
   }
 
+  /** 角の丸い多角形の path(頂点で r だけ手前から曲げる) */
+  function roundedPoly(points, r) {
+    const n = points.length;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const [x, y] = points[i];
+      const [px, py] = points[(i + n - 1) % n];
+      const [nx, ny] = points[(i + 1) % n];
+      const l1 = Math.hypot(px - x, py - y) || 1;
+      const l2 = Math.hypot(nx - x, ny - y) || 1;
+      const r1 = Math.min(r, l1 / 2);
+      const r2 = Math.min(r, l2 / 2);
+      const a = [x + ((px - x) / l1) * r1, y + ((py - y) / l1) * r1];
+      const b = [x + ((nx - x) / l2) * r2, y + ((ny - y) / l2) * r2];
+      d += `${i ? 'L' : 'M'}${a[0].toFixed(1)},${a[1].toFixed(1)} Q${x},${y} ${b[0].toFixed(1)},${b[1].toFixed(1)} `;
+    }
+    return `${d}Z`;
+  }
+
+  /** エリアの形(平行四辺形)と、見出しの下の区切り線を、今の大きさで描く */
+  function drawFolderShape(el) {
+    const svg = el && el.querySelector('.fold-shape');
+    if (!svg) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    if (!w || !h) return;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.querySelector('.fold-shape-body').setAttribute('d', roundedPoly([[SLANT, 0], [w, 0], [w - SLANT, h], [0, h]], SHAPE_R));
+    const head = el.querySelector('.fold-head');
+    const y = head ? head.offsetHeight : 0;
+    const k = SLANT * (1 - y / h);
+    svg.querySelector('.fold-shape-line').setAttribute('d', y ? `M${(k + 1).toFixed(1)},${y} L${(w - SLANT * (y / h) - 1).toFixed(1)},${y}` : '');
+  }
+
+  // エリアの大きさが変わったら(リサイズ中も)形を描き直す
+  const shapeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => entries.forEach((e) => drawFolderShape(e.target))) : null;
+
   function refreshFolder(f) {
     const el = cardElById(f.id);
     if (!el) return;
@@ -426,6 +473,7 @@
     buildFolder(f, tmp);
     [...tmp.children].reverse().forEach((c) => el.insertBefore(c, el.firstChild));
     el.classList.toggle('star-card--edit-guide', guide);
+    drawFolderShape(el);
     renderActive(); // 作り直したバッジ(ACTIVE/待機)を埋める
   }
 
@@ -565,7 +613,7 @@
   }
 
   function placeSound(f, fileName, slot, extra) {
-    const cols = Math.max(1, Math.floor(((f.width || 700) - PAD) / SLOT_W));
+    const cols = Math.max(1, Math.floor(((f.width || 700) - PAD - SLANT * 2) / SLOT_W));
     const s = {
       id: newId(),
       type: 'sound',
@@ -574,7 +622,7 @@
       loop: true,
       volume: 80,
       reverb: 15,
-      x: (f.x || 0) + PAD + (slot % cols) * SLOT_W,
+      x: (f.x || 0) + PAD + SLANT + (slot % cols) * SLOT_W,
       y: (f.y || 0) + HEAD_H + Math.floor(slot / cols) * SLOT_H,
       width: SOUND_W,
       createdAt: new Date().toISOString(),
@@ -1349,7 +1397,10 @@
   function dropSound(s, el) {
     const cx = s.x + el.offsetWidth / 2;
     const cy = s.y + el.offsetHeight / 2;
-    const inside = folders().filter((f) => cx >= f.x && cx <= f.x + (f.width || 0) && cy >= f.y && cy <= f.y + (f.height || 0));
+    const inside = folders().filter((f) => {
+      const ry = cy - f.y;
+      return ry >= 0 && ry <= (f.height || 0) && cx - f.x >= leftAt(f, ry) && cx - f.x <= rightAt(f, ry); // 平行四辺形の中
+    });
     // 重なっていたら、面積の小さい(内側の)枠を選ぶ
     const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
     const prev = folderOf(s);
@@ -1399,12 +1450,14 @@
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     // タイムラインでは左端(=鳴り始め)がループの中にあればよい(カードの右側はエリアの外にはみ出してよい)
-    const maxX = isTimeline(f) ? f.x + (f.width || 0) - PAD - SNAP_SEC * pxOf(f) : f.x + (f.width || 0) - w - 6;
-    const x = Math.min(Math.max(s.x, isTimeline(f) ? f.x + PAD : f.x + 6), maxX);
-    const y = Math.min(Math.max(s.y, f.y + HEAD_H - 4), f.y + (f.height || 0) - h - 6);
+    const y = Math.max(f.y + HEAD_H - 4, Math.min(Math.max(s.y, f.y + HEAD_H - 4), f.y + (f.height || 0) - h - 6));
+    // フリー・チェーンは平行四辺形の左右の辺の内側(カードの上端で左の辺、下端で右の辺がいちばん厳しい)
+    const minX = isTimeline(f) ? f.x + PAD : f.x + leftAt(f, y - f.y) + 6;
+    const maxX = isTimeline(f) ? f.x + (f.width || 0) - PAD - SNAP_SEC * pxOf(f) : f.x + rightAt(f, y + h - f.y) - w - 6;
+    const x = Math.max(minX, Math.min(Math.max(s.x, minX), maxX));
     if (x === s.x && y === s.y) return;
-    s.x = Math.max(isTimeline(f) ? f.x + PAD : f.x + 6, x);
-    s.y = Math.max(f.y + HEAD_H - 4, y);
+    s.x = x;
+    s.y = y;
     el.dataset.x = String(s.x);
     el.dataset.y = String(s.y);
     el.style.transition = 'transform 0.18s ease-out';
