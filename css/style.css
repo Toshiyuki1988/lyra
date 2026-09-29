@@ -1912,8 +1912,7 @@ body[data-screen="premix"] .star-card .btn-small--accent { background: var(--pm-
 .fold-mode { flex: none; display: inline-flex; padding: 2px; border-radius: 8px; background: #121318; border: 1px solid var(--pm-line); }
 .fold-mode-btn { font-size: 11px; padding: 3px 10px; border: none; border-radius: 6px; background: transparent; color: var(--pm-muted); cursor: pointer; }
 .fold-mode-btn--on { background: #2b2f39; color: var(--pm-amber); box-shadow: inset 0 0 0 1px rgba(242, 178, 76, 0.4); }
-.tl-time { flex: none; font-family: var(--mono); font-size: 12px; color: var(--pm-amber); min-width: 7.5em; text-shadow: 0 0 8px rgba(242, 178, 76, 0.4); }
-.fold-actions { margin-left: auto; display: flex; gap: 5px; flex: none; }
+.tl-time { flex: none; font-family: var(--mono); font-size: 12px; color: var(--pm-amber); min-width: 6.6em; text-shadow: 0 0 8px rgba(242, 178, 76, 0.4); }
 body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm-hot); border-color: var(--pm-hot); color: #fff; box-shadow: 0 0 12px rgba(255, 93, 82, 0.5); }
 .fold-msg { padding: 10px 14px; font-size: 12px; color: var(--pm-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -1962,10 +1961,10 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
 }
 .star-card--sound-playing .snd-play { background: radial-gradient(circle at 35% 30%, #ff9a8f, var(--pm-hot) 60%, #c23a31); color: #fff; box-shadow: 0 0 12px rgba(255, 93, 82, 0.55); }
 .snd-play:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
-.snd-loop { font-size: 10.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--pm-line-2); background: transparent; color: var(--pm-faint); cursor: pointer; letter-spacing: 0.04em; }
+.snd-loop { flex: none; white-space: nowrap; font-size: 10.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--pm-line-2); background: transparent; color: var(--pm-faint); cursor: pointer; letter-spacing: 0.04em; }
 .snd-loop--on { border-color: rgba(242, 178, 76, 0.7); color: var(--pm-amber); box-shadow: inset 0 0 8px rgba(242, 178, 76, 0.15); }
 .star-card--sound-tl .snd-loop { display: none; }
-.snd-time { margin-left: auto; font-size: 10.5px; color: var(--pm-faint); font-family: var(--mono); }
+.snd-time { margin-left: auto; white-space: nowrap; font-size: 10.5px; color: var(--pm-faint); font-family: var(--mono); }
 .snd-param { display: grid; grid-template-columns: 2.4em 1fr 2em; align-items: center; gap: 6px; font-size: 10.5px; color: var(--pm-muted); letter-spacing: 0.04em; }
 .snd-param output { text-align: right; font-family: var(--mono); font-size: 10.5px; color: var(--pm-text); }
 .snd-param input[type="range"] {
@@ -1977,12 +1976,98 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
   box-shadow: 0 0 0 3px rgba(242, 178, 76, 0.25), 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 .snd-param input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #f4f5f8; border: none; }
-/* タイムラインのクリップの長さ(カードの上辺。カードの幅より長い音は、カードの外まで伸びる) */
-.snd-span { display: none; position: absolute; left: -1px; top: -5px; height: 3px; border-radius: 2px; pointer-events: none;
-  background: linear-gradient(90deg, var(--pm-amber), rgba(255, 138, 76, 0.35)); box-shadow: 0 0 6px rgba(242, 178, 76, 0.5); }
-.star-card--sound-tl .snd-span { display: block; }
+/* タイムラインでは左端=鳴り始め(以前あった「音の長さの光る帯」は2026-09-29に廃止) */
 .star-card--sound-tl { border-left: 2px solid var(--pm-amber); border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
-.tl-len { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--pm-muted); }
-.tl-len input { width: 4.2em; padding: 2px 4px; border-radius: 5px; border: 1px solid var(--pm-line-2); background: #121318; color: var(--pm-amber); font-family: var(--mono); font-size: 12px; text-align: right; }
-.tl-len input:focus { outline: none; border-color: var(--pm-amber); }
 .fold-row { flex-wrap: wrap; row-gap: 6px; }
+.fold-transport-group { flex: none; display: inline-flex; gap: 5px; }
+.fold-view .fold-mode-btn { padding: 3px 8px; }
+
+/* ループの長さ: −/+・ドラッグできる数字・½・×2・音に合わせる */
+.tl-len { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--pm-muted); }
+.tl-len-btn {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--pm-line-2);
+  background: #1b1d24; color: var(--pm-text); font-size: 13px; line-height: 1; cursor: pointer;
+}
+.tl-len-btn:hover { border-color: var(--pm-amber); color: var(--pm-amber); }
+.tl-len-btn--word { font-size: 10.5px; color: var(--pm-muted); }
+.tl-len-val {
+  min-width: 4.4em; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--pm-line-2); background: #121318;
+  color: var(--pm-amber); font-family: var(--mono); font-size: 12.5px; text-align: center; cursor: ew-resize; user-select: none;
+  touch-action: none; text-shadow: 0 0 8px rgba(242, 178, 76, 0.35);
+}
+.tl-len-val:hover, .tl-len-val:focus, .tl-len-val--drag { outline: none; border-color: var(--pm-amber); background: #1c1a14; }
+.tl-len-input { width: 5em; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--pm-amber); background: #121318; color: var(--pm-amber); font-family: var(--mono); font-size: 12px; text-align: right; }
+.tl-len-input:focus { outline: none; }
+
+/* カードの見た目: 名前の行・切り取り・語彙メモ */
+.snd-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.snd-head .snd-name { flex: 1; min-width: 0; }
+.snd-view, .sph-view {
+  flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--pm-line-2);
+  background: #1b1d24; color: var(--pm-muted); font-size: 10px; line-height: 1; cursor: pointer;
+}
+.snd-view:hover, .sph-view:hover { border-color: var(--pm-amber); color: var(--pm-amber); }
+.snd-wave { cursor: text; touch-action: none; }
+.snd-unclip { flex: none; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--pm-line-2); background: transparent; color: var(--pm-muted); font-size: 9px; cursor: pointer; }
+.snd-unclip:hover { border-color: var(--pm-hot); color: var(--pm-hot); }
+.snd-unclip[hidden] { display: none; }
+.snd-memo {
+  width: 100%; field-sizing: content; min-height: 1.9em; max-height: 9em; resize: none; box-sizing: border-box;
+  padding: 4px 7px; border: 1px solid transparent; border-radius: 6px; background: rgba(0, 0, 0, 0.22);
+  color: var(--pm-text); font-family: var(--sans); font-size: 11px; line-height: 1.55;
+}
+.snd-memo::placeholder { color: var(--pm-faint); }
+.snd-memo:hover { border-color: var(--pm-line-2); }
+.snd-memo:focus { outline: none; border-color: rgba(242, 178, 76, 0.55); background: rgba(0, 0, 0, 0.32); }
+
+/* 枠の外のカード(鳴らない) */
+.star-card--sound-out { opacity: 0.5; filter: grayscale(0.8); border-style: dashed; }
+.star-card--sound-out .snd-from { color: var(--pm-hot); }
+
+/* スフィア: 小さな球。再生バーは12時から時計回り(--p は 0〜1。js/screens/premix.js の描画ループが入れる) */
+.star-card--sphere,
+.star-card--sphere.star-card--sound-playing,
+.star-card--sphere.star-card--sound-tl {
+  padding: 0; background: transparent; border: none; box-shadow: none; border-radius: 50%;
+}
+.sph {
+  --p: 0;
+  position: relative; width: 100%; height: 100%; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #3b3f4b, #1c1e25 60%, #0f1014);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -10px 20px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 0.15s ease-out;
+}
+.sph-ring { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; opacity: 0.75; pointer-events: none; }
+.sph::before {
+  content: ""; position: absolute; inset: 2px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+  background: conic-gradient(rgba(255, 226, 168, 0.5) calc(var(--p) * 360deg), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 60%, #000 61%, #000 67%, transparent 68%);
+  mask: radial-gradient(circle, transparent 60%, #000 61%, #000 67%, transparent 68%);
+}
+.sph-hand {
+  position: absolute; left: calc(50% - 1px); top: 5%; width: 2px; height: 45%; border-radius: 1px; pointer-events: none;
+  transform-origin: 50% 100%; transform: rotate(calc(var(--p) * 360deg));
+  background: linear-gradient(#fff, rgba(255, 255, 255, 0.05)); opacity: 0.18;
+}
+.star-card--sound-playing .sph { box-shadow: 0 0 0 1px rgba(242, 178, 76, 0.65), 0 0 28px rgba(242, 178, 76, 0.35), 0 10px 24px rgba(0, 0, 0, 0.55), inset 0 -10px 20px rgba(0, 0, 0, 0.5); }
+.star-card--sound-playing .sph::before { opacity: 1; }
+.star-card--sound-playing .sph-hand { opacity: 1; filter: drop-shadow(0 0 3px #fff); }
+.star-card--sound-playing .sph-ring { opacity: 1; }
+.sph-play {
+  position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; padding: 0;
+  border-radius: 50%; border: none; cursor: pointer; font-size: 11px; color: #1a1407;
+  background: radial-gradient(circle at 35% 30%, #ffd07a, var(--pm-amber) 60%, #c7862a); box-shadow: 0 2px 8px rgba(242, 178, 76, 0.35);
+}
+.star-card--sound-playing .sph-play { background: radial-gradient(circle at 35% 30%, #ff9a8f, var(--pm-hot) 60%, #c23a31); color: #fff; box-shadow: 0 0 12px rgba(255, 93, 82, 0.55); }
+.sph-play:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+.sph-view { position: absolute; right: -2px; top: -2px; opacity: 0.7; }
+.sph-name {
+  position: absolute; top: calc(100% + 5px); left: 50%; transform: translateX(-50%); width: 150px; pointer-events: none;
+  text-align: center; font-size: 10.5px; color: var(--pm-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sph-name .snd-from { margin-left: 0; }
+/* タイムラインでは左端=鳴り始めの印 */
+.star-card--sphere.star-card--sound-tl .sph::after {
+  content: ""; position: absolute; left: -3px; top: 28%; height: 44%; width: 2px; border-radius: 1px;
+  background: var(--pm-amber); box-shadow: 0 0 6px rgba(242, 178, 76, 0.6);
+}

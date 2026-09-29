@@ -110,8 +110,9 @@ function initCanvas(viewportElArg, contentElArg) {
       // このパンが同時に発火して競合する不具合があった(2026年9月、実機報告)。個々の入力欄に
       // 都度pointerdown側でstopPropagation()を足す方式は漏れが出やすいため、ここでinteract.js
       // 自体に「これらの要素上から始まったジェスチャーは無視する」と一元的に教える。
-      // .chat-log(専門AIチャットの会話ログ)も、文字の選択とスクロールを優先する
-      ignoreFrom: 'textarea, input, select, .chat-log',
+      // .chat-log(専門AIチャットの会話ログ)も、文字の選択とスクロールを優先する。
+      // .no-card-drag は、その要素自身がドラッグを使う部品(プレミックスの波形の切り取り・ループ秒数のつまみ)
+      ignoreFrom: 'textarea, input, select, .chat-log, .no-card-drag',
     })
     .gesturable({
       listeners: { move: onViewportPinch },
@@ -459,7 +460,7 @@ function attachCardGestures(el) {
 
   el.addEventListener('pointerdown', (event) => {
     if (event.target.closest('.star-card-handle, .star-card-hex')) return; // ハンドル/編集ガイドのボタンは専用処理
-    if (event.target.closest('button, textarea, input, a, .chat-log')) return; // 公式ページリンク(<a>)・チャットの会話ログなどはカードのドラッグ/長押し処理の対象外
+    if (event.target.closest('button, textarea, input, a, .chat-log, .no-card-drag')) return; // 公式ページリンク(<a>)・チャットの会話ログなどはカードのドラッグ/長押し処理の対象外
     if (pointerId !== null) return; // 既に1点を追跡中なら追加のポインタは無視
 
     // iOSなどはAudioContextの生成/再開がユーザー操作に直接紐づく同期呼び出しでないと

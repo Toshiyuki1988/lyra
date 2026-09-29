@@ -24,23 +24,38 @@
 //     タイムラインでは元の音の長さのぶん右(元の音が鳴り終わった所)に置く。読み込んだ音(AudioBuffer)は共有するのでメモリは増えない。
 //     「1フォルダ10個」はフォルダから読み込むファイルの数で、複製したカードは数えない
 //   - Web Audio: カード → 音量 → フォルダのバス(アクティブで1・待機で0)→ 出力。残響はフォルダごとの Convolver(合成したインパルス応答)へ送る
+//   - 2026-09-29(ユーザー要望。目指す先は「アンサンブルの混合美学をダイレクトに反映するグラニュラー」=カードの語彙からAIが
+//     切り取り・配置を決めてループを組む):
+//     - オーディオカードは「カード」と「スフィア」の2つの見た目(s.view)。カード=再生・ループ・音量・残響と、音のイメージを言葉で書く
+//       **語彙メモ**(s.memo。音を聞かせられないAIに、音を言葉で伝える材料)。波形の上をドラッグで**鳴らす範囲を切り取る**
+//       (s.clipStart / s.clipEnd、秒。端をつかむと片側だけ動く。ダブルクリックか✕で外す)。フリーのループ・タイムラインの発音・
+//       再生位置はこの範囲だけ。スフィア=小さな球で、再生バーが12時から時計回りに回る(画面が煩雑にならないように)。
+//       以前のタイムラインの「音の長さの光る帯」は廃止
+//     - **どのフォルダの枠の外に出したカードも鳴らない**(folderId = null、出どころは sourceFolderId に残す)。枠の中へ戻すとまた鳴る
+//     - ループの長さは −/+(押し続けで連続、Shiftで1秒)・数字の左右ドラッグ/ホイール/↑↓/ダブルクリックで入力・½・×2・
+//       「音に合わせる」(最後に触ったカードの切り取った長さ)で変える
+//     - 見出しの ▶再生/■ は2段目の左端(タイムラインの0秒の側)
 //
 // データ: state.premix = { activeId, cards: [
-//   { id, type: 'folder', name, mode: 'free'|'timeline', x, y, width, height, createdAt },
-//   { id, type: 'sound', folderId(いるエリア), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop, volume(0〜100), reverb(0〜100), x, y, width, createdAt } ] }
+//   { id, type: 'folder', name, mode: 'free'|'timeline', loopSec?, x, y, width, height, createdAt },
+//   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
+//     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, x, y, width, createdAt } ] }
 
 (function () {
   const MAX_SOUNDS = 10;
   const AUDIO_EXT = /\.(wav|wave|mp3|ogg|oga|opus|flac|m4a|aac|aif|aiff|webm)$/i;
   const SOUND_W = 210;
+  const SPHERE_W = 104;
   const SLOT_W = 226;
-  const SLOT_H = 150;
+  const SLOT_H = 226;
   const PAD = 16;
   const HEAD_H = 96; // フォルダの見出し(2段)+タイムラインの秒数の帯の高さ。オーディオカードはこの下から並べる
   const HANDLE_DB = 'lyra-local'; // js/midi/export.js と同じDB・ストア(書き出し先フォルダのハンドルと同居)
   const HANDLE_STORE = 'handles';
   const PEAKS = 90;
   const DEFAULT_LOOP_SEC = 8;
+  const MIN_LOOP_SEC = 0.25;
+  const MAX_LOOP_SEC = 300;
   const SNAP_SEC = 0.25;
   const LOOKAHEAD = 0.15; // 発音を先に予約しておく長さ(秒)
 
@@ -64,6 +79,20 @@
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
   const folderName = (id) => (data().cards.find((c) => c.id === id) || {}).name || '';
   const isTimeline = (f) => Boolean(f && f.mode === 'timeline');
+  const isSphere = (s) => s.view === 'sphere';
+  const hasClip = (s) => Number.isFinite(s.clipStart) && Number.isFinite(s.clipEnd);
+
+  /** 鳴らす範囲(秒)。切り取っていなければ音の全体 */
+  function clipOf(s, rt) {
+    const dur = rt && rt.buffer ? rt.buffer.duration : 0;
+    let a = hasClip(s) ? Math.max(0, Math.min(s.clipStart, dur)) : 0;
+    let b = hasClip(s) ? Math.max(a, Math.min(s.clipEnd, dur)) : dur;
+    if (b - a < 0.02) {
+      a = 0;
+      b = dur;
+    }
+    return { start: a, end: b, len: b - a, dur };
+  }
   const fileCount = (folderId) => new Set(soundsFrom(folderId).map((x) => x.fileName)).size; // 複製は数えない
 
   /* ---------------- ハンドルの保存(IndexedDB) ---------------- */
@@ -233,6 +262,8 @@
     const cards = soundsOf(f.id).length;
     const tl = isTimeline(f);
     const guests = soundsOf(f.id).filter((x) => sourceOf(x) !== f.id).length;
+    const views = new Set(soundsOf(f.id).map((x) => (isSphere(x) ? 'sphere' : 'card')));
+    const viewOn = views.size === 1 ? [...views][0] : '';
     let msg = '';
     if (rt.status === 'nohandle') msg = `この端末ではフォルダを覚えていません。<button type="button" class="btn-small" data-f="pick">フォルダを選び直す</button>`;
     else if (rt.status === 'needperm') msg = `フォルダを読むには許可が要ります。<button type="button" class="btn-small btn-small--accent" data-f="perm">アクセスを許可</button>`;
@@ -241,31 +272,39 @@
     el.innerHTML =
       `<div class="fold-head"><div class="fold-row"><span class="fold-badge"></span>` +
       `<span class="fold-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>` +
-      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">ファイル ${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}</span>` +
+      `<span class="fold-mode fold-view" role="group" aria-label="このエリアのカードの見た目">` +
+      `<button type="button" class="fold-mode-btn${viewOn === 'card' ? ' fold-mode-btn--on' : ''}" data-f="view-card" title="このエリアのカードを全部カードの見た目に(▭)">▭</button>` +
+      `<button type="button" class="fold-mode-btn${viewOn === 'sphere' ? ' fold-mode-btn--on' : ''}" data-f="view-sphere" title="このエリアのカードを全部スフィア(小さな球)に(◯)">◯</button></span>` +
+      (tl ? `<span class="tl-time"></span>` : '') +
+      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}</span>` +
+      `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す">読み直す</button>` +
       `</div><div class="fold-row">` +
-      `<span class="fold-mode" role="group" aria-label="モード">` +
-      `<button type="button" class="fold-mode-btn${tl ? '' : ' fold-mode-btn--on'}" data-f="free">フリー</button>` +
-      `<button type="button" class="fold-mode-btn${tl ? ' fold-mode-btn--on' : ''}" data-f="timeline">タイムライン</button></span>` +
-      (tl ? `<label class="tl-len" title="ループの長さ(エリアの幅全体が1ループ)">ループ<input type="number" min="0.5" max="300" step="0.5" data-f="len" value="${loopLen(f)}">秒</label>` +
-        `<span class="tl-time"></span>` : '') +
-      `<span class="fold-actions">` +
+      // ▶再生/■ は左端(タイムラインの0秒の側)に置く(2026-09-29、ユーザー要望)
+      `<span class="fold-transport-group">` +
       (tl
         ? `<button type="button" class="btn-small fold-transport${tlOf(f).playing ? ' fold-transport--on' : ''}" data-f="transport" title="プレイヘッドを動かす(エリア全体がループ)">${tlOf(f).playing ? '❚❚ 停止' : '▶ 再生'}</button>`
         : `<button type="button" class="btn-small" data-f="playall" title="このフォルダの音を全部鳴らす">▶ 全部</button>`) +
-      `<button type="button" class="btn-small" data-f="stopall" title="止める">■</button>` +
-      `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す">読み直す</button></span></div></div>` +
+      `<button type="button" class="btn-small" data-f="stopall" title="止める">■</button></span>` +
+      `<span class="fold-mode" role="group" aria-label="モード">` +
+      `<button type="button" class="fold-mode-btn${tl ? '' : ' fold-mode-btn--on'}" data-f="free">フリー</button>` +
+      `<button type="button" class="fold-mode-btn${tl ? ' fold-mode-btn--on' : ''}" data-f="timeline">タイムライン</button></span>` +
+      (tl ? loopControlHtml(f) : '') +
+      `</div></div>` +
       (msg ? `<div class="fold-msg">${msg}</div>` : '') +
       (tl ? timelineGridHtml(f) : '');
-    const lenInput = el.querySelector('[data-f="len"]');
-    if (lenInput) {
-      ['pointerdown', 'wheel', 'keydown'].forEach((type) => lenInput.addEventListener(type, (event) => event.stopPropagation(), { passive: type !== 'keydown' }));
-      lenInput.addEventListener('change', () => setLoopLen(f, Number(lenInput.value)));
-    }
+    attachLoopControl(f, el);
     el.querySelectorAll('button[data-f]').forEach((btn) => {
+      if (btn.dataset.f === 'len-dec' || btn.dataset.f === 'len-inc') return; // 押し続けで連続(attachLoopControl)
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         const a = btn.dataset.f;
         if (a === 'playall') soundsOf(f.id).forEach((s) => play(s));
+        else if (a === 'view-card' || a === 'view-sphere') {
+          soundsOf(f.id).forEach((s) => setView(s, a === 'view-sphere' ? 'sphere' : 'card'));
+          refreshFolder(f);
+        } else if (a === 'len-half') setLoopLen(f, loopLen(f) / 2);
+        else if (a === 'len-double') setLoopLen(f, loopLen(f) * 2);
+        else if (a === 'len-fit') fitLoopToSound(f);
         else if (a === 'stopall') {
           soundsOf(f.id).forEach((s) => stop(s));
           stopTransport(f);
@@ -310,10 +349,13 @@
       el.classList.toggle('star-card--folder-active', f.id === active);
       const badge = el.querySelector('.fold-badge');
       if (badge) badge.textContent = f.id === active ? 'ACTIVE' : '待機';
-      soundsOf(f.id).forEach((s) => {
-        const sel = cardElById(s.id);
-        if (sel) sel.classList.toggle('star-card--sound-muted', f.id !== active);
-      });
+    });
+    data().cards.forEach((s) => {
+      if (s.type !== 'sound') return;
+      const sel = cardElById(s.id);
+      if (!sel) return;
+      sel.classList.toggle('star-card--sound-muted', !s.folderId || s.folderId !== active);
+      sel.classList.toggle('star-card--sound-out', !s.folderId);
     });
   }
 
@@ -494,28 +536,73 @@
 
   /* ---------------- オーディオカード ---------------- */
 
+  /**
+   * 中身を作る(カード/スフィアの切り替えでも呼ぶ。編集ガイドのハンドル・ヘックスは残す)。
+   * カード=名前・波形(ドラッグで切り取り)・再生/ループ・語彙メモ・音量・残響。スフィア=球と名前だけ
+   */
   function buildSound(s, el) {
+    [...el.children].forEach((c) => {
+      if (!c.classList.contains('star-card-handle') && !c.classList.contains('star-card-hex')) c.remove();
+    });
     el.classList.add('star-card--sound', 'star-card--no-resize');
-    el.innerHTML =
-      `<div class="snd-span" aria-hidden="true"></div>` +
-      `<div class="snd-name" title="${escapeHtml(s.fileName)}">${escapeHtml(s.fileName.replace(/\.[^.]+$/, ''))}<span class="snd-from"></span></div>` +
-      `<div class="snd-wave"><canvas width="${SOUND_W * 2}" height="56"></canvas><div class="snd-playhead"></div><div class="snd-msg"></div></div>` +
-      `<div class="snd-row">` +
-      `<button type="button" class="snd-play" data-s="play" aria-label="再生">▶</button>` +
-      `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
-      `<span class="snd-time"></span></div>` +
-      `<label class="snd-param"><span>音量</span><input type="range" min="0" max="100" data-s="volume" value="${s.volume}"><output>${s.volume}</output></label>` +
-      `<label class="snd-param"><span>残響</span><input type="range" min="0" max="100" data-s="reverb" value="${s.reverb}"><output>${s.reverb}</output></label>`;
+    el.classList.toggle('star-card--sphere', isSphere(s));
+    const name = escapeHtml(s.fileName.replace(/\.[^.]+$/, ''));
+    if (isSphere(s)) {
+      el.insertAdjacentHTML('afterbegin',
+        `<div class="sph"><canvas class="sph-ring" width="${SPHERE_W * 2}" height="${SPHERE_W * 2}"></canvas>` +
+        `<div class="sph-hand"></div>` +
+        `<button type="button" class="sph-play" data-s="play" aria-label="再生">▶</button></div>` +
+        `<button type="button" class="sph-view" data-s="view" title="カードの見た目に戻す" aria-label="カードに戻す">▭</button>` +
+        `<div class="sph-name">${name}<span class="snd-from"></span></div>`);
+    } else {
+      el.insertAdjacentHTML('afterbegin',
+        `<div class="snd-head"><div class="snd-name" title="${escapeHtml(s.fileName)}">${name}<span class="snd-from"></span></div>` +
+        `<button type="button" class="snd-view" data-s="view" title="スフィア(小さな球)にする" aria-label="スフィアにする">◯</button></div>` +
+        `<div class="snd-wave no-card-drag" title="ドラッグで鳴らす範囲を切り取る(端をつかむと片側だけ動く。ダブルクリックで外す)">` +
+        `<canvas width="${SOUND_W * 2}" height="56"></canvas><div class="snd-playhead"></div><div class="snd-msg"></div></div>` +
+        `<div class="snd-row">` +
+        `<button type="button" class="snd-play" data-s="play" aria-label="再生">▶</button>` +
+        `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
+        `<span class="snd-time"></span>` +
+        `<button type="button" class="snd-unclip" data-s="unclip" title="切り取った範囲を外して、音の全体に戻す" hidden>✕</button></div>` +
+        `<textarea class="snd-memo" data-s="memo" rows="1" spellcheck="false" ` +
+        `placeholder="音のイメージを言葉で(例: 乾いた木の打音、遠くで滲む金属)">${escapeHtml(s.memo || '')}</textarea>` +
+        `<label class="snd-param"><span>音量</span><input type="range" min="0" max="100" data-s="volume" value="${s.volume}"><output>${s.volume}</output></label>` +
+        `<label class="snd-param"><span>残響</span><input type="range" min="0" max="100" data-s="reverb" value="${s.reverb}"><output>${s.reverb}</output></label>`);
+      // カードの見た目は中身の高さに従う(語彙メモの行数で変わる)
+      delete s.height;
+      el.style.height = '';
+    }
     el.querySelector('[data-s="play"]').addEventListener('click', (event) => {
       event.stopPropagation();
       toggle(s);
     });
+    el.querySelector('[data-s="view"]').addEventListener('click', (event) => {
+      event.stopPropagation();
+      setView(s, isSphere(s) ? 'card' : 'sphere');
+      const f = folderOf(s);
+      if (f) refreshFolder(f);
+    });
+    if (!isSphere(s)) bindCardControls(s, el);
+    refreshSound(s, el);
+  }
+
+  function bindCardControls(s, el) {
     el.querySelector('[data-s="loop"]').addEventListener('click', (event) => {
       event.stopPropagation();
       s.loop = !s.loop;
-      const rt = soundRt.get(s.id);
-      if (rt && rt.node) rt.node.source.loop = s.loop; // 鳴らしながら切り替えられる(外すと今の周の終わりで止まる)
+      setFreeLoop(s);
       refreshSound(s);
+      scheduleAutoSave();
+    });
+    el.querySelector('[data-s="unclip"]').addEventListener('click', (event) => {
+      event.stopPropagation();
+      clearClip(s);
+    });
+    const memo = el.querySelector('[data-s="memo"]');
+    memo.addEventListener('input', () => {
+      s.memo = memo.value;
+      syncCardHeight(el);
       scheduleAutoSave();
     });
     const fill = (input) => input.style.setProperty('--fill', `${input.value}%`); // つまみまでを色で満たす
@@ -538,34 +625,71 @@
       // ホイールでキャンバスをズームしない
       input.addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
     });
-    refreshSound(s, el);
+    attachClipDrag(s, el);
+  }
+
+  /** カード ⇔ スフィア。位置(左上)はそのまま。タイムラインでは左端=鳴り始めなので、時刻も変わらない */
+  function setView(s, view) {
+    const next = view === 'sphere' ? 'sphere' : 'card';
+    if ((isSphere(s) ? 'sphere' : 'card') === next) return;
+    if (next === 'sphere') s.view = 'sphere';
+    else delete s.view;
+    s.width = next === 'sphere' ? SPHERE_W : SOUND_W;
+    const el = cardElById(s.id);
+    if (el) {
+      el.style.width = `${s.width}px`;
+      if (next === 'sphere') {
+        s.height = SPHERE_W;
+        el.style.height = `${SPHERE_W}px`;
+      }
+      buildSound(s, el);
+      if (next === 'card') syncCardHeight(el);
+      if (s.folderId) clampIntoFolder(s, el);
+    }
+    scheduleAutoSave();
   }
 
   function refreshSound(s, elArg) {
     const el = elArg || cardElById(s.id);
     if (!el) return;
     const rt = soundRt.get(s.id) || {};
+    const f = folderOf(s);
     el.classList.toggle('star-card--sound-playing', Boolean(rt.playing));
     el.classList.toggle('star-card--sound-missing', Boolean(rt.missing));
-    el.classList.toggle('star-card--sound-tl', isTimeline(folderOf(s))); // タイムラインではループのボタンを隠す
-    // タイムラインでは、カードの上辺に実際の音の長さ(ここからどこまで鳴るか)を帯で出す。カードの幅は音の長さと関係ない
-    const span = el.querySelector('.snd-span');
-    const sf = folderOf(s);
-    if (span) span.style.width = rt.buffer && isTimeline(sf) ? `${rt.buffer.duration * pxOf(sf)}px` : '0';
-    const play = el.querySelector('.snd-play');
-    play.textContent = rt.playing ? '■' : '▶';
-    play.setAttribute('aria-label', rt.playing ? '停止' : '再生');
-    play.disabled = Boolean(rt.missing);
-    el.querySelector('.snd-loop').classList.toggle('snd-loop--on', Boolean(s.loop));
+    el.classList.toggle('star-card--sound-tl', isTimeline(f)); // タイムラインではループのボタンを隠す
+    el.classList.toggle('star-card--sound-out', !f);
+    const play = el.querySelector('[data-s="play"]');
+    if (play) {
+      play.textContent = rt.playing ? '■' : '▶';
+      play.setAttribute('aria-label', rt.playing ? '停止' : '再生');
+      play.disabled = Boolean(rt.missing) || !f;
+    }
+    const loop = el.querySelector('.snd-loop');
+    if (loop) loop.classList.toggle('snd-loop--on', Boolean(s.loop));
     const from = el.querySelector('.snd-from');
-    if (from) from.textContent = sourceOf(s) !== s.folderId ? ` ← ${folderName(sourceOf(s))}` : '';
-    el.querySelector('.snd-time').textContent = rt.buffer ? `${rt.buffer.duration.toFixed(1)}秒` : '';
-    el.querySelector('.snd-msg').textContent = rt.missing ? 'フォルダに見つかりません' : rt.loading ? '読み込み中…' : rt.buffer ? '' : '';
-    drawWave(s, el);
+    if (from) from.textContent = !f ? ' · 枠の外(鳴りません)' : sourceOf(s) !== s.folderId ? ` ← ${folderName(sourceOf(s))}` : '';
+    const c = clipOf(s, rt);
+    const time = el.querySelector('.snd-time');
+    if (time) {
+      time.textContent = !rt.buffer ? '' : hasClip(s) ? `✂ ${c.len.toFixed(2)}秒` : `${c.dur.toFixed(1)}秒`;
+      time.title = rt.buffer && hasClip(s) ? `${c.start.toFixed(2)}〜${c.end.toFixed(2)}秒を切り取り(全体 ${c.dur.toFixed(1)}秒)` : '';
+    }
+    const unclip = el.querySelector('.snd-unclip');
+    if (unclip) unclip.hidden = !hasClip(s);
+    const msg = el.querySelector('.snd-msg');
+    if (msg) msg.textContent = rt.missing ? 'フォルダに見つかりません' : rt.loading ? '読み込み中…' : '';
+    if (isSphere(s)) {
+      el.title = [s.fileName, s.memo, rt.buffer ? `${c.len.toFixed(2)}秒` : '', !f ? '枠の外(鳴りません)' : ''].filter(Boolean).join('\n');
+      drawSphere(s, el);
+    } else {
+      el.removeAttribute('title');
+      drawWave(s, el);
+    }
   }
 
   function drawWave(s, el) {
     const canvas = el.querySelector('.snd-wave canvas');
+    if (!canvas) return;
     const rt = soundRt.get(s.id);
     const g = canvas.getContext('2d');
     g.clearRect(0, 0, canvas.width, canvas.height);
@@ -580,6 +704,153 @@
       const h = Math.max(1, p * (canvas.height - 4));
       g.fillRect(i * w, mid - h / 2, Math.max(1, w - 1), h);
     });
+    if (!hasClip(s) || !rt.buffer) return;
+    // 切り取った範囲の外を暗くし、範囲の両端に線を引く
+    const c = clipOf(s, rt);
+    const x0 = (c.start / c.dur) * canvas.width;
+    const x1 = (c.end / c.dur) * canvas.width;
+    g.fillStyle = 'rgba(10, 11, 14, 0.72)';
+    g.fillRect(0, 0, x0, canvas.height);
+    g.fillRect(x1, 0, canvas.width - x1, canvas.height);
+    g.fillStyle = '#ffe2a8';
+    g.fillRect(x0 - 1, 0, 2, canvas.height);
+    g.fillRect(x1 - 1, 0, 2, canvas.height);
+  }
+
+  /** 切り取った範囲の強さの並び(スフィアの輪)。範囲が変わった時だけ計算し直す */
+  function clipPeaks(rt, c, n) {
+    const key = `${c.start}|${c.end}|${n}`;
+    if (rt.clipPeaks && rt.clipPeaks.key === key) return rt.clipPeaks.list;
+    const ch = rt.buffer.getChannelData(0);
+    const sr = rt.buffer.sampleRate;
+    const a = Math.floor(c.start * sr);
+    const len = Math.max(1, Math.floor(c.len * sr));
+    const list = [];
+    let top = 0;
+    for (let i = 0; i < n; i++) {
+      let peak = 0;
+      const from = a + Math.floor((i * len) / n);
+      const to = Math.min(ch.length, a + Math.floor(((i + 1) * len) / n));
+      const stride = Math.max(1, Math.floor((to - from) / 400));
+      for (let j = from; j < to; j += stride) peak = Math.max(peak, Math.abs(ch[j]));
+      list.push(peak);
+      top = Math.max(top, peak);
+    }
+    const norm = list.map((p) => (top > 0 ? p / top : 0));
+    rt.clipPeaks = { key, list: norm };
+    return norm;
+  }
+
+  /** スフィア: 12時から時計回りに、切り取った範囲の波形を放射状に描く */
+  function drawSphere(s, el) {
+    const canvas = el.querySelector('.sph-ring');
+    if (!canvas) return;
+    const g = canvas.getContext('2d');
+    g.clearRect(0, 0, canvas.width, canvas.height);
+    const rt = soundRt.get(s.id);
+    if (!rt || !rt.buffer) return;
+    const c = clipOf(s, rt);
+    const peaks = clipPeaks(rt, c, 72);
+    const W = canvas.width;
+    const r0 = W * 0.3;
+    const r1 = W * 0.46;
+    g.save();
+    g.translate(W / 2, W / 2);
+    g.lineCap = 'round';
+    g.lineWidth = W * 0.012;
+    peaks.forEach((p, i) => {
+      const ang = -Math.PI / 2 + ((i + 0.5) / peaks.length) * Math.PI * 2;
+      const len = (r1 - r0) * Math.max(0.08, p);
+      g.strokeStyle = `rgba(${Math.round(242 + 13 * (i / peaks.length))}, ${Math.round(178 - 56 * (i / peaks.length))}, ${Math.round(76 + 9 * (i / peaks.length))}, 0.9)`;
+      g.beginPath();
+      g.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0);
+      g.lineTo(Math.cos(ang) * (r0 + len), Math.sin(ang) * (r0 + len));
+      g.stroke();
+    });
+    g.restore();
+  }
+
+  /**
+   * 波形の上のドラッグで鳴らす範囲を切り取る。切り取った範囲の端の近く(8px)をつかむと、その端だけ動かす。
+   * 動かさずに離したら何もしない(誤って外さないように)。ダブルクリックで外す
+   */
+  function attachClipDrag(s, el) {
+    const wave = el.querySelector('.snd-wave');
+    let drag = null;
+    const secAt = (event, dur) => {
+      const r = wave.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)) * dur;
+    };
+    wave.addEventListener('pointerdown', (event) => {
+      const rt = soundRt.get(s.id);
+      if (!rt || !rt.buffer || event.button !== 0 || event.shiftKey) return; // Shift はまとめて選ぶ(js/marquee.js)
+      event.stopPropagation();
+      event.preventDefault();
+      const dur = rt.buffer.duration;
+      const x = secAt(event, dur);
+      const tol = (8 / wave.getBoundingClientRect().width) * dur;
+      const c = clipOf(s, rt);
+      let anchor = x;
+      if (hasClip(s) && Math.abs(x - c.start) <= tol) anchor = c.end;
+      else if (hasClip(s) && Math.abs(x - c.end) <= tol) anchor = c.start;
+      drag = { anchor, dur, x0: event.clientX, moved: false, prev: [s.clipStart, s.clipEnd] };
+      try {
+        wave.setPointerCapture(event.pointerId);
+      } catch (err) {
+        /* 無視 */
+      }
+    });
+    wave.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      if (!drag.moved && Math.abs(event.clientX - drag.x0) < 3) return;
+      drag.moved = true;
+      const x = secAt(event, drag.dur);
+      s.clipStart = Math.min(drag.anchor, x);
+      s.clipEnd = Math.max(drag.anchor, x);
+      refreshSound(s, el);
+    });
+    const end = () => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      if (!d.moved) return;
+      if (s.clipEnd - s.clipStart < 0.03) {
+        // 短すぎる範囲は無かったことにする
+        [s.clipStart, s.clipEnd] = d.prev;
+        if (!Number.isFinite(s.clipStart)) {
+          delete s.clipStart;
+          delete s.clipEnd;
+        }
+      } else {
+        s.clipStart = Math.round(s.clipStart * 1000) / 1000;
+        s.clipEnd = Math.round(s.clipEnd * 1000) / 1000;
+      }
+      onClipChanged(s);
+    };
+    wave.addEventListener('pointerup', end);
+    wave.addEventListener('pointercancel', end);
+    wave.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
+      clearClip(s);
+    });
+  }
+
+  function clearClip(s) {
+    if (!hasClip(s)) return;
+    delete s.clipStart;
+    delete s.clipEnd;
+    onClipChanged(s);
+  }
+
+  /** 範囲が変わったら、フリーで鳴っている音は新しい範囲の頭から鳴らし直す(タイムラインは次の周から) */
+  function onClipChanged(s) {
+    const rt = soundRt.get(s.id);
+    if (rt && rt.playing) {
+      stop(s);
+      play(s);
+    }
+    refreshSound(s);
+    scheduleAutoSave();
   }
 
   async function decodeSound(s) {
@@ -616,15 +887,23 @@
   }
 
   async function play(s) {
+    if (!s.folderId) {
+      setStatus('枠の外のカードは鳴りません。フォルダの枠の中へ戻すと鳴ります');
+      return;
+    }
     const rt = soundRt.get(s.id);
     if (!rt || rt.missing) return;
     if (!rt.buffer) await decodeSound(s);
-    if (!rt.buffer || rt.playing) return;
+    if (!rt.buffer || rt.playing || !s.folderId) return;
     const c = audio();
     const bus = busOf(s.folderId);
+    const clip = clipOf(s, rt);
     const source = c.createBufferSource();
     source.buffer = rt.buffer;
-    source.loop = Boolean(s.loop) && !isTimeline(folderOf(s)); // タイムラインではカードのループを無視(▶は試聴で1回)
+    // タイムラインではカードのループを無視(▶は試聴で1回)
+    source.loop = Boolean(s.loop) && !isTimeline(folderOf(s));
+    source.loopStart = clip.start;
+    source.loopEnd = clip.end;
     const gain = c.createGain();
     gain.gain.value = volumeGain(s.volume);
     const send = c.createGain();
@@ -640,12 +919,39 @@
         refreshSound(s);
       }
     };
-    source.start();
+    const t = c.currentTime;
+    source.start(t, clip.start);
+    if (!source.loop) source.stop(t + clip.len);
     rt.node = { source, gain, send };
-    rt.startedAt = c.currentTime;
+    rt.startedAt = t;
+    rt.playClip = clip;
     rt.playing = true;
     refreshSound(s);
     startTicker();
+  }
+
+  /**
+   * 鳴らしながらループを切り替える。外す=今の周の終わり(切り取った範囲の終わり)で止める。
+   * 付ける=一度止めるよう予約した音は延ばせないので、範囲の頭から鳴らし直す
+   */
+  function setFreeLoop(s) {
+    const rt = soundRt.get(s.id);
+    if (!rt || !rt.node || isTimeline(folderOf(s))) return;
+    const { source } = rt.node;
+    if (s.loop) {
+      stop(s);
+      play(s);
+      return;
+    }
+    const now = audio().currentTime;
+    const clip = rt.playClip;
+    const into = (now - rt.startedAt) % clip.len;
+    source.loop = false;
+    try {
+      source.stop(now + (clip.len - into));
+    } catch (err) {
+      /* 既に止まっている */
+    }
   }
 
   function stop(s) {
@@ -675,6 +981,7 @@
 
   function removeSound(s) {
     stop(s);
+    stopVoicesOf(s.id);
     soundRt.delete(s.id);
     removeCardFromScope(s);
     const f = folderOf(s);
@@ -684,7 +991,7 @@
 
   /**
    * オーディオカードを落とした時: 別のフォルダの枠の中ならそのエリアへ移してアクティブにする(鳴っていれば止めずにつなぎ替える)。
-   * どの枠の中でもなければ、今のエリアの中へ戻す
+   * どの枠の外に落としたら、エリアから外して鳴らさない(2026-09-29、ユーザー要望。以前は今のエリアの中へ戻していた)
    */
   function dropSound(s, el) {
     const cx = s.x + el.offsetWidth / 2;
@@ -692,20 +999,30 @@
     const inside = folders().filter((f) => cx >= f.x && cx <= f.x + (f.width || 0) && cy >= f.y && cy <= f.y + (f.height || 0));
     // 重なっていたら、面積の小さい(内側の)枠を選ぶ
     const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
+    const prev = folderOf(s);
     if (target && target.id !== s.folderId) {
-      const prev = folderOf(s);
       s.sourceFolderId = sourceOf(s);
       s.folderId = target.id;
       delete s.tlStart; // 移った先のタイムラインでは、置いた位置から時刻を決め直す
       if (s.sourceFolderId === s.folderId) delete s.sourceFolderId; // 元のフォルダへ帰った
+      stopVoicesOf(s.id);
       reroute(s);
       setActive(target.id);
       [prev, target].forEach((f) => f && refreshFolder(f));
-      refreshSound(s);
-      setStatus(`「${s.fileName}」を「${target.name}」のエリアへ移しました`);
+      setStatus(`「${s.fileName}」を「${target.name}」のエリアへ${prev ? '移しました' : '戻しました'}`);
+    } else if (!target && s.folderId) {
+      s.sourceFolderId = sourceOf(s);
+      s.folderId = null;
+      delete s.tlStart;
+      stop(s);
+      stopVoicesOf(s.id);
+      if (prev) refreshFolder(prev);
+      setStatus(`「${s.fileName}」を枠の外に出しました(鳴りません。フォルダの枠の中へ戻すとまた鳴ります)`);
     }
-    clampIntoFolder(s, el);
-    snapToGrid(s, el);
+    if (s.folderId) {
+      clampIntoFolder(s, el);
+      snapToGrid(s, el);
+    }
     refreshSound(s);
     renderActive();
   }
@@ -795,14 +1112,147 @@
 
   function setLoopLen(f, sec) {
     if (!(sec > 0)) return;
-    f.loopSec = Math.round(Math.min(300, Math.max(0.5, sec)) * 4) / 4;
+    const next = Math.round(Math.min(MAX_LOOP_SEC, Math.max(MIN_LOOP_SEC, sec)) * 1000) / 1000; // ½→×2 で元に戻るよう細かく持つ
+    if (next === loopLen(f)) return;
+    f.loopSec = next;
     soundsOf(f.id).forEach((s) => {
       if (Number.isFinite(s.tlStart) && s.tlStart >= f.loopSec) s.tlStart = Math.max(0, f.loopSec - SNAP_SEC); // ループの外に出たものは最後へ
     });
     relayoutTimeline(f);
-    const input = cardElById(f.id) && cardElById(f.id).querySelector('[data-f="len"]');
-    if (input) input.value = f.loopSec;
+    const val = cardElById(f.id) && cardElById(f.id).querySelector('.tl-len-val');
+    if (val) val.textContent = fmtLen(f.loopSec);
     scheduleAutoSave();
+  }
+
+  const fmtLen = (sec) => `${Number(sec).toFixed(2).replace(/\.?0+$/, '')}秒`;
+
+  /** ループの長さの操作部(見出しの2段目) */
+  function loopControlHtml(f) {
+    return `<span class="tl-len" title="ループの長さ(エリアの幅全体が1ループ)">ループ` +
+      `<button type="button" class="tl-len-btn" data-f="len-dec" title="短く(0.25秒。Shiftで1秒。押し続けで連続)" aria-label="短く">−</button>` +
+      `<span class="tl-len-val no-card-drag" tabindex="0" role="spinbutton" aria-valuenow="${loopLen(f)}" ` +
+      `title="左右にドラッグ・ホイール・↑↓キーで変える(Shiftで大きく)。ダブルクリックで数字を打つ">${fmtLen(loopLen(f))}</span>` +
+      `<button type="button" class="tl-len-btn" data-f="len-inc" title="長く(0.25秒。Shiftで1秒。押し続けで連続)" aria-label="長く">+</button>` +
+      `<button type="button" class="tl-len-btn tl-len-btn--word" data-f="len-half" title="半分に">½</button>` +
+      `<button type="button" class="tl-len-btn tl-len-btn--word" data-f="len-double" title="2倍に">×2</button>` +
+      `<button type="button" class="tl-len-btn tl-len-btn--word" data-f="len-fit" title="最後に触ったカードの鳴らす長さ(切り取った範囲)にそろえる">音に合わせる</button>` +
+      `</span>`;
+  }
+
+  function attachLoopControl(f, el) {
+    const val = el.querySelector('.tl-len-val');
+    if (!val) return;
+    const step = (event) => (event.shiftKey ? 1 : 0.25);
+    // −/+: 押し続けると連続で変わる(0.4秒後から速く)
+    el.querySelectorAll('[data-f="len-dec"], [data-f="len-inc"]').forEach((btn) => {
+      const dir = btn.dataset.f === 'len-inc' ? 1 : -1;
+      let timer = null;
+      const stopRepeat = () => {
+        clearTimeout(timer);
+        timer = null;
+      };
+      btn.addEventListener('pointerdown', (event) => {
+        event.stopPropagation();
+        if (event.button !== 0) return;
+        const d = dir * step(event);
+        setLoopLen(f, loopLen(f) + d);
+        const again = (wait) => {
+          timer = setTimeout(() => {
+            setLoopLen(f, loopLen(f) + d);
+            again(70);
+          }, wait);
+        };
+        again(400);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach((type) => btn.addEventListener(type, stopRepeat));
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (event.detail === 0) setLoopLen(f, loopLen(f) + dir * step(event)); // キーボードで押した時だけ(マウスは pointerdown で済んでいる)
+      });
+    });
+    // 数字: 左右にドラッグ(8pxで0.25秒)
+    let drag = null;
+    val.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      drag = { x0: event.clientX, v0: loopLen(f) };
+      try {
+        val.setPointerCapture(event.pointerId);
+      } catch (err) {
+        /* 無視 */
+      }
+      val.classList.add('tl-len-val--drag');
+    });
+    val.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      const per = event.shiftKey ? 1 : 0.25;
+      const steps = Math.round((event.clientX - drag.x0) / 8);
+      setLoopLen(f, drag.v0 + steps * per);
+    });
+    const endDrag = () => {
+      drag = null;
+      val.classList.remove('tl-len-val--drag');
+    };
+    val.addEventListener('pointerup', endDrag);
+    val.addEventListener('pointercancel', endDrag);
+    val.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setLoopLen(f, loopLen(f) + (event.deltaY < 0 ? 1 : -1) * step(event));
+    }, { passive: false });
+    val.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowUp' || event.key === 'ArrowRight') setLoopLen(f, loopLen(f) + step(event));
+      else if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') setLoopLen(f, loopLen(f) - step(event));
+      else if (event.key === 'Enter') editLoopLen(f, val);
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    val.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
+      editLoopLen(f, val);
+    });
+  }
+
+  /** 数字を直接打つ(その場の入力欄。Enter/フォーカスを外すで決定、Escでやめる) */
+  function editLoopLen(f, val) {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = String(MIN_LOOP_SEC);
+    input.max = String(MAX_LOOP_SEC);
+    input.step = '0.01';
+    input.value = String(loopLen(f));
+    input.className = 'tl-len-input';
+    val.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (apply) => {
+      if (done) return;
+      done = true;
+      if (apply) setLoopLen(f, Number(input.value));
+      refreshFolder(f);
+    };
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') finish(true);
+      else if (event.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('pointerdown', (event) => event.stopPropagation());
+  }
+
+  /** ループを、最後に触ったカード(このエリアの)の鳴らす長さにそろえる。無ければエリアでいちばん長いもの */
+  function fitLoopToSound(f) {
+    const list = soundsOf(f.id).filter((s) => (soundRt.get(s.id) || {}).buffer);
+    const s = list.find((x) => x.id === lastSoundId) || list.sort((a, b) => clipOf(b, soundRt.get(b.id)).len - clipOf(a, soundRt.get(a.id)).len)[0];
+    if (!s) {
+      setStatus('そろえる音がまだ読み込まれていません');
+      return;
+    }
+    const len = clipOf(s, soundRt.get(s.id)).len;
+    setLoopLen(f, len);
+    setStatus(`ループを「${s.fileName}」の${hasClip(s) ? '切り取った' : ''}長さ(${fmtLen(loopLen(f))})にそろえました`);
   }
 
   function tlOf(f) {
@@ -816,6 +1266,25 @@
     const out = [];
     folderRt.forEach((rt) => (rt.tl ? rt.tl.voices : []).forEach((v) => v.cardId === cardId && out.push(v)));
     return out;
+  }
+
+  /** タイムラインで鳴っている(予約済みの)そのカードの音を止める(枠の外へ出した・別のエリアへ移した時) */
+  function stopVoicesOf(cardId) {
+    const t = ctx ? ctx.currentTime : 0;
+    folderRt.forEach((rt) => {
+      if (!rt.tl) return;
+      rt.tl.voices.filter((v) => v.cardId === cardId).forEach((v) => {
+        v.gain.gain.cancelScheduledValues(t);
+        v.gain.gain.setTargetAtTime(0, t, 0.015);
+        try {
+          v.source.stop(t + 0.08);
+        } catch (err) {
+          /* 既に止まっている */
+        }
+      });
+      rt.tl.voices = rt.tl.voices.filter((v) => v.cardId !== cardId);
+      rt.tl.scheduled.delete(cardId);
+    });
   }
 
   function setMode(f, mode) {
@@ -909,7 +1378,8 @@
         if (when < now - 0.01 || when >= horizon || tl.scheduled.get(s.id) === key) continue;
         tl.scheduled.set(s.id, key);
         const loopEnd = tl.t0 + (cyc + 1) * len;
-        const end = Math.min(when + rt.buffer.duration, loopEnd);
+        const clip = clipOf(s, rt);
+        const end = Math.min(when + clip.len, loopEnd);
         const bus = busOf(f.id);
         const source = ctx.createBufferSource();
         source.buffer = rt.buffer;
@@ -921,14 +1391,14 @@
         gain.connect(bus.out);
         gain.connect(send);
         send.connect(bus.conv);
-        source.start(Math.max(when, now));
-        if (end < when + rt.buffer.duration) {
+        source.start(Math.max(when, now), clip.start, clip.len);
+        if (end < when + clip.len) {
           // ループの終わりで切る(プチッと鳴らないよう短く消す)
           gain.gain.setValueAtTime(volumeGain(s.volume), Math.max(when, end - 0.02));
           gain.gain.linearRampToValueAtTime(0, end);
           source.stop(end + 0.01);
         }
-        const voice = { cardId: s.id, source, gain, send, when, end };
+        const voice = { cardId: s.id, source, gain, send, when, end, clip };
         source.onended = () => {
           gain.disconnect();
           send.disconnect();
@@ -1002,17 +1472,29 @@
         const voice = sounding.get(s.id);
         const lit = Boolean(rt.playing) || Boolean(voice);
         if (el.classList.contains('star-card--sound-playing') !== lit) el.classList.toggle('star-card--sound-playing', lit);
+        let clip = null;
+        let into = 0; // 範囲の頭から何秒
+        if (rt.playing && rt.playClip && rt.playClip.len > 0) {
+          clip = rt.playClip;
+          into = (now - rt.startedAt) % clip.len;
+        } else if (voice && voice.clip && voice.clip.len > 0) {
+          clip = voice.clip;
+          into = Math.min(clip.len, now - voice.when);
+        }
+        const sph = el.querySelector('.sph');
+        if (sph) {
+          const p = clip ? into / clip.len : 0;
+          sph.style.setProperty('--p', p.toFixed(4));
+          return;
+        }
         const head = el.querySelector('.snd-playhead');
         if (!head) return;
-        let pos = null;
-        if (rt.playing && rt.buffer) pos = ((now - rt.startedAt) % rt.buffer.duration) / rt.buffer.duration;
-        else if (voice && rt.buffer) pos = (now - voice.when) / rt.buffer.duration;
-        if (pos == null) {
+        if (!clip) {
           if (head.style.display !== 'none') head.style.display = 'none';
           return;
         }
         head.style.display = 'block';
-        head.style.left = `${pos * 100}%`;
+        head.style.left = `${((clip.start + into) / clip.dur) * 100}%`;
       });
       rafId = currentRoute && currentRoute.screen === 'premix' ? requestAnimationFrame(tick) : null;
     };
@@ -1042,9 +1524,9 @@
     const rt = soundRt.get(s.id) || {};
     const copy = { ...s, id: newId(), createdAt: new Date().toISOString() };
     delete copy.height;
-    if (isTimeline(f) && rt.buffer) {
+    if (f && isTimeline(f) && rt.buffer) {
       // 元の音が鳴り終わった所(ループの外に出る時は最後に置く)
-      copy.tlStart = Math.min(loopLen(f) - SNAP_SEC, startSec(f, s) + Math.max(SNAP_SEC, Math.round(rt.buffer.duration / SNAP_SEC) * SNAP_SEC));
+      copy.tlStart = Math.min(loopLen(f) - SNAP_SEC, startSec(f, s) + Math.max(SNAP_SEC, Math.round(clipOf(s, rt).len / SNAP_SEC) * SNAP_SEC));
       copy.x = f.x + PAD + copy.tlStart * pxOf(f);
     } else {
       copy.x = s.x + 24;
@@ -1057,8 +1539,10 @@
     const guide = getEditGuideCard();
     if (guide) deactivateEditGuide(guide);
     const el = renderCard(copy);
-    clampIntoFolder(copy, el);
-    snapToGrid(copy, el);
+    if (copy.folderId) {
+      clampIntoFolder(copy, el);
+      snapToGrid(copy, el);
+    }
     lastSoundId = copy.id; // 続けて押すと、複製をさらに複製する(タイムラインでは右へ並んでいく)
     if (f) refreshFolder(f);
     renderActive();
@@ -1068,5 +1552,5 @@
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx } };
 })();
