@@ -89,6 +89,12 @@ async function loadData(folderId) {
   return { fileId, data };
 }
 
+/** ファイルIDでJSONを読む(プレミックスのデータファイル `lyra_premix_<id>.json`、2026-10-01) */
+async function loadJsonFile(fileId) {
+  const res = await driveFetch(`/files/${fileId}?alt=media`);
+  return res.json();
+}
+
 /**
  * データJSONを作成 or 上書き保存する。
  * @returns {Promise<string>} 保存後のファイルID

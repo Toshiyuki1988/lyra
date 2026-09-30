@@ -66,7 +66,7 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 | ファイル | 由来 | 変更点 |
 |---|---|---|
 | `js/auth.js` | そのままコピー | なし |
-| `js/drive.js` | コピー | ヘッダーコメント、`moveFile()`(移行専用)を削除、`loadData()`の初期値をnullに。2026-09-29の見直しで、使っていなかった `getDriveStorageQuota`・`renameDriveFolder`・`loadNamedData`・`loadFileContentById`・`findFileByName` も削除 |
+| `js/drive.js` | コピー | ヘッダーコメント、`moveFile()`(移行専用)を削除、`loadData()`の初期値をnullに。2026-09-29の見直しで、使っていなかった `getDriveStorageQuota`・`renameDriveFolder`・`loadNamedData`・`loadFileContentById`・`findFileByName` も削除。2026-10-01、プレミックスのデータファイルのために `loadJsonFile(fileId)` を足した |
 | `js/canvas.js` | コピー | Flight Engineer/Star Pencil/座談会など、CONSTELLATIONのモジュール固有のガードを除去 |
 | `js/sound.js` | 先頭の共通部分のみ | 編集ガイド・ASTR・カード移動の4音だけ残した |
 | `js/gemini.js` | `askGemini()`のみ流用し書き換え | `files`(PDF/画像のインライン入力)・`responseSchema`対応、`askGeminiJson()`追加、タイムアウト90秒、`tools`撤去 |
@@ -655,6 +655,23 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
   プリセットごとに、見た目(色・背景・意匠)と、そのプリセット固有の機能(COSMICならネビュラ・カイロス・プラネテス)を持つ形にする
 - **プレミックスはデータとして保存し、複数持てるようにする**。「新規作成」でプリセットを選んで、0から作れるようにする
   (今の`state.premix`は1つだけなので、複数のプレミックスを持つ形への移行が要る。既存のデータは COSMIC のプレミックス1つとして引き継ぐ)
+
+## プレミックスのデータファイルとプリセット(2026-10-01、今後の方針の最初の一歩)
+
+- **プレミックス1つ = DriveのLYRAフォルダの `lyra_premix_<id>.json`**。本体のデータ(`lyra_data.json`)には一覧 `state.premixIndex`
+  (`[{ id, name, preset, fileId, createdAt, updatedAt }]`)と `state.lastPremixId` だけを持つ。開いているプレミックスが `state.premix`
+  (開いていなければ null。プレミックス画面の `data()` は、その間は保存されない空の入れ物を返す)。ルートは `#/premix/<id>`、`#/premix` は最後に開いたものへ
+- 読み書きは js/app.js の「プレミックスのデータファイル」の節: 開いた時にだけ読み込み(`loadPremixData`)、自動保存(`runScheduledSave`)では
+  **先に**前回保存した時から変わったプレミックスのファイルだけを書き(`savePremixFiles`)、新しいファイルのIDを一覧に入れてから本体を保存する
+- **以前の形(本体の中の `premix` 1つ)は「COSMIC 1」として自分のファイルへ移す**。新しいファイルに保存できるまでは本体の中の古い `premix` を
+  消さない(`premixStore.legacy`。保存に失敗しても失わないように)
+- 一覧(道具バーの「一覧」): 開く・名前を変える・**一覧から外す(Driveのファイルは消さない。決まりどおり)**。「新規作成」で名前とプリセットを選ぶ
+- **プリセット**は js/screens/premix.js の `PREMIX_PRESETS`(今は COSMIC だけ)。プリセット = 見た目(`body[data-premix-preset="…"]`)+
+  固有の道具(`PRESET_TOOLS`。COSMIC はネビュラ・プラネテス・カイロス。ドロップの受け付けもプリセットの道具に従う)。
+  今のプレミックスの見た目の CSS は `body[data-screen="premix"]` のままで、COSMIC の見た目として扱う。
+  **BOTANICAL などを足す時は、`PREMIX_PRESETS` に1つ、固有の道具を `PRESET_TOOLS` に、見た目を `body[data-premix-preset="botanical"]` に書く**
+- 確認: Driveをメモリの中で模擬して、以前の形の移し替え(プレミックスのファイルを先に保存 → 本体から古い `premix` を外す)・開く・新規作成・
+  変わったものだけの保存・読み込み直し(ファイルから開く)・一覧から外す(ファイルは残る)を確かめた。**本物のDriveではまだ**
 
 ## 応答(MIDIを分析して、対位法で応えるMIDIを作る。2026-10-01)
 

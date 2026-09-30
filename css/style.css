@@ -2358,6 +2358,19 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
   body[data-screen="premix"] .neb-album { left: 10px; right: 10px; top: auto; bottom: 66px; width: auto; max-height: 46vh; }
 }
 
+/* ---------- プレミックスの一覧(js/screens/premix.js、2026-10-01) ---------- */
+.premix-list { width: min(520px, calc(100vw - 32px)); }
+.premix-list-rows { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.premix-list-row { display: flex; align-items: stretch; gap: 6px; }
+.premix-list-row > button:not(.premix-list-open) { flex: none; font-size: 12px; padding: 4px 10px; }
+.modal .premix-list-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+.modal .premix-list-open b { font-size: 13.5px; color: var(--ink); }
+.modal .premix-list-open span { font-size: 11px; color: var(--faint); }
+.modal .premix-list-open:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); color: var(--ink); }
+.modal .premix-list-row--current .premix-list-open { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.premix-landing-actions { display: flex; gap: 8px; justify-content: center; }
+.premix-landing-actions [hidden] { display: none; }
+
 /* 「このMIDIについて」(js/midi/card.js の aboutHtml。アンサンブルのパネルと、プレミックスの「ⓘ」、2026-09-29) */
 .midi-about { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.6; }
 .midi-about-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; }

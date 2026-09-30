@@ -61,7 +61,10 @@
 //   - **MIDIのカードから .mid を保存(同日、ユーザー要望)**: 名前の行の「⇩」(スフィアでは左の「保存」ヘックス)。アンサンブルと同じ
 //     書き出し先フォルダへ、1トラックで(js/midi/export.js の saveToFolder)。切り取ってあれば「全体/切り取った範囲だけ」を選ぶ
 //
-// データ: state.premix = { activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
+// データ(2026-10-01から): プレミックス1つ = DriveのLYRAフォルダの lyra_premix_<id>.json(読み書きは js/app.js の「プレミックスのデータファイル」)。
+//   本体のデータには一覧 state.premixIndex だけ。開いているプレミックスが state.premix(開いていなければ null)。ルートは #/premix/<id>。
+//   プリセット(COSMIC など)は下の PREMIX_PRESETS。
+// state.premix = { id, name, preset, activeId, connections: [{ id, cardIdA(から), cardIdB(へ) }], cards: [
 //   { id, type: 'folder', name, mode: 'free'|'timeline'|'chain', loopSec?, virtual?(フォルダの無いエリア), x, y, width, height, createdAt },
 //   { id, type: 'sound', folderId(いるエリア。枠の外なら null), sourceFolderId?(ファイルの出どころ。無ければ folderId と同じ), fileName, loop,
 //     volume(0〜100), reverb(0〜100), view?('sphere'), memo?, clipStart?, clipEnd?(秒), tlStart?, midiRef?{stageId, cardId}, midiInline?(MIDIカード), midiVoice?,
@@ -108,12 +111,27 @@
   let lastSoundId = null; // Shift+D の対象(最後に触ったオーディオカード)
   let connCount = 0; // 線の本数(onConnectionsChanged で、引いたのか消したのかを見分ける)
 
+  // プレミックスを開いていない間(一覧・読み込み中)に使う空の入れ物(保存されない)
+  let idle = { activeId: null, cards: [], connections: [], planets: [] };
   function data() {
-    if (!state.premix || !Array.isArray(state.premix.cards)) state.premix = { activeId: null, cards: [] };
-    if (!Array.isArray(state.premix.connections)) state.premix.connections = [];
-    if (!Array.isArray(state.premix.planets)) state.premix.planets = [];
-    return state.premix;
+    const p = state.premix;
+    if (!p) return idle;
+    if (!Array.isArray(p.cards)) p.cards = [];
+    if (!Array.isArray(p.connections)) p.connections = [];
+    if (!Array.isArray(p.planets)) p.planets = [];
+    return p;
   }
+
+  /* ---------------- プレミックスのプリセット(2026-10-01、ユーザー決定) ----------------
+   * プリセット = 見た目(body[data-premix-preset] で CSS を切り替える)+ そのプリセット固有の機能(道具バーに出す道具)。
+   * 今のスペーシーな見た目とネビュラ・プラネテス・カイロスが「COSMIC」。「BOTANICAL」(草の香り・花粉・フィトンチッド)などを順次足す。
+   * **プリセットを足す時は、ここに1つ書き、固有の道具を PRESET_TOOLS に、見た目を css/style.css の body[data-premix-preset="…"] に書く** */
+  const PREMIX_PRESETS = [
+    { id: 'cosmic', label: 'COSMIC', text: '宇宙の意匠。ネビュラ(音響エフェクトの星雲)・プラネテス(LFOの天体)・カイロス(即興する人造人間)', tools: ['nebula', 'planetes', 'kairos'] },
+  ];
+  const presetOf = (id) => PREMIX_PRESETS.find((p) => p.id === id) || PREMIX_PRESETS[0];
+  const currentPreset = () => presetOf(state.premix && state.premix.preset);
+  const hasTool = (id) => Boolean(state.premix) && currentPreset().tools.includes(id);
   const folders = () => data().cards.filter((c) => c.type === 'folder');
   const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
   const isMidi = (sound) => Boolean(sound && (sound.midiRef || sound.midiInline)); // MIDIを合成音にしたカード(ファイルは無い)
@@ -218,14 +236,55 @@
   const screen = {
     fitMaxScale: 1,
 
-    enter() {
+    enter(route) {
+      idle = { activeId: null, cards: [], connections: [], planets: [] };
+      delete document.body.dataset.premixPreset;
+      const id = route && route.premixId;
+      if (!id) {
+        // プレミックスの番号が無い(ヘッダーのタブから): 最後に開いたものへ。1つも無ければ新規作成の案内
+        const last = premixEntry(state.lastPremixId) || state.premixIndex[state.premixIndex.length - 1];
+        if (last) {
+          setTimeout(() => {
+            history.replaceState(null, '', `#/premix/${encodeURIComponent(last.id)}`);
+            applyRoute();
+          }, 0);
+          return false;
+        }
+        state.premix = null;
+        enterLanding('まだプレミックスがありません', '「新規作成」でプリセットを選ぶと、空のプレミックスができます。');
+        return true;
+      }
+      const entry = premixEntry(id);
+      if (!entry) {
+        state.premix = null;
+        enterLanding('このプレミックスは一覧にありません', '一覧から外したか、別の端末で外した可能性があります。「一覧」から開き直してください。');
+        return true;
+      }
+      if (!premixStore.loaded.has(id)) {
+        state.premix = null;
+        enterLanding(`「${entry.name}」を読み込んでいます…`, '', true);
+        loadPremixData(id).then(() => {
+          if (currentRoute && currentRoute.screen === 'premix' && currentRoute.premixId === id) applyRoute();
+        }).catch((err) => {
+          console.error(err);
+          setStatus(`プレミックスを読み込めませんでした: ${err.message}`, { important: true });
+        });
+        return true;
+      }
+      state.premix = premixStore.loaded.get(id);
+      if (state.lastPremixId !== id) {
+        state.lastPremixId = id;
+        scheduleAutoSave();
+      }
+      const preset = currentPreset();
+      document.body.dataset.premixPreset = preset.id;
       scope = { cards: data().cards, connections: data().connections }; // 線はチェーンの順番(js/app.js の ASTR)
       connCount = data().connections.length;
-      setCrumbs([{ label: 'プレミックス' }]);
+      setCrumbs([{ label: 'プレミックス' }, { label: `${entry.name} · ${preset.label}` }]);
       els.overlay.classList.add('screen-overlay--ensemble');
       els.overlay.innerHTML =
-        `<div class="ens-heading"><div class="ens-title">プレミックス</div>` +
-        `<div class="ens-subtitle">フォルダの音を重ねて試す(音はDriveに上げません)</div></div>` +
+        `<div class="ens-heading"><div class="ens-title">${escapeHtml(entry.name)}</div>` +
+        `<div class="ens-subtitle">プレミックス · ${escapeHtml(preset.label)}(音はDriveに上げません)</div></div>` +
         (folders().length ? '' : `<div class="soul-empty premix-empty"><div class="soul-empty-title">まだフォルダがありません</div>` +
           `<p>下の「フォルダ」でPCのフォルダを選ぶと、中のオーディオ(最大${MAX_SOUNDS}個)がカードになります。` +
           `フォルダカードの枠がプレミックスエリアで、最後に触ったフォルダの音だけが鳴ります。</p></div>`);
@@ -234,10 +293,9 @@
       els.viewport.addEventListener('drop', onNebulaDrop);
       attachPlanetLayer();
       setTools([
+        ...LIST_TOOLS,
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
-        { id: 'nebula', label: 'ネビュラ', icon: '<ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="1.6"/>', onClick: () => toggleAlbum('nebula') },
-        { id: 'planetes', label: 'プラネテス', icon: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/><path d="M4 16c3-2 6-2 8 0s5 2 8 0"/>', onClick: () => toggleAlbum('planetes') },
-        { id: 'kairos', label: 'カイロス', icon: '<path d="M6 4h12v7a6 6 0 0 1-12 0z"/><path d="M4 20a8 5 0 0 1 16 0"/><circle cx="9.5" cy="9" r="1"/><circle cx="14.5" cy="9" r="1"/>', onClick: () => window.LyraKairos && window.LyraKairos.toggle(kairosHost) },
+        ...preset.tools.map((t) => PRESET_TOOLS[t]).filter(Boolean),
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
       ]);
@@ -257,6 +315,8 @@
     },
 
     leave() {
+      delete document.body.dataset.premixPreset;
+      closePremixList();
       document.removeEventListener('keydown', onKeydown);
       if (window.LyraImageSearch && window.LyraImageSearch.isOpen()) window.LyraImageSearch.close();
       if (window.LyraNebula) window.LyraNebula.close();
@@ -2757,13 +2817,13 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   function onNebulaDrop(event) {
-    const planet = window.LyraPlanetes && window.LyraPlanetes.idFromDrop(event.dataTransfer);
+    const planet = hasTool('planetes') && window.LyraPlanetes && window.LyraPlanetes.idFromDrop(event.dataTransfer);
     if (planet) {
       event.preventDefault();
       placePlanet(planet, clientToContent(event.clientX, event.clientY));
       return;
     }
-    const id = window.LyraNebula && window.LyraNebula.idFromDrop(event.dataTransfer);
+    const id = hasTool('nebula') && window.LyraNebula && window.LyraNebula.idFromDrop(event.dataTransfer);
     if (!id) return;
     event.preventDefault();
     placeNebula(id, clientToContent(event.clientX, event.clientY));
@@ -3632,6 +3692,131 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     placeMidi: (midiCard) => placeGeneratedMidi(midiCard, null),
     status: (text) => setStatus(text),
   };
+
+  /* ---------------- プレミックスの一覧・新規作成(2026-10-01) ---------------- */
+
+  // どのプリセットにもある道具(一覧・新規作成)と、プリセット固有の道具
+  const LIST_TOOLS = [
+    { id: 'premix-list', label: '一覧', icon: '<path d="M5 6h14M5 12h14M5 18h9"/>', onClick: () => openPremixList() },
+    { id: 'premix-new', label: '新規作成', icon: '<path d="M12 5v14M5 12h14"/>', onClick: () => newPremix() },
+  ];
+  const PRESET_TOOLS = {
+    nebula: { id: 'nebula', label: 'ネビュラ', icon: '<ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="1.6"/>', onClick: () => toggleAlbum('nebula') },
+    planetes: { id: 'planetes', label: 'プラネテス', icon: '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/><path d="M4 16c3-2 6-2 8 0s5 2 8 0"/>', onClick: () => toggleAlbum('planetes') },
+    kairos: { id: 'kairos', label: 'カイロス', icon: '<path d="M6 4h12v7a6 6 0 0 1-12 0z"/><path d="M4 20a8 5 0 0 1 16 0"/><circle cx="9.5" cy="9" r="1"/><circle cx="14.5" cy="9" r="1"/>', onClick: () => window.LyraKairos && window.LyraKairos.toggle(kairosHost) },
+  };
+
+  /** プレミックスを開いていない時の画面(案内と、一覧・新規作成の道具だけ) */
+  function enterLanding(title, text, busy) {
+    setCrumbs([{ label: 'プレミックス' }]);
+    els.overlay.classList.add('screen-overlay--ensemble');
+    els.overlay.innerHTML =
+      `<div class="soul-empty premix-empty"><div class="soul-empty-title">${escapeHtml(title)}</div>` +
+      (text ? `<p>${escapeHtml(text)}</p>` : '') +
+      (busy ? '' : `<p class="premix-landing-actions"><button type="button" class="premix-landing-new">新規作成</button>` +
+        `<button type="button" class="secondary premix-landing-list"${state.premixIndex.length ? '' : ' hidden'}>一覧</button></p>`) +
+      `</div>`;
+    const nb = els.overlay.querySelector('.premix-landing-new');
+    if (nb) nb.addEventListener('click', () => newPremix());
+    const lb = els.overlay.querySelector('.premix-landing-list');
+    if (lb) lb.addEventListener('click', () => openPremixList());
+    setTools(busy ? [] : LIST_TOOLS);
+  }
+
+  /** 新規作成: 名前とプリセットを聞いて、空のプレミックスを作って開く */
+  async function newPremix() {
+    const n = state.premixIndex.length + 1;
+    const values = await showFormDialog({
+      title: '新しいプレミックス',
+      message: 'プリセットを選んで、空のプレミックスを作ります(DriveのLYRAフォルダに1つのファイルとして保存します)。\n\n' +
+        PREMIX_PRESETS.map((p) => `・${p.label}: ${p.text}`).join('\n') + '\n\nBOTANICAL などのプリセットは順次足していきます。',
+      submitLabel: '作る',
+      fields: [
+        { name: 'preset', label: 'プリセット', type: 'select', value: PREMIX_PRESETS[0].id, options: PREMIX_PRESETS.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'name', label: '名前', value: `${PREMIX_PRESETS[0].label} ${n}`, required: true },
+      ],
+    });
+    if (!values) return;
+    const preset = presetOf(values.preset);
+    const name = String(values.name || '').trim().slice(0, 40) || `${preset.label} ${n}`;
+    const entry = createPremixData({ name, preset: preset.id });
+    closePremixList();
+    navigate(`#/premix/${encodeURIComponent(entry.id)}`);
+    setStatus(`プレミックス「${name}」(${preset.label})を作りました`);
+  }
+
+  let listOverlay = null;
+  function closePremixList() {
+    if (listOverlay) listOverlay.remove();
+    listOverlay = null;
+  }
+
+  /** 一覧: 開く・名前を変える・一覧から外す(Driveのファイルは消さない)・新規作成 */
+  function openPremixList() {
+    closePremixList();
+    const curId = currentRoute && currentRoute.premixId;
+    const fmt = (iso) => {
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    const list = [...state.premixIndex].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    listOverlay = document.createElement('div');
+    listOverlay.className = 'modal-overlay visible';
+    listOverlay.innerHTML =
+      `<div class="modal premix-list"><h2>プレミックス</h2>` +
+      `<p class="modal-desc">1つのプレミックスを、DriveのLYRAフォルダに1つのファイルとして保存しています。</p>` +
+      `<div class="premix-list-rows">${list.length ? list.map((e) => `<div class="premix-list-row${e.id === curId ? ' premix-list-row--current' : ''}" data-id="${e.id}">` +
+        `<button type="button" class="premix-list-open" data-act="open"><b>${escapeHtml(e.name)}</b><span>${escapeHtml(presetOf(e.preset).label)} · ${fmt(e.updatedAt)}${e.fileId ? '' : ' · 未保存'}${e.id === curId ? ' · 開いています' : ''}</span></button>` +
+        `<button type="button" class="secondary" data-act="rename">名前</button>` +
+        `<button type="button" class="secondary" data-act="unlist">外す</button></div>`).join('')
+        : '<div class="panel-empty">まだありません</div>'}</div>` +
+      `<div class="modal-actions"><button type="button" class="secondary" data-close>閉じる</button><button type="button" data-new>新規作成</button></div></div>`;
+    listOverlay.querySelector('[data-close]').addEventListener('click', closePremixList);
+    listOverlay.querySelector('[data-new]').addEventListener('click', () => newPremix());
+    listOverlay.querySelectorAll('.premix-list-row button').forEach((btn) => btn.addEventListener('click', () => {
+      const entry = premixEntry(btn.closest('.premix-list-row').dataset.id);
+      if (entry) premixListAction(entry, btn.dataset.act);
+    }));
+    attachBackgroundTapToClose(listOverlay, closePremixList);
+    document.body.appendChild(listOverlay);
+  }
+
+  async function premixListAction(entry, act) {
+    if (act === 'open') {
+      closePremixList();
+      navigate(`#/premix/${encodeURIComponent(entry.id)}`);
+      return;
+    }
+    if (act === 'rename') {
+      const values = await showFormDialog({ title: '名前を変える', submitLabel: '変える', fields: [{ name: 'name', label: '名前', value: entry.name, required: true }] });
+      if (!values || !String(values.name || '').trim()) return;
+      entry.name = String(values.name).trim().slice(0, 40);
+      const loaded = premixStore.loaded.get(entry.id);
+      if (loaded) loaded.name = entry.name;
+      scheduleAutoSave();
+      if (currentRoute && currentRoute.premixId === entry.id) setCrumbs([{ label: 'プレミックス' }, { label: `${entry.name} · ${presetOf(entry.preset).label}` }]);
+      openPremixList();
+      return;
+    }
+    if (act === 'unlist') {
+      const ok = await showChoiceDialog({
+        title: `「${entry.name}」を一覧から外しますか?`,
+        message: '一覧から外すだけで、DriveのLYRAフォルダのファイルは消しません(アプリからは開けなくなります)。',
+        options: [{ label: 'やめる', value: false, secondary: true }, { label: '一覧から外す', value: true, danger: true }],
+      });
+      if (!ok) return;
+      const wasOpen = currentRoute && currentRoute.premixId === entry.id;
+      if (wasOpen) {
+        stopAll();
+        state.premix = null;
+      }
+      unlistPremix(entry.id);
+      closePremixList();
+      setStatus(`「${entry.name}」を一覧から外しました(Driveのファイルは残っています)`);
+      if (wasOpen) navigate('#/premix');
+      else openPremixList();
+    }
+  }
 
   /* ---------------- Shift+D で複製 ---------------- */
 

@@ -42,7 +42,11 @@ const state = {
   prefs: { dailyTask: true },
   daily: { lastDate: null },
   trash: [], // 削除履歴(js/trash.js。矩形選択からの一括削除の直近10件)
-  premix: { activeId: null, cards: [] }, // プレミックス(js/screens/premix.js。カードの配置と設定だけ。音はDriveに上げない)
+  // プレミックス(js/screens/premix.js)。2026-10-01から、プレミックス1つ=Driveのファイル1つ(lyra_premix_<id>.json)。
+  // 本体のデータには一覧(premixIndex)だけを持ち、開いているプレミックスのデータを premix に載せる(開いていなければ null)
+  premixIndex: [], // [{ id, name, preset('cosmic' など), fileId(まだ保存していなければ null), createdAt, updatedAt }]
+  lastPremixId: null,
+  premix: null,
 };
 
 // 今の画面のキャンバスに載っているカードと線。canvas.jsの共通処理はここだけを見る。
@@ -336,12 +340,12 @@ function applyLoadedData(data) {
     state.prefs = { dailyTask: true, ...(data.prefs || {}) };
     state.daily = { lastDate: null, ...(data.daily || {}) };
     state.trash = Array.isArray(data.trash) ? data.trash : [];
-    state.premix = data.premix && Array.isArray(data.premix.cards) ? data.premix : { activeId: null, cards: [] };
   } else {
     state.souls = [];
     state.ensembles = {};
     migrated = true;
   }
+  if (loadPremixIndex(data)) migrated = true;
   let hall = state.souls.find((s) => s.isDefaultStage);
   if (!hall) {
     hall = makeSoul({ name: 'コンサートホール', category: 'stage', color: '#a1495f', x: 0, y: 0, isDefaultStage: true });
@@ -490,14 +494,14 @@ function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   if (parts[0] === 'soul' && parts[1]) return { screen: 'soul', soulId: parts[1], moduleId: parts[2] || null, paramId: parts[3] || null };
   if (parts[0] === 'ensemble') return { screen: 'ensemble', stageId: parts[1] || null };
-  if (parts[0] === 'premix') return { screen: 'premix' };
+  if (parts[0] === 'premix') return { screen: 'premix', premixId: parts[1] || null };
   return { screen: 'home' };
 }
 
 function routeKey(route) {
   if (route.screen === 'soul') return `soul/${route.soulId}/${route.moduleId || ''}`;
   if (route.screen === 'ensemble') return `ensemble/${route.stageId || ''}`;
-  if (route.screen === 'premix') return 'premix';
+  if (route.screen === 'premix') return `premix/${route.premixId || ''}`;
   return 'home';
 }
 
@@ -827,6 +831,13 @@ async function runScheduledSave() {
   }
   saveInFlight = true;
   try {
+    // 先にプレミックスのファイル(変わったものだけ)。新しいファイルのIDを一覧に入れてから本体を保存する
+    try {
+      await savePremixFiles();
+    } catch (err) {
+      console.error(err);
+      setStatus(`プレミックスの保存に失敗しました: ${err.message}`, { important: true });
+    }
     state.fileId = await saveData(state.folderId, state.fileId, collectSaveData());
     setStatus('保存しました');
   } catch (err) {
@@ -850,8 +861,88 @@ function collectSaveData() {
     prefs: state.prefs,
     daily: state.daily,
     trash: state.trash,
-    premix: state.premix,
+    premixIndex: state.premixIndex,
+    lastPremixId: state.lastPremixId,
+    // 移し替える前の形(本体の中の premix)は、新しいファイルに保存できるまで残す(保存に失敗しても失わないように)
+    ...(premixStore.legacy ? { premix: premixStore.legacy } : {}),
   };
+}
+
+/* ---------------- プレミックスのデータファイル(2026-10-01、ユーザー要望「プレミックスはデータとして保存して、新規作成でプリセットを選んで0から作れるように」) ----------------
+ * プレミックス1つ = LYRAフォルダの中の lyra_premix_<id>.json。本体のデータ(lyra_data.json)には一覧だけ。
+ * 開いた時にだけ読み込み(premixStore.loaded)、自動保存では前回保存した時から変わったものだけを書く。
+ * **Driveのファイルは消さない**(決まりどおり)。「一覧から外す」は一覧から除くだけで、ファイルはLYRAフォルダに残る */
+const premixStore = { loaded: new Map(), savedJson: new Map(), legacy: null };
+const premixFileName = (id) => `lyra_premix_${id}.json`;
+const premixEntry = (id) => state.premixIndex.find((e) => e.id === id) || null;
+
+/** 本体のデータからプレミックスの一覧を読む。以前の形(本体の中の premix 1つ)は「COSMIC 1」として自分のファイルへ移す。移したら true */
+function loadPremixIndex(data) {
+  state.premixIndex = data && Array.isArray(data.premixIndex) ? data.premixIndex : [];
+  state.lastPremixId = (data && data.lastPremixId) || null;
+  state.premix = null;
+  premixStore.loaded.clear();
+  premixStore.savedJson.clear();
+  premixStore.legacy = null;
+  const old = data && data.premix;
+  if (!state.premixIndex.length && old && Array.isArray(old.cards) && (old.cards.length || (old.planets || []).length)) {
+    const now = new Date().toISOString();
+    const entry = { id: newId(), name: 'COSMIC 1', preset: 'cosmic', fileId: null, createdAt: now, updatedAt: now };
+    state.premixIndex.push(entry);
+    premixStore.loaded.set(entry.id, { ...old, version: 1, id: entry.id, name: entry.name, preset: entry.preset });
+    premixStore.legacy = old;
+    state.lastPremixId = entry.id;
+    return true;
+  }
+  return false;
+}
+
+/** プレミックスを開けるようにする(まだなら Drive から読む)。返り値はそのデータ */
+async function loadPremixData(id) {
+  if (premixStore.loaded.has(id)) return premixStore.loaded.get(id);
+  const entry = premixEntry(id);
+  if (!entry) throw new Error('一覧にないプレミックスです');
+  const raw = entry.fileId ? await loadJsonFile(entry.fileId) : {};
+  const data = { activeId: null, cards: [], connections: [], planets: [], ...raw, id: entry.id, name: entry.name, preset: entry.preset };
+  premixStore.loaded.set(id, data);
+  premixStore.savedJson.set(id, JSON.stringify(data)); // 読んだばかりの内容は保存し直さない
+  return data;
+}
+
+/** 新しいプレミックス(まだファイルは無い。次の自動保存で作る) */
+function createPremixData({ name, preset }) {
+  const now = new Date().toISOString();
+  const entry = { id: newId(), name, preset, fileId: null, createdAt: now, updatedAt: now };
+  state.premixIndex.push(entry);
+  premixStore.loaded.set(entry.id, { version: 1, id: entry.id, name, preset, activeId: null, cards: [], connections: [], planets: [], createdAt: now });
+  scheduleAutoSave();
+  return entry;
+}
+
+/** 一覧から外す(Driveのファイルは消さない) */
+function unlistPremix(id) {
+  state.premixIndex = state.premixIndex.filter((e) => e.id !== id);
+  premixStore.loaded.delete(id);
+  premixStore.savedJson.delete(id);
+  if (state.lastPremixId === id) state.lastPremixId = state.premixIndex.length ? state.premixIndex[state.premixIndex.length - 1].id : null;
+  scheduleAutoSave();
+}
+
+/** 読み込んだプレミックスのうち、前回保存した時から変わったものを書く */
+async function savePremixFiles() {
+  for (const [id, data] of premixStore.loaded) {
+    const entry = premixEntry(id);
+    if (!entry) continue;
+    data.name = entry.name;
+    data.preset = entry.preset;
+    const json = JSON.stringify(data);
+    if (entry.fileId && premixStore.savedJson.get(id) === json) continue;
+    data.updatedAt = new Date().toISOString();
+    entry.fileId = await saveNamedData(state.folderId, entry.fileId, data, premixFileName(id));
+    entry.updatedAt = data.updatedAt;
+    premixStore.savedJson.set(id, JSON.stringify(data));
+    if (premixStore.legacy && state.premixIndex.every((e) => e.fileId)) premixStore.legacy = null; // 移し替えが済んだ
+  }
 }
 
 /* ---------------- ステータス表示 ---------------- */
