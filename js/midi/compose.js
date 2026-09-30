@@ -2,7 +2,7 @@
 //
 // 2026-09-26に作り直した(models/README.md)。全モデル・全入口で同じ流れを通す:
 //   入口: 課題カード・画像カードの「鳴らす」(createSketch)/ 発言の「MIDIにする」(createFromSpeech)/
-//         「ビート」(createBeat。モデルを選ばない)/ MIDIカードの「作り直す」(reviseMidi。モデルを替えてもよい)/
+//         「ビート」(createBeat。ビート帳 js/midi/beatbook.js のモデルを選ぶ)/ MIDIカードの「作り直す」(reviseMidi。モデルを替えてもよい)/
 //         パネルの「振り直す」(reroll。Geminiを使わない)
 //   Geminiの回数: 設計図の1回。Geminiが主旋律(line・role melody)を書いた時だけ、反芻でもう1回(プリセットの ruminate)
 //   決まり(CLAUDE.md): Geminiは明示操作でだけ呼ぶ。responseSchema には type・properties・required・items しか使わない。
@@ -567,6 +567,29 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     return midi;
   }
 
+  /** 生成した MIDI をカードの形にする(generate とビートで共通) */
+  function buildMidiCard(raw, midi, preset, place, revise) {
+    return {
+      id: newId(),
+      type: 'midi',
+      name: revise ? `${revise.baseName}_v${revise.version}.mid` : fileName(raw, `lyra_${preset.id}.mid`),
+      // 設定の「既定の音色」(自作の音色など)があれば、それで鳴らす
+      voice: revise && revise.voice ? revise.voice : (state.prefs.defaultVoice && M.VOICES.some((v) => v.id === state.prefs.defaultVoice) ? state.prefs.defaultVoice : preset.voice || M.DEFAULT_VOICE),
+      description: String(raw.description || '').slice(0, 60),
+      concept: String(raw.concept || '').slice(0, 100),
+      commentary: String(raw.commentary || '').slice(0, 400),
+      memberIds: place.memberIds || [],
+      speechId: place.speechId || null,
+      midi,
+      x: place.x || 0,
+      y: place.y || 0,
+      width: null,
+      height: null,
+      createdAt: new Date().toISOString(),
+      ...(revise ? { comment: revise.comment.slice(0, 200), linkedNames: revise.linkedNames || [], version: revise.version, revisionOf: revise.card.id } : {}),
+    };
+  }
+
   /**
    * Geminiに設計図を書かせてMIDIカードを作る。
    * input: { souls, images, contextText, focusParamIds, story, form, bars, pitch, rule, style, reference, hint, gauges, fixed, automation, excludeReferences }
@@ -634,25 +657,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       console.warn('音が0個になった設計図', design, raw);
       throw new Error(`音が1つも出てきませんでした(設計図の層: ${layerLine || 'なし'})`);
     }
-    const card = {
-      id: newId(),
-      type: 'midi',
-      name: revise ? `${revise.baseName}_v${revise.version}.mid` : fileName(raw, `lyra_${preset.id}.mid`),
-      // 設定の「既定の音色」(自作の音色など)があれば、それで鳴らす
-      voice: revise && revise.voice ? revise.voice : (state.prefs.defaultVoice && M.VOICES.some((v) => v.id === state.prefs.defaultVoice) ? state.prefs.defaultVoice : preset.voice || M.DEFAULT_VOICE),
-      description: String(raw.description || '').slice(0, 60),
-      concept: String(raw.concept || '').slice(0, 100),
-      commentary: String(raw.commentary || '').slice(0, 400),
-      memberIds: place.memberIds || [],
-      speechId: place.speechId || null,
-      midi,
-      x: place.x || 0,
-      y: place.y || 0,
-      width: null,
-      height: null,
-      createdAt: new Date().toISOString(),
-      ...(revise ? { comment: revise.comment.slice(0, 200), linkedNames: revise.linkedNames || [], version: revise.version, revisionOf: revise.card.id } : {}),
-    };
+    const card = buildMidiCard(raw, midi, preset, place, revise);
     if (place.onCard) place.onCard(card);
     else placeMidiCard(place.stage, card, place.fromCardId);
     const layersLine = playable.map((l) => l.name || E.GENERATORS[l.generator].label).slice(0, 4).join('・');
@@ -736,26 +741,338 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     }));
   }
 
-  /** 「ビート」: モデルを選ばない */
+  /* ---------------- ビート(2026-10-01に作り直し。js/midi/beatbook.js) ----------------
+   * ジャンルの語法は「ビート帳」のモデル(手で書いた型)が持ち、Gemini は1回だけ、構成(区間ごとの編成・勢い・フィル)・テンポ・差し色の行を書く。
+   * 以前のゲージ(粒度・つんのめり・感情)は廃止し、ビート専用のつまみ(音数・人の揺れ・展開)にした。つまみはアプリだけが使う */
+
+  const BEAT_MODEL_KEY = 'lyra.beatModel';
+  const BEAT_KNOBS = [
+    { name: 'density', label: '音数', ends: ['間引く', '詰める'], value: 50 },
+    { name: 'humanize', label: '人の揺れ', ends: ['機械のまま', '人が叩く揺れ'], value: 40 },
+    { name: 'variation', label: '展開', ends: ['同じ型を保つ', '小節ごとに変える'], value: 45 },
+  ];
+  const BB = () => window.LyraBeatbook;
+  const lsGetBeat = () => { try { return localStorage.getItem(BEAT_MODEL_KEY) || ''; } catch (err) { return ''; } };
+  const lsSetBeat = (v) => { try { localStorage.setItem(BEAT_MODEL_KEY, v); } catch (err) { /* 覚えられなくても動く */ } };
+
+  function beatModelOptions() {
+    return [{ value: '', label: 'おまかせ(入力に合わせてGeminiが選ぶ)' },
+      ...BB().MODELS.map((m) => ({ value: m.id, label: `${m.group} · ${m.label}(${m.tempo[2]} BPM)` }))];
+  }
+
+  /** ビートの質問。prev: { model, bars, knobs, reference, hint } */
+  function beatFields(prev = {}, opts = {}) {
+    const known = prev.model != null && prev.model !== undefined ? prev.model : lsGetBeat();
+    return [
+      { name: 'model', label: 'ビートのモデル(ジャンル)', type: 'select', value: BB().byId(known) ? known : '', options: beatModelOptions() },
+      ...(opts.noBars ? [] : [{ name: 'bars', label: '長さ(小節数)', value: String(prev.bars || 8) }]),
+      ...BEAT_KNOBS.map((k) => ({ name: `k_${k.name}`, label: k.label, type: 'range', min: 0, max: 100, step: 5, ends: k.ends, value: String(prev.knobs && Number.isFinite(prev.knobs[k.name]) ? prev.knobs[k.name] : k.value) })),
+      ...(opts.noReference ? [] : [{ name: 'reference', label: '参照曲・アーティスト(任意)', value: prev.reference || '', placeholder: 'J Dilla風のよれたハット、Amen break的なブレイク など' }]),
+      { name: 'hint', label: '追加の注文(任意)', type: 'textarea', value: prev.hint || '', placeholder: '途中で一度だけ完全に止める、後半はハーフタイム など' },
+    ];
+  }
+
+  function readBeat(values) {
+    const knobs = {};
+    BEAT_KNOBS.forEach((k) => { knobs[k.name] = Math.round(clamp(values[`k_${k.name}`], 0, 100, k.value)); });
+    const model = BB().byId(values.model) ? values.model : '';
+    lsSetBeat(model);
+    return {
+      model,
+      bars: Math.round(clamp(values.bars, 1, 64, 8)),
+      knobs,
+      reference: String(values.reference || '').trim().slice(0, 200),
+      hint: String(values.hint || '').trim().slice(0, 400),
+    };
+  }
+
+  const BS = (type) => ({ type });
+  const BEAT_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      model: BS('STRING'), form: BS('STRING'), story: BS('STRING'), tempo: BS('NUMBER'), swing: BS('NUMBER'),
+      sections: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: BS('STRING'), startBar: BS('INTEGER'), bars: BS('INTEGER'), energy: BS('INTEGER'), arrange: BS('STRING'), fill: BS('STRING'), scene: BS('STRING') }, required: ['name', 'startBar', 'energy', 'arrange'] } },
+      accents: { type: 'ARRAY', items: { type: 'OBJECT', properties: { inst: BS('STRING'), steps: BS('STRING'), why: BS('STRING') }, required: ['inst', 'steps'] } },
+      followInst: BS('STRING'),
+      name: BS('STRING'), description: BS('STRING'), concept: BS('STRING'), commentary: BS('STRING'),
+      signature: { type: 'ARRAY', items: { type: 'OBJECT', properties: { trait: BS('STRING'), device: BS('STRING') }, required: ['trait', 'device'] } },
+      techniques: { type: 'ARRAY', items: { type: 'OBJECT', properties: { composer: BS('STRING'), work: BS('STRING'), technique: BS('STRING'), use: BS('STRING') }, required: ['technique', 'use'] } },
+    },
+    required: ['model', 'form', 'tempo', 'sections', 'name'],
+  };
+
+  function modelLine(m) {
+    return `- ${m.id}: ${m.label} — ${m.text}(${m.tempo[0]}〜${m.tempo[1]} BPM${m.meter ? `、${m.meter[0]}/${m.meter[1]}` : ''}${m.spb === 3 ? '、1拍を3分割' : ''})`;
+  }
+
+  /**
+   * ビートのプロンプト。input: { model, bars, knobs, reference, hint, souls, images, contextText, focusParamIds }
+   * opts: { revise(作り直しの文), response({ text, tempo, meterLabel }) }
+   */
+  function beatPrompt(input, opts = {}) {
+    const B = BB();
+    const model = B.byId(input.model);
+    const arrangeList = Object.entries(B.ARRANGES).map(([id, a]) => `${id}(${a.label})`).join('、');
+    const fillList = Object.entries(B.FILLS).map(([id, label]) => `${id}(${label})`).join('、');
+    const insts = B.DRUM_INSTS.join(', ');
+    const whose = input.images && input.images.length ? '画像' : input.souls && input.souls.length ? 'ソウル' : opts.response ? '元のMIDI' : '入力';
+    const meterText = opts.response ? opts.response.meterLabel : model && model.meter ? `${model.meter[0]}/${model.meter[1]}` : '4/4';
+    return [
+      `あなたは作曲支援アプリLYRAのドラム担当です。ユーザーはCubase Pro 15で作曲しています。
+アプリには、ジャンルごとのドラムの語法(キック・スネア・ハットの型、ゴースト、ハネ、レイドバック、フィル)を手で書いた「ビート帳」があります。
+型そのものはビート帳が叩くので、あなたは書きません。あなたが決めるのは、そのビートの構成(区間ごとの編成・勢い・フィル)とテンポ、そして${whose}らしさを出す差し色の行です。
+目標は、聴いた瞬間にジャンルが分かり、しかも${whose}らしい仕掛けが耳に残ること。区間ごとに同じ調子を続ける平板な構成は失敗とみなします。`,
+      opts.revise || '',
+      opts.response ? opts.response.text : '',
+      inputBlock(input),
+      model
+        ? `モデル: ${model.id}(${model.label}。${model.text})。model には "${model.id}" と書く`
+        : `モデル: 次のビート帳のモデルから、入力に最も合うものを1つ選び、model に id を書く\n${B.MODELS.map(modelLine).join('\n')}`,
+      `決めること:
+- tempo: ${opts.response ? `${opts.response.tempo} BPM(元のMIDIにそろえる。アプリが決める)` : model ? `${model.tempo[0]}〜${model.tempo[1]} BPM の中で` : '選んだモデルの範囲の中で'}
+- form: サブジャンルまで含めたジャンル名(20字以内)。story: 時間の流れ(80字以内)
+- sections: 区間ごとに name(短い名前)・startBar(1始まり)・bars・energy(勢い0〜10)・arrange・fill・scene(30字)。全部で${input.bars}小節を覆う(拍子: ${meterText}${model && model.breath ? '。このモデルは小節ごとに拍子が揺れる。アプリが決める' : ''})
+  - arrange は次の id だけ: ${arrangeList}
+  - fill(区間の最後の小節)は次の id だけ: ${fillList}
+  - ${input.bars >= 8 ? '少なくとも1回は勢いを落とす区間(break・sparse・perc・silence・halftime)と、頂点の区間を作る。' : ''}勢いは入力の起伏に合わせて上下させる
+- accents: 差し色の行を0〜2本。{inst, steps, why(30字)}。キック・スネア・ハットの基本の型をなぞらない(ビート帳が持っている)。${whose}の特徴を表すリズムの動機にする
+  - inst は次の名前だけ: ${insts}
+  - steps は1小節ぶんの文字列で1文字=1ステップ(1拍を${model ? model.spb : 'モデルの分割の数'}つに分ける。4/4なら${model ? model.spb * 4 : '16(1拍を3分割のモデルは12)'}文字)。X=アクセント x=普通 o=ゴースト ?=時々 r=2連打 t=3連打 .=休み
+- swing: ${model ? `モデルの既定のハネは ${model.swing}。` : ''}変えたい時だけ 0〜0.8 で書く。変えないならモデルの既定の値を書く
+${opts.response ? '- followInst: 元のMIDIのリズムをなぞって叩く楽器を1つ(上の inst の名前から。例: rim、shaker、woodblock、clave)\n' : ''}- ユーザーのつまみ(アプリが使う。構成もこれに合わせる): ${BEAT_KNOBS.map((k) => `${k.label} ${input.knobs[k.name]}/100(0=${k.ends[0]}、100=${k.ends[1]})`).join('、')}`,
+      M.feedbackRule ? M.feedbackRule('beat') : '',
+      BEAT_REFERENCE_RULE,
+      `書き添えること:
+- name は「〜.mid」の形の短い英数字のファイル名、description は、どこが入力らしいかを40字以内で、concept はコンセプト60字以内
+- commentary は解説200字以内(構成の狙い、差し色の意味、Cubaseでキットを選ぶヒント)
+- signature: trait(入力側の特徴15字)・device(それを表すリズムの仕掛け40字)を2〜4個
+- techniques: 影響を受けた参照を0〜3個(composer=アーティスト、work=曲名・有名なブレイク名、technique=取り入れた型、use=何を取り入れたか30字)
+- 資料の文章を引用しない`,
+    ].filter(Boolean).join('\n\n');
+  }
+
+  const STEP_CHARS = /[^Xxo.?:rt]/g;
+
+  /** Gemini の出力 → ビートの設計図。opts: { tempo, meters(応答では元のMIDIにそろえる), follow(元のリズムをなぞる行) } */
+  function sanitizeBeat(raw, input, opts = {}) {
+    const B = BB();
+    const model = B.byId(input.model) || B.byId(String(raw.model || '').trim().toLowerCase()) || B.byId('boombap');
+    const bars = input.bars;
+    const secs = (raw.sections || []).slice(0, 10)
+      .map((x) => ({
+        name: String(x.name || '').trim().slice(0, 12) || '区間',
+        startBar: Math.round(clamp(x.startBar, 1, bars, 1)),
+        energy: Math.round(clamp(x.energy, 0, 10, 6)),
+        arrange: B.ARRANGES[String(x.arrange || '').trim()] ? String(x.arrange).trim() : 'full',
+        fill: B.FILLS[String(x.fill || '').trim()] ? String(x.fill).trim() : model.fills[0],
+        scene: String(x.scene || '').slice(0, 40),
+      }))
+      .sort((a, b) => a.startBar - b.startBar)
+      .filter((x, i, arr) => i === 0 || x.startBar !== arr[i - 1].startBar);
+    if (!secs.length) secs.push({ name: 'メイン', startBar: 1, energy: 7, arrange: 'full', fill: model.fills[0], scene: '' });
+    secs[0].startBar = 1;
+    // 全部が無音の区間だと音が出ないので、最初の区間は鳴らす
+    if (secs.every((x) => x.arrange === 'silence')) secs[0].arrange = 'full';
+    // 同じ名前の区間は別の名前にする(区間の計画は名前で引く)
+    const seen = {};
+    secs.forEach((x) => {
+      seen[x.name] = (seen[x.name] || 0) + 1;
+      if (seen[x.name] > 1) x.name = `${x.name}${seen[x.name]}`;
+    });
+    secs.forEach((x, i) => { x.bars = (i + 1 < secs.length ? secs[i + 1].startBar : bars + 1) - x.startBar; });
+    const instOf = (v) => (B.DRUM_INSTS.includes(String(v || '').toLowerCase()) ? String(v).toLowerCase() : E.drumKey(v));
+    const accents = (raw.accents || []).slice(0, 2).map((a) => {
+      const inst = instOf(a.inst);
+      const steps = String(a.steps || '').replace(STEP_CHARS, '').slice(0, 32);
+      return inst && /[Xxor?t]/.test(steps) ? { inst, steps, why: String(a.why || '').slice(0, 60) } : null;
+    }).filter(Boolean);
+    if (opts.follow) accents.unshift({ inst: instOf(raw.followInst) || 'rim', steps: opts.follow, why: '元のMIDIのリズムをなぞる' });
+    const L = {
+      name: 'ドラム', generator: 'groove', role: 'drums', model: model.id,
+      plan: secs.map((x) => ({ section: x.name, arrange: x.arrange, fill: x.fill, energy: x.energy })),
+      accents, density: input.knobs.density, humanize: input.knobs.humanize, variation: input.knobs.variation,
+      swing: Number.isFinite(Number(raw.swing)) && raw.swing !== null ? clamp(raw.swing, 0, 0.8, model.swing) : model.swing,
+      active: [], register: null, timbre: '', why: '', muted: false, reroll: 0,
+    };
+    const design = {
+      bars,
+      tempo: opts.tempo || clamp(raw.tempo, model.tempo[0], model.tempo[1], model.tempo[2]),
+      meters: opts.meters || (model.meter ? [{ bar: 1, num: model.meter[0], den: model.meter[1] }] : T.sanitizeMeters([], 4)),
+      meterMode: 'fixed',
+      swing: 0,
+      pitch: { system: 'free', root: 0, scale: null, chords: [], modulations: [], rotate: false },
+      arc: {
+        form: String(raw.form || model.label).slice(0, 20), story: String(raw.story || '').slice(0, 200), climaxBar: 0, turn: '',
+        sections: secs.map((x) => ({ name: x.name, startBar: x.startBar, bars: x.bars, scene: x.scene, tension: x.energy, register: 'mid', comping: null, voicing: null, bass: null, role: B.ARRANGES[x.arrange].label.split('(')[0], ending: B.FILLS[x.fill] })),
+      },
+      layers: [L],
+      signature: (raw.signature || []).slice(0, 5).map((x) => ({ trait: String(x.trait || '').slice(0, 30), device: String(x.device || '').slice(0, 80) })).filter((x) => x.trait || x.device),
+      techniques: (raw.techniques || []).slice(0, 5).map((x) => ({ composer: String(x.composer || '').slice(0, 30), work: String(x.work || '').slice(0, 40), technique: String(x.technique || '').slice(0, 40), use: String(x.use || '').slice(0, 100) })).filter((x) => x.technique),
+      automation: [],
+      beatModel: model.id,
+      genre: String(raw.form || model.label).slice(0, 20),
+      reference: input.reference || '',
+      tempoChanges: [],
+    };
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    if (model.breath && !opts.meters) design.meters = B.breathMeters(bars, seed);
+    if (!opts.tempo) design.tempoChanges = B.accelTempo(design, model);
+    return { design, seed, model };
+  }
+
+  /** ビートを書かせて音にする(Gemini 1回) */
+  async function writeBeat(input, opts = {}) {
+    const files = await imageFiles(input.images);
+    const schema = input.images && input.images.length ? { ...BEAT_SCHEMA, properties: { ...BEAT_SCHEMA.properties, impressions: { type: 'ARRAY', items: { type: 'STRING' } } } } : BEAT_SCHEMA;
+    setStatus('ビートの構成を書いています…', { busy: true });
+    const raw = await askGeminiJson({ prompt: beatPrompt(input, opts), files, responseSchema: schema, maxOutputTokens: 4096, timeoutMs: 150000, label: 'ビート' });
+    if (input.images && input.images.length) saveImpressions(input.images, raw);
+    const { design, seed, model } = sanitizeBeat(raw, input, opts);
+    const midi = renderMidi(design, { seed, gauges: null, model: 'beat' });
+    if (!midi.notes.length) {
+      if (typeof debugLog === 'function') debugLog(`ビートの音が0個: ${JSON.stringify(design.layers[0]).slice(0, 800)}`);
+      throw new Error('ビートの音が1つも出てきませんでした');
+    }
+    return { raw, design, seed, model, midi };
+  }
+
+  /** 「ビート」: モデル(ジャンル)を選び(おまかせも可)、構成は Gemini、音はビート帳 */
   async function createBeat(opts) {
-    const preset = P.byId('beat');
     const names = [...((opts.images || []).length ? ['画像の印象'] : []), ...(opts.souls || []).map((s) => s.name)];
     const values = await showFormDialog({
       title: 'ビートを作る',
-      message: `${opts.promptCard ? 'プロンプトカードの要望に沿って、' : ''}${names.length ? `${names.join('・')}に合う` : ''}ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)を作ります。Geminiを1回呼びます。参照曲・アーティストがあれば、そのビートの型やノリを大いに取り入れます。${feedbackNote(preset)}`,
+      message: `${opts.promptCard ? 'プロンプトカードの要望に沿って、' : ''}${names.length ? `${names.join('・')}に合う` : ''}ドラムビート(GMドラム・10ch)を作ります。` +
+        'ジャンルの型はアプリのビート帳が叩き、Geminiは1回だけ、構成(区間ごとの編成・勢い・フィル)と差し色の行を書きます。' + feedbackNote(P.byId('beat')),
       submitLabel: '作る',
-      fields: presetFields(preset, { bars: opts.promptCard && opts.promptCard.bars, gauges: opts.promptCard && opts.promptCard.gauges }),
+      fields: beatFields({ bars: opts.promptCard && opts.promptCard.bars }),
     });
     if (!values) return;
-    const v = readPresetValues(values, preset, []);
-    await guarded('ビートを作れませんでした', () => generate(preset, {
-      ...v,
-      souls: opts.souls || [],
-      images: opts.images || [],
-      contextText: opts.contextText,
-      focusParamIds: opts.focusParamIds,
-      excludeReferences: false,
-    }, { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y, onCard: opts.onCard }));
+    const v = readBeat(values);
+    await guarded('ビートを作れませんでした', async () => {
+      const input = { ...v, souls: opts.souls || [], images: opts.images || [], contextText: opts.contextText, focusParamIds: opts.focusParamIds, excludeReferences: false };
+      const { raw, midi, model, design } = await writeBeat(input);
+      const card = buildMidiCard(raw, midi, P.byId('beat'), { stage: opts.stage, memberIds: opts.memberIds, fromCardId: opts.fromCardId, x: opts.x, y: opts.y }, null);
+      if (opts.onCard) opts.onCard(card);
+      else placeMidiCard(opts.stage, card, opts.fromCardId);
+      setStatus(`「${card.name}」を作りました(${model.label}、${design.arc.sections.map((x) => x.name).join(' → ')})。タップで試聴・保存ができます`);
+      return card;
+    });
+  }
+
+  /** ビートのカードの「作り直す」(以前の形のビートのカードも、ここで新しい形に作り直す) */
+  async function reviseBeat(card, stage) {
+    const cur = designOf(card);
+    const L = cur && cur.design.layers.find((l) => l.generator === 'groove');
+    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: false }) : null;
+    const values = await showFormDialog({
+      title: `「${card.name}」を作り直す`,
+      message: 'どう変えたいかを書いてください。前の構成とこのコメントを踏まえた改善版を、右隣に線でつないで置きます。モデル(ジャンル)を替えてもかまいません。' +
+        '型の叩き方だけを変えたい時は、パネルの「振り直す」(Geminiを使いません)を使ってください。',
+      submitLabel: '作り直す',
+      fields: [
+        { name: 'comment', label: 'コメント', type: 'textarea', placeholder: '後半はハーフタイムに、差し色はカウベルで など' },
+        ...beatFields({ model: L ? L.model : '', bars: cur ? cur.design.bars : 8, knobs: L ? { density: L.density, humanize: L.humanize, variation: L.variation } : null, reference: cur && cur.design.reference }),
+      ],
+    });
+    if (!values) return;
+    const v = readBeat(values);
+    const comment = String(values.comment || '').trim();
+    const prev = cur
+      ? JSON.stringify({ model: cur.design.beatModel || null, tempo: cur.design.tempo, form: cur.design.arc && cur.design.arc.form, sections: cur.design.arc && cur.design.arc.sections, plan: L ? L.plan : undefined, accents: L ? L.accents : undefined, patterns: L ? undefined : cur.design.layers[0] && cur.design.layers[0].patterns })
+      : notesText(card.midi);
+    const rating = M.ratingOf ? M.ratingOf(card) : null;
+    const text = [
+      'これは作り直しです。前に作ったビートを、ユーザーのコメントに沿って改善してください。',
+      `今回のコメント: ${comment || '(なし。モデル・つまみ・つないだカードの変更を取り入れる)'}`,
+      rating ? `ユーザーは前回の版に★${rating}(5段階)を付けている。${rating >= 4 ? '良い所を保ったまま磨く' : rating <= 2 ? '思い切って変えてよい' : 'コメントを手がかりに一段良くする'}` : '',
+      `前回の構成(JSON。コメントで触れていない所はなるべく保つ):\n${prev}`,
+      links && links.lines.length ? `ASTRでこのビートにつないだカード(取り入れる):\n${links.lines.map((l) => `- ${l}`).join('\n')}` : '',
+      '- description は、前回から何を変えたかを40字以内で',
+    ].filter(Boolean).join('\n');
+    await guarded('作り直せませんでした', async () => {
+      const souls = links ? links.souls.filter((s) => s.category !== 'plugin') : [];
+      const { raw, midi, model } = await writeBeat({ ...v, souls, images: [], focusParamIds: links ? links.focusParamIds : null, excludeReferences: false }, { revise: text });
+      const nc = buildMidiCard(raw, midi, P.byId('beat'), {
+        stage, memberIds: [...new Set([...(card.memberIds || []), ...souls.map((s) => s.id)])], fromCardId: card.id,
+        x: (card.x || 0) + (card.width || 210) + 70, y: (card.y || 0) + 10,
+      }, { card, comment, version: (card.version || 1) + 1, baseName: baseName(card.name), voice: card.voice, linkedNames: links ? links.names.slice(0, 6) : [] });
+      placeMidiCard(stage, nc, card.id);
+      setStatus(`「${nc.name}」を作りました(${model.label})`);
+    });
+  }
+
+  /**
+   * 元のMIDIのリズムの分析(Geminiを使わない): 1小節を16分で数えて、音の入りの多い位置・食い・密度を出し、
+   * 元のリズムをなぞる差し色の行を作る(入りが小節の4割以上にある位置は必ず、2割以上は「時々」)
+   */
+  function rhythmAnalysis(m, notes) {
+    const end = T.endBeat(notes) || 4;
+    const bars = T.barList(m, end);
+    const n = Math.max(1, Math.round(bars[0].len * 4));
+    const hist = new Array(n).fill(0);
+    let onsets = 0;
+    let off = 0;
+    bars.forEach((b) => {
+      const seen = new Set();
+      notes.forEach((x) => {
+        if (x.start < b.start - 0.01 || x.start >= b.start + b.len - 0.01) return;
+        const k = Math.round((x.start - b.start) * 4);
+        if (k >= n || seen.has(k)) return;
+        seen.add(k);
+        hist[k] += 1;
+        onsets += 1;
+        if (k % 2 === 1) off += 1;
+      });
+    });
+    const need = Math.max(1, bars.length * 0.4);
+    let follow = hist.map((c) => (c >= need ? 'x' : c >= need * 0.5 ? '?' : '.')).join('');
+    if (!/x/.test(follow)) follow = hist.map((c) => (c > 0 ? '?' : '.')).join('');
+    const perBar = onsets / bars.length;
+    const sync = onsets ? off / onsets : 0;
+    const low = notes.filter((x) => x.pitch < 52);
+    const lowPos = [...new Set(low.map((x) => Math.round((x.start - T.barAt(bars, x.start).start) * 4)))].slice(0, 8);
+    const text = [
+      `テンポ ${Math.round(m.tempo)} BPM、拍子 ${T.meterLabel(m)}、${bars.length}小節`,
+      `音の入り: 1小節あたり ${perBar.toFixed(1)} 回(${perBar < 3 ? '疎' : perBar < 7 ? 'ふつう' : '密'})、16分の裏での入りの割合 ${Math.round(sync * 100)}%(${sync > 0.35 ? '食いが多い' : sync > 0.15 ? 'ほどよく食う' : '拍どおり'})`,
+      `小節の中の入りの多い位置(16分で数え、0が頭): ${hist.map((c, k) => ({ c, k })).filter((x) => x.c >= need).map((x) => x.k).join(', ') || 'まばら'}`,
+      low.length ? `低音(E3未満)の入りの位置: ${lowPos.join(', ')}(キックを合わせる手がかり)` : '低音はほとんど無い',
+    ].join('\n');
+    return { bars: bars.length, follow, text };
+  }
+
+  /**
+   * MIDI に応えるビート(2026-10-01、ユーザー要望「MIDIから応対で合うビートを作れるように」)。Gemini 1回。
+   * テンポ・拍子・小節数は元のMIDIにそろえ、元のリズムをなぞる差し色の行をアプリが1本入れる。返り値は応答のスロットと同じ形
+   */
+  async function createBeatResponse({ source, beatModel, knobs, hint }) {
+    const m = source.midi;
+    const notes = source.notes.map((n) => ({ ...n }));
+    if (!notes.length) throw new Error('応答する相手の音がありません');
+    const ra = rhythmAnalysis(m, notes);
+    const input = { model: BB().byId(beatModel) ? beatModel : '', bars: Math.min(64, ra.bars), knobs: knobs || { density: 50, humanize: 40, variation: 45 }, hint: hint || '', reference: '', souls: [], images: [] };
+    const response = {
+      tempo: Math.round(m.tempo),
+      meterLabel: T.meterLabel(m),
+      text: `これは応答です。元のMIDI「${source.name}」の${source.label}に合わせて鳴らすビートを作る(元のMIDIと重ねて聴く)。
+元のMIDIのリズムの分析(アプリが計算):
+${ra.text}
+- 元のMIDIの密度・食い・休みに合うモデルと構成にする。元の音が密な所ではビートを引き、疎な所・休みでは埋める。元の起伏(区間の変わり目)に合わせて編成を変える
+- アプリが、元のリズムをなぞる差し色の行(followInst の楽器)を1本入れる。accents はそれと別の仕掛けにする
+元の音(参考):
+${notesText(m, notes).slice(0, 3000)}`,
+    };
+    const { raw, design, seed, model, midi } = await writeBeat(input, { response, tempo: m.tempo, meters: T.metersOf(m).map((x) => ({ ...x })), follow: ra.follow });
+    return {
+      id: newId(), model: 'beat', label: `ビート(${model.label})`,
+      name: fileName(raw, `beat_${model.id}.mid`),
+      concept: String(raw.concept || '').slice(0, 100),
+      commentary: String(raw.commentary || '').slice(0, 400),
+      against: source.label,
+      analysis: ra.text.slice(0, 600),
+      design, seed,
+      notes: midi.notes, partNames: midi.partNames || {}, partRoles: midi.partRoles || {},
+      on: true, createdAt: new Date().toISOString(),
+    };
   }
 
   /* ---------------- プロンプトを整える(テキストカードの属性「プロンプト」、2026-09-26) ----------------
@@ -834,8 +1151,9 @@ ${models}
     const m = card.midi;
     const cur = designOf(card);
     const curId = cur ? cur.model : 'gakuten';
-    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: curId !== 'beat' }) : null;
-    const isBeat = curId === 'beat';
+    if (curId === 'beat') return reviseBeat(card, stage); // ビートは専用の作り直し(js/midi/beatbook.js の形へ)
+    const links = window.LyraMidiLinks ? window.LyraMidiLinks(card, { excludeReferences: true }) : null;
+    const isBeat = false;
     const modelOptions = P.PRESETS.filter((p) => (isBeat ? p.id === 'beat' : !p.hidden)).map((p) => ({ value: p.id, label: `${p.group} · ${p.label}` }));
     const presetNow = P.byId(curId) || P.byId('gakuten');
     const arc = cur && cur.design.arc;
@@ -1095,7 +1413,7 @@ ${models}
 
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
-    analyzeMidi, createResponse, renderResponse, ruminateNotes,
-    _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries },
+    analyzeMidi, createResponse, renderResponse, ruminateNotes, createBeatResponse, rhythmAnalysis, BEAT_KNOBS, beatFields, readBeat,
+    _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries, beatPrompt, sanitizeBeat, writeBeat },
   });
 })();

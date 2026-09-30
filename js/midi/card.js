@@ -53,6 +53,11 @@
       case 'motif': return `動機 ${cellNames(l.cell)} · ${(l.chain || []).join(' → ')}`;
       case 'serial': return `音列 ${(l.row || []).map((pc) => T.NOTE_NAMES[pc]).join(' ')} · ${(l.forms || []).join(' ')} · ${{ line: '旋律', pointillist: '点描', chords: `${l.group || 3}音の和音` }[l.texture || 'line']}`;
       case 'ostinato': return `音型 ${cellNames(l.cell)}${l.accent ? ` · ${l.accent}音ごとのアクセント` : ''}`;
+      case 'groove': {
+        const B = window.LyraBeatbook;
+        const mdl = B && B.byId(l.model);
+        return `${mdl ? mdl.label : l.model} · 音数${l.density}・揺れ${l.humanize}・展開${l.variation}${l.swing > 0.01 ? ` · ハネ${Math.round(l.swing * 100)}%` : ''}${(l.accents || []).length ? ` · 差し色${l.accents.length}本` : ''}`;
+      }
       case 'drums': return `1拍${l.stepsPerBeat || 4}分割${l.swing > 0.01 ? ` · ハネ${Math.round(l.swing * 100)}%` : ''} · ${(l.patterns || []).length}パターン`;
       default: return `「${l.generator}」は鳴らない生成器`;
     }
@@ -224,7 +229,7 @@
     const d = cur.design;
     const preset = presetOf(cur.model);
     if (cur.model === 'beat') {
-      const drums = d.layers.find((l) => l.generator === 'drums');
+      const drums = d.layers.find((l) => l.generator === 'groove' || l.generator === 'drums');
       return `[BEAT] ${head}: ${d.genre || (d.arc && d.arc.form) || ''}、テンポ${Math.round(m.tempo)}、拍子 ${T.meterLabel(m)}` +
         (d.arc ? `、構成 ${d.arc.sections.map((x) => x.name).join(' → ')}` : '') + (drums ? `、${paramSummary(drums)}` : '') +
         (d.techniques.length ? `、参照 ${d.techniques.map((t) => [t.composer, t.work].filter(Boolean).join(' ')).join(' / ')}` : '');
@@ -260,11 +265,16 @@
       const gen = E.GENERATORS[l.generator];
       const part = partOfLayer[i];
       const color = part ? M.partColor(m, part) : '#ccc';
-      const drumsRows = l.generator === 'drums'
+      const B = window.LyraBeatbook;
+      const grooveRows = l.generator === 'groove' && B
+        ? (l.plan || []).map((p) => `<div class="beat-row"><span class="beat-inst">${escapeHtml(p.section)}</span><code>${escapeHtml(`${(B.ARRANGES[p.arrange] || { label: p.arrange }).label} · 勢い${p.energy} · ${B.FILLS[p.fill] || p.fill}`)}</code></div>`).join('') +
+          (l.accents || []).map((a) => `<div class="beat-row beat-row--fill"><span class="beat-inst">${escapeHtml(B.NAMES[a.inst] || a.inst)}</span><code>${escapeHtml(a.steps)}</code></div>` + (a.why ? `<div class="beat-fill-label">${escapeHtml(a.why)}</div>` : '')).join('')
+        : '';
+      const drumsRows = grooveRows + (l.generator === 'drums'
         ? (l.patterns || []).map((pt) => `<div class="beat-section"><div class="beat-section-name">${escapeHtml(pt.section || '')}</div>` +
           pt.rows.map((r) => `<div class="beat-row"><span class="beat-inst">${escapeHtml(E.DRUM_NAMES_JA[r.inst] || r.inst)}</span><code>${escapeHtml(r.steps)}</code></div>`).join('') +
           ((pt.fill || []).length ? `<div class="beat-fill-label">最後の小節(フィル)</div>${pt.fill.map((r) => `<div class="beat-row beat-row--fill"><span class="beat-inst">${escapeHtml(E.DRUM_NAMES_JA[r.inst] || r.inst)}</span><code>${escapeHtml(r.steps)}</code></div>`).join('')}` : '') + `</div>`).join('')
-        : '';
+        : '');
       return `<div class="layer-row${l.muted ? ' layer-row--muted' : ''}">` +
         `<div class="layer-name"><i style="background:${color}"></i>${escapeHtml(l.name || (gen ? gen.label : l.generator))}` +
         `<span class="layer-gen">${gen ? escapeHtml(gen.label) : `「${escapeHtml(l.generator)}」は鳴らない`}</span></div>` +

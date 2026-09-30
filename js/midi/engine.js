@@ -405,7 +405,8 @@
     const backing = new Set(Object.keys(partRoles).filter((p) => partRoles[p] === 'harmony' || partRoles[p] === 'bass'));
     let out = applyDub(notes, bars, clamp(gauges.dub, 0, 100, 0), backing, total);
     applyEmotion(out, clamp(gauges.emotion, 0, 100, 50));
-    if (sections.length) {
+    // ビート帳(groove)は区間の勢いを自分で強弱にしているので、緊張曲線の強弱はかけない
+    if (sections.length && !design.beatModel) {
       const strength = clamp(gauges.emotion, 0, 100, 50) / 50;
       out.forEach((n) => {
         n.velocity = Math.round(Math.min(127, Math.max(20, n.velocity * (1 + (tension(n.start) - 0.5) * 0.5 * strength))));
@@ -431,7 +432,7 @@
       notes: out,
       cc,
       markers: markers.slice(0, 48),
-      tempoChanges: [],
+      tempoChanges: (design.tempoChanges || []).map((x) => ({ ...x })), // ビート帳の「間」の序破急(区間ごとに速くなる)
       partNames,
       partRoles,
       partLayers,

@@ -398,12 +398,12 @@
     /* ---------------- リズム(「ビート」の入口専用。ピッカーには出さない) ---------------- */
     {
       id: 'beat', group: 'リズム', label: 'ビート', short: 'ビート', hidden: true,
-      text: 'ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)',
-      generators: ['drums'],
+      text: 'ジャンルを一聴で象徴するドラムビート(GMドラム・10ch)。型はビート帳(js/midi/beatbook.js)のモデルが叩き、Geminiは構成だけを書く',
+      generators: ['groove', 'drums'],
       pitch: { systems: ['free'], hint: 'system は free' },
       meter: 'free', arc: true, bars: 4, tempo: 100,
       guide: '層は drums を1つ。arc の sections は区間(イントロ・メイン・ブレイクなど)で、各区間に patterns を1つ(section に区間の name)。form にはジャンル名(サブジャンルまで)を書く',
-      fields: ['bars', 'reference', 'gauges', 'hint'], gauges: ['grain', 'dub', 'emotion'],
+      fields: [], gauges: [], // 2026-10-01: ゲージは廃止し、ビート専用のつまみ(音数・人の揺れ・展開、js/midi/compose.js の BEAT_KNOBS)にした
     },
   ];
 

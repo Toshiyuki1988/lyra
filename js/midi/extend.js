@@ -197,6 +197,10 @@ ${needChords ? `- chords: ${headEnd}拍目からのコード進行(symbol・star
         l.source = 'series';
       }
       if (l.generator === 'motif' && Array.isArray(l.chain) && x.motifOps) l.chain = [...l.chain, ...x.motifOps];
+      if (l.generator === 'groove' && Array.isArray(l.plan) && l.plan.length) {
+        const last = l.plan[l.plan.length - 1];
+        l.plan = [...l.plan.filter((p) => p.section !== TAIL), { section: TAIL, arrange: x.thin ? 'break' : last.arrange === 'silence' ? 'full' : last.arrange, fill: last.fill, energy: x.thin ? 3 : last.energy }];
+      }
       if (l.generator === 'drums' && Array.isArray(l.patterns) && l.patterns.length) {
         const last = l.patterns[l.patterns.length - 1];
         l.patterns = [...l.patterns.filter((p) => p.section !== TAIL), { section: TAIL, rows: x.thin ? last.rows.filter((r) => !/kick|bd/i.test(r.inst)) : last.rows, fill: last.fill || [] }];

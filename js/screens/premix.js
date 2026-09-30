@@ -3780,25 +3780,31 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」に応答する`,
       message: '元のMIDIを分析して(調・小節ごとの響き・音域)、それに応えるMIDIを作り、右隣に別のカードとして置きます。' +
         '元のカードとはリンクの線(同時に鳴らす)でつなぐので、▶で重ねて聴けます。Geminiを1回呼びます。\n\n' +
-        models.map((p) => `・${p.label}: ${p.text}`).join('\n'),
+        models.map((p) => `・${p.label}: ${p.text}`).join('\n') +
+        '\n・ビートで応える: 元のリズム(密度・食い・入りの多い位置)を分析し、テンポ・拍子・小節をそろえたドラムビートを作る(元のリズムをなぞる差し色の行も入る)。「ビートのモデル」と3つのつまみはこの時だけ使う',
       submitLabel: '作る',
       fields: [
-        { name: 'model', label: '応答のモデル', type: 'select', value: models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'model', label: '応答のモデル', type: 'select', value: models[0].id, options: [...models.map((p) => ({ value: p.id, label: p.label })), { value: 'beat', label: 'ビートで応える(ドラム)' }] },
+        ...(M.beatFields ? M.beatFields({}, { noBars: true, noReference: true }).filter((f) => f.name !== 'hint').map((f) => (f.name === 'model' ? { ...f, name: 'beatModel', label: 'ビートのモデル(「ビートで応える」の時)' } : f)) : []),
         ...(partOptions ? [{ name: 'part', label: '応答する相手のパート', type: 'select', value: parts.find((p) => M.roleOf(m, p) === 'melody') || parts[0], options: partOptions }] : []),
         { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: サビの2小節だけ思い切り切なく/低音でゆっくり追いかけて' },
       ],
     });
     if (!values) return;
-    const preset = P.byId(values.model);
+    const isBeat = values.model === 'beat';
+    const preset = isBeat ? P.byId('beat') : P.byId(values.model);
     const chosen = !partOptions || values.part === '*' ? parts : [values.part];
     const notes = m.notes.filter((n) => chosen.includes(n.part || ''));
     const label = chosen.length === parts.length ? '全体' : M.partLabel(m, chosen[0]);
     try {
-      const slot = await M.createResponse({ source: { midi: m, notes, label, name: base.name || s.fileName }, presetId: preset.id, hint: values.hint });
+      const source = { midi: m, notes, label, name: base.name || s.fileName };
+      const slot = isBeat
+        ? await M.createBeatResponse({ source, beatModel: values.beatModel, knobs: M.readBeat({ ...values, model: values.beatModel, bars: 8 }).knobs, hint: values.hint })
+        : await M.createResponse({ source, presetId: preset.id, hint: values.hint });
       const resp = placeResponseCard(s, responseMidiCard(base, slot, preset.id), s.midiVoice);
       scheduleAutoSave();
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
-      setStatus(`「${label}」への応答「${preset.short}」を右隣に置きました(${slot.notes.length}音)。リンクの線でつながっているので、▶で元と一緒に鳴ります`);
+      setStatus(`「${label}」への応答「${isBeat ? slot.label : preset.short}」を右隣に置きました(${slot.notes.length}音)。リンクの線でつながっているので、▶で元と一緒に鳴ります`);
       return resp;
     } catch (err) {
       console.error(err);

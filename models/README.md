@@ -87,7 +87,7 @@ MIDI生成モデルの補充、またMIDIエディター含めてMIDI生成周�
 | ジャズ | `jazz_modal` | ジャズ・モード | chords(4度堆積)・bass・bebop・drums | 長く続く旋法 |
 | ジャズ | `jazz_ballad` | ジャズ・バラード | chords・bass(ツー・フィール)・line・bebop・drums | 反芻 |
 | ジャズ | `jazz_bossa` | ボサノヴァ | chords(hits でギターの刻み)・bass(ボサノヴァ)・line・drums | ハネなし、反芻 |
-| (入口専用) | `beat` | ビート | drums | 「ビート」の入口だけ。ピッカーには出さない |
+| (入口専用) | `beat` | ビート | groove(旧 drums) | 「ビート」の入口だけ。ピッカーには出さない。2026-10-01からジャンルの型は `js/midi/beatbook.js` のビート帳(34モデル)が持ち、Geminiは構成だけを書く(CLAUDE.md「ビート帳」) |
 
 「フェイズシフトモデル(Reich型)」は独立させず、漸進プロセスモデルの規則 `phase` として持つ(ユーザー確認済み、2026-09-26)。
 
