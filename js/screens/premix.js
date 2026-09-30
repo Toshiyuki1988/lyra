@@ -382,7 +382,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -417,6 +417,7 @@
       else if (action === 'info') showMidiAbout(card);
       else if (action === 'respond') respondTo(card);
       else if (action === 'expand') expandFrom(card);
+      else if (action === 'host') openInHost(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
@@ -1215,6 +1216,7 @@
   }
 
   function midiVoiceLabel(s) {
+    if (s.hostAudio) return `VST: ${s.hostAudio.plugin || 'LYRA Host'}`;
     const M = window.LyraMidi;
     const v = M && M.VOICES.find((x) => x.id === s.midiVoice);
     return v ? v.label.replace(/\(.*\)$/, '') : '合成アンサンブル';
@@ -1235,7 +1237,13 @@
     rt.loading = true;
     refreshSound(s);
     try {
-      rt.buffer = await window.LyraMidi.renderBuffer(card, s.midiVoice || DEFAULT_MIDI_VOICE);
+      // LYRA Host で鳴らした音(送り返しの WAV)があれば、それで鳴らす(この端末の IndexedDB にだけある。無ければ内部音源)
+      const hostWav = s.hostAudio && window.LyraHost ? await window.LyraHost.getAudio(s.id).catch(() => null) : null;
+      if (hostWav) rt.buffer = await audio().decodeAudioData(hostWav);
+      else {
+        if (s.hostAudio) setStatus(`この端末には「${card.name}」の LYRA Host の音がないので、内部音源の音で鳴らします`);
+        rt.buffer = await window.LyraMidi.renderBuffer(card, s.midiVoice || DEFAULT_MIDI_VOICE);
+      }
       rt.peaks = peaksOf(rt.buffer);
       rt.clipPeaks = null;
     } catch (err) {
@@ -1398,7 +1406,9 @@
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
       `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
-      `${M.aboutHtml(card)}<div class="modal-actions"><button type="button" class="secondary" data-revoice>音色を変えて作り直す</button>` +
+      `${M.aboutHtml(card)}<div class="modal-actions">` +
+      (s.hostAudio ? `<button type="button" class="secondary" data-unhost>内部音源の音に戻す</button>` : '') +
+      `<button type="button" class="secondary" data-revoice>音色を変えて作り直す</button>` +
       `<button type="button" class="secondary" data-close>閉じる</button></div></div>`;
     const close = () => {
       overlay.remove();
@@ -1411,6 +1421,11 @@
       }
     };
     overlay.querySelector('[data-close]').addEventListener('click', close);
+    const unhost = overlay.querySelector('[data-unhost]');
+    if (unhost) unhost.addEventListener('click', () => {
+      close();
+      dropHostAudio(s, true);
+    });
     overlay.querySelector('[data-revoice]').addEventListener('click', () => {
       close();
       revoiceMidi(s);
@@ -1459,6 +1474,7 @@
     for (const x of targets) {
       stop(x);
       stopVoicesOf(x.id);
+      if (x.hostAudio) dropHostAudio(x, false); // 内部音源の音色を選んだので、LYRA Host の音は外す
       x.midiVoice = voice;
       const rt = soundRt.get(x.id) || {};
       Object.assign(rt, { buffer: null, peaks: null, clipPeaks: null, missing: false, loading: false });
@@ -1609,6 +1625,7 @@
   function removeSound(s) {
     stop(s);
     stopVoicesOf(s.id);
+    if (s.hostAudio && window.LyraHost) window.LyraHost.deleteAudio(s.id).catch(() => {}); // 端末内の一時置き場(Drive ではない)
     if (s.solo) setTimeout(applyMuteSolo, 0); // ソロのカードを外したら、ほかのカードがまた鳴る
     const st = stripRt.get(s.id);
     if (st) {
@@ -3738,6 +3755,86 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     }
   }
 
+  /* ---------------- LYRA Host で開く・送り返しを受け取る(2026-10-01、js/lyrahost.js。形は lyra-host の PROTOCOL.md) ----------------
+   * MIDIのカードの「ホスト」: カードの ID と MIDI を送ってホストで開く(同じカードなら、ホストに保存した音源・状態を戻す)。音源はホストに任せる(ユーザー判断)。
+   * ホストの「LYRA へ送る」(Ctrl+L): 届いた WAV で**元のカードの音を差し替える**(ユーザー判断。カードは MIDI を持ったまま。s.hostAudio に音源の名前など、
+   * 音はこの端末の IndexedDB)。「このMIDIについて」の「内部音源の音に戻す」か「音色を変えて作り直す」で内部音源の音に戻る。
+   * ホストで直したノートは、今はカードの MIDI に書き戻さない(次の段階) */
+  async function openInHost(s) {
+    const H = window.LyraHost;
+    const base = baseMidiCard(s);
+    if (!H || !base || !base.midi || !base.midi.notes.length) {
+      setStatus('元のMIDIが見つかりません', { important: true });
+      return;
+    }
+    const connecting = H.launchAndConnect(); // クリックの中で(await より前に)lyrahost:// を開く
+    try {
+      await connecting;
+      const m = base.midi;
+      setStatus('LYRA Host で開いています…(音源の読み込みに数秒かかることがあります)', { busy: true });
+      const res = await H.request({
+        type: 'open',
+        cardId: s.id,
+        title: String(base.name || s.fileName).replace(/\.mid$/i, ''),
+        midi: { tempo: m.tempo, tempoChanges: m.tempoChanges || [], meters: m.meters || [{ bar: 1, num: 4, den: 4 }], notes: m.notes },
+        preferSaved: true,
+      }, 90000);
+      const warn = (res.warnings || []).length ? `(注意: ${res.warnings.join(' / ')})` : '';
+      setStatus(`${res.restored ? '前回の状態で' : ''}LYRA Host で開きました${res.pluginName ? `(${res.pluginName})` : ''}。` +
+        `音を詰めたら、ホストの「LYRA へ送る」(Ctrl+L)で、このカードの音が差し替わります${warn}`);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
+  /** ホストの「LYRA へ送る」: 届いた WAV でカードの音を差し替える(開いていないプレミックスのカードでも、読み込んであれば) */
+  async function receiveFromHost(result, wav) {
+    let s = null;
+    premixStore.loaded.forEach((pm) => {
+      if (!s) s = (pm.cards || []).find((c) => c.id === result.cardId && c.type === 'sound') || null;
+    });
+    if (!s) throw new Error('送り返し先のカードが見つかりません(そのプレミックスを開いてから、もう一度「LYRA へ送る」を押してください)');
+    if (!wav) throw new Error('音(WAV)が届きませんでした');
+    await window.LyraHost.putAudio(s.id, wav);
+    s.hostAudio = {
+      plugin: (result.plugin && result.plugin.name) || '',
+      fileName: (result.wav && result.wav.fileName) || '',
+      startBar: result.wav && result.wav.startBar, endBar: result.wav && result.wav.endBar,
+      at: new Date().toISOString(),
+    };
+    scheduleAutoSave();
+    const onScreen = state.premix && (state.premix.cards || []).includes(s);
+    if (onScreen) await resoundCard(s);
+    setStatus(`LYRA Host の音(${s.hostAudio.plugin || 'VST'})で「${s.fileName.replace(/\.mid$/i, '')}」の音を差し替えました。` +
+      '「ⓘ」の「内部音源の音に戻す」で元に戻せます');
+  }
+
+  /** LYRA Host の音を外して、内部音源の音に戻す */
+  async function dropHostAudio(s, rerender) {
+    delete s.hostAudio;
+    if (window.LyraHost) window.LyraHost.deleteAudio(s.id).catch(() => {});
+    scheduleAutoSave();
+    if (rerender) {
+      await resoundCard(s);
+      setStatus(`「${s.fileName.replace(/\.mid$/i, '')}」を内部音源の音に戻しました`);
+    }
+  }
+
+  /** カードの音を作り直す(鳴っていたら鳴らし直す) */
+  async function resoundCard(s) {
+    const was = Boolean((soundRt.get(s.id) || {}).playing);
+    stop(s);
+    stopVoicesOf(s.id);
+    const rt = soundRt.get(s.id) || {};
+    Object.assign(rt, { buffer: null, peaks: null, clipPeaks: null, missing: false, loading: false });
+    soundRt.set(s.id, rt);
+    await renderMidiSound(s);
+    if (was && rt.buffer) toggle(s);
+  }
+
+  if (window.LyraHost) window.LyraHost.onResult(receiveFromHost);
+
   /* ---------------- アステリズムの線の種類(2026-10-01、ユーザー要望) ----------------
    * 線にカーソルを合わせると光り(js/app.js)、押すとメニュー: 「リンク」=同じタイミングで鳴らす(ループの時は、全部が鳴り終わってから揃って頭に戻る)/
    * 「チェイン」=つないだ順に鳴らす/「削除」。connection.mode = 'link' | 'chain'(無ければ chain。以前からの線)。
@@ -3991,6 +4088,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     const f = folderOf(s);
     const rt = soundRt.get(s.id) || {};
     const copy = { ...s, id: newId(), createdAt: new Date().toISOString() };
+    if (s.hostAudio && window.LyraHost) window.LyraHost.getAudio(s.id).then((ab) => ab && window.LyraHost.putAudio(copy.id, ab)).catch(() => {}); // VST の音も写す
     delete copy.height;
     if (f && isTimeline(f) && rt.buffer) {
       // 元の音が鳴り終わった所(ループの外に出る時は最後に置く)
@@ -4020,5 +4118,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, openInHost, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

@@ -2129,7 +2129,8 @@ body[data-screen="premix"] .asterism-line--manual[data-mode="link"].asterism-lin
 /* MIDIのカードの上の外側: 応答 | 語彙 | 展開(2026-10-01) */
 .star-card-hex--respond { left: 50%; top: 0; transform: translate(calc(-50% - 74px), calc(-100% - 10px)); background: #2f7f93; letter-spacing: 0.04em; }
 .star-card-hex--expand { left: 50%; top: 0; transform: translate(calc(-50% + 74px), calc(-100% - 10px)); background: #8a6a2e; letter-spacing: 0.04em; }
-.star-card-hex-strut--vocab, .star-card-hex-strut--respond, .star-card-hex-strut--expand { display: none; }
+.star-card-hex--host { left: 100%; top: 100%; transform: translate(-55%, 14px); background: #3d6e4f; letter-spacing: 0.04em; } /* LYRA Host で開く(右下の外側) */
+.star-card-hex-strut--vocab, .star-card-hex-strut--respond, .star-card-hex-strut--expand, .star-card-hex-strut--host { display: none; }
 .snd-vocab {
   flex: none; height: 20px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--pm-line-2);
   background: #1b1d24; color: var(--pm-muted); font-size: 10px; letter-spacing: 0.06em; cursor: pointer;
