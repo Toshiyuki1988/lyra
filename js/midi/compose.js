@@ -431,6 +431,7 @@ ${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.im
 
   function meterRule(preset, input) {
     const bars = `- 長さは${input.bars}小節(アプリが決める)。notes・chords の位置(start・duration)は曲頭からの通しの拍(4分音符=1)`;
+    if (preset.meter === 'source') return `拍子: 元のMIDIと同じ ${input.meterLabel || '4/4'}(アプリがそろえる)\n${bars}`;
     if (preset.meter === 'four') return `拍子: 4/4(アプリが決める)\n${bars}`;
     if (preset.meter === 'changing') return `拍子: アプリが小節ごとに変拍子を作る(書かなくてよい)。音型は拍子に縛られずに書く\n${bars}`;
     return `拍子(meters): 最初の拍子と、途中で変える所を [{bar(1始まり), num, den(2/4/8/16)}] で。無難にまとめず、合えば変拍子を使ってよい。拍子が変わっても位置は通しで数える(7/8の小節は3.5拍)\n${bars}`;
@@ -778,7 +779,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
 
   /** { text: ざっくりした要望, draft?: 前に整えた文(手を入れているかもしれない), context?: つながっているカードの行 } → { prompt, model, bars, gauges, why } */
   async function refinePrompt({ text, draft, context }) {
-    const models = P.PRESETS.map((p) => `- ${p.id}: ${p.label} — ${p.text}${p.hidden ? '(ドラムだけのビート。「ビート」の入口で作る)' : ''}`).join('\n');
+    const models = P.PRESETS.filter((p) => !p.response).map((p) => `- ${p.id}: ${p.label} — ${p.text}${p.hidden ? '(ドラムだけのビート。「ビート」の入口で作る)' : ''}`).join('\n');
     const prompt = `あなたは作曲支援アプリLYRAのプロンプト係です。ユーザーのざっくりした要望を、このアプリのMIDI生成に最も効く文章に書き直してください。
 MIDI生成では、別のGeminiがこの文章を読んで設計図(音高の器・拍子・時間の設計図・層ごとの生成器とパラメータ)を書き、アプリがそれを音にします。
 
@@ -953,8 +954,138 @@ ${models}
     setStatus(change.mute ? '層の消音を切り替えました' : change.layer != null ? 'その層を振り直しました(設計図はそのまま)' : '全体を振り直しました(設計図はそのまま)');
   }
 
+  /* ---------------- 応答(2026-10-01、ユーザー要望「MIDIを分析して、対位法で応対するMIDIを生成。いくつかの生成モデルを選べるように」) ----------------
+   * 元のMIDIをアプリ側で分析し(調・小節ごとの和音の推定・音域・密度)、Geminiを1回呼んで応答の層の設計図だけを書かせる。
+   * 元の旋律は「聴くだけの層」(listenOnly、name「元の旋律」)として設計図の先頭に入れる: 対位法・模倣などの生成器はそれを聴いて応え、
+   * 元の音は書き換えない・出力にも入らない。できた応答は、プレミックスのMIDIのカードのスロット(js/screens/premix.js)に入る */
+
+  const KEY_MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+  const KEY_MIN = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+  const CHORD_TYPES = [
+    { suffix: '', iv: [0, 4, 7] }, { suffix: 'm', iv: [0, 3, 7] }, { suffix: 'dim', iv: [0, 3, 6] },
+    { suffix: '7', iv: [0, 4, 7, 10] }, { suffix: 'maj7', iv: [0, 4, 7, 11] }, { suffix: 'm7', iv: [0, 3, 7, 10] },
+  ];
+
+  /** 音の列の分析(Geminiを使わない): 調・小節ごとの和音の推定・音域・密度 */
+  function analyzeMidi(m, notes) {
+    const list = notes && notes.length ? notes : m.notes;
+    const end = T.endBeat(list) || 4;
+    const bars = T.barList(m, end);
+    const weights = new Array(12).fill(0);
+    list.forEach((n) => { weights[T.mod12(n.pitch)] += Math.min(4, n.duration) * (n.velocity || 80) / 80; });
+    let key = { root: 0, mode: 'major', score: -Infinity };
+    for (let r = 0; r < 12; r++) {
+      [['major', KEY_MAJ], ['minor', KEY_MIN]].forEach(([mode, prof]) => {
+        let c = 0;
+        for (let k = 0; k < 12; k++) c += weights[(k + r) % 12] * prof[k];
+        if (c > key.score) key = { root: r, mode, score: c };
+      });
+    }
+    const chords = bars.map((b, i) => {
+      const w = new Array(12).fill(0);
+      list.forEach((n) => {
+        const a = Math.max(n.start, b.start);
+        const e = Math.min(n.start + n.duration, b.start + b.len);
+        // 小節の頭・強拍で鳴り始める音を重く見る(経過音より和音の音であることが多い)
+        const strong = Math.abs(n.start - b.start) < 0.01 ? 1.5 : Math.abs(((n.start - b.start) % 2)) < 0.01 ? 1.25 : 1;
+        if (e > a) w[T.mod12(n.pitch)] += (e - a) * strong;
+      });
+      const total = w.reduce((x, y) => x + y, 0);
+      if (!total) return { bar: i + 1, symbol: '(休み)' };
+      let best = null;
+      for (let r = 0; r < 12; r++) {
+        CHORD_TYPES.forEach((t) => {
+          const pcs = t.iv.map((x) => (r + x) % 12);
+          const inside = pcs.reduce((s, pc) => s + w[pc], 0);
+          const score = inside / total - 0.06 * t.iv.length - (t.iv.length > 3 ? 0.1 : 0) + (w[r] / total) * 0.25; // 4和音は音が多いぶん当たりやすいので少し不利に
+          if (!best || score > best.score) best = { score, symbol: `${T.NOTE_NAMES[r]}${t.suffix}` };
+        });
+      }
+      return { bar: i + 1, symbol: best.symbol };
+    });
+    const pitches = list.map((n) => n.pitch);
+    const low = Math.min(...pitches);
+    const high = Math.max(...pitches);
+    const perBar = Math.round((list.length / Math.max(1, bars.length)) * 10) / 10;
+    const keyLabel = `${T.NOTE_NAMES[key.root]} ${key.mode === 'major' ? 'メジャー' : 'マイナー'}`;
+    return {
+      key: { root: key.root, mode: key.mode, label: keyLabel },
+      chords, low, high, perBar, bars: bars.length,
+      text: `調(推定): ${keyLabel} / 音域: ${T.midiToNote(low)}〜${T.midiToNote(high)} / ${bars.length}小節・1小節あたり約${perBar}音 / ` +
+        `拍子 ${T.meterLabel(m)}・テンポ${Math.round(m.tempo)}\n小節ごとの響き(推定): ${chords.map((c) => `${c.bar}:${c.symbol}`).join(' ')}`,
+    };
+  }
+
+  const RESPONSE_RULE = `これは「応答」です。ユーザーのMIDI(下の「元の旋律」)が主役で、あなたはそれに応える層だけを書きます。
+- 元の旋律は、アプリが name「元の旋律」の聴くだけの層として設計図の先頭に入れる(音は変えない)。role が melody の line の層は書かない
+- 対位法・模倣の層の against には「元の旋律」と書く
+- 元の旋律の休み・長い音・頂点に反応し、ぶつけるところと寄り添うところをはっきり分ける
+- 拍子・テンポ・小節数は元のMIDIにそろえる(アプリが決める)`;
+
+  /**
+   * 応答を作る(Gemini 1回)。返り値はスロット:
+   *   { id, model, label, name, concept, commentary, against(応答した相手のパート名), analysis, design, seed, notes, partNames, partRoles, on, createdAt }
+   * source: { midi(元のカードの midi), notes(応答する相手の音), label(相手のパート名), name(元のカードの名前) }
+   */
+  async function createResponse({ source, presetId, hint }) {
+    const preset = P.byId(presetId);
+    if (!preset || !preset.response) throw new Error('応答のモデルが見つかりません');
+    const m = source.midi;
+    const notes = source.notes.map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration, velocity: n.velocity || 80 }));
+    if (!notes.length) throw new Error('応答する相手の音がありません');
+    const analysis = analyzeMidi(m, notes);
+    const bars = Math.min(64, analysis.bars);
+    const input = {
+      bars,
+      meterLabel: T.meterLabel(m),
+      contextText: `応答する元のMIDI「${source.name}」の${source.label}(アプリが「元の旋律」という聴くだけの層として入れる):\n${notesText(m, notes)}\n\n分析(アプリが計算):\n${analysis.text}`,
+      hint: hint || '',
+    };
+    const prompt = buildPrompt(preset, input, RESPONSE_RULE);
+    const schema = D.buildSchema(preset, {});
+    setStatus(`${preset.short}の応答を書いています…`, { busy: true });
+    const raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `応答・${preset.short}` });
+    const design = D.sanitizeDesign(raw, preset, { bars });
+    design.tempo = m.tempo;
+    design.meters = T.metersOf(m).map((x) => ({ ...x }));
+    design.meterMode = 'fixed';
+    design.swing = 0; // 元の音はそのまま(ハネは元のMIDIに含まれている)
+    if (design.pitch.system === 'chords' && !design.pitch.chords.length) design.pitch.system = 'scale';
+    if (design.pitch.system === 'scale' && !design.pitch.scale) Object.assign(design.pitch, { root: analysis.key.root, scale: analysis.key.mode });
+    design.layers = design.layers.filter((l) => !(l.generator === 'line' && l.role === 'melody') && !l.listenOnly);
+    if (!design.layers.some((l) => E.GENERATORS[l.generator])) {
+      throw new Error(`鳴らせる層が1つもありませんでした(Geminiが書いた層: ${(raw.layers || []).map((l) => `${l.name || '?'}=${l.generator || '(空)'}`).join(' / ') || '層が空'})`);
+    }
+    design.layers.unshift({ name: '元の旋律', generator: 'line', role: 'melody', listenOnly: true, notes, active: [], register: null, muted: false, reroll: 0 });
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const out = renderResponse(design, seed);
+    if (!out.notes.length) throw new Error('応答の音が1つも出てきませんでした');
+    return {
+      id: newId(),
+      model: preset.id,
+      label: preset.short,
+      name: fileName(raw, `response_${preset.id}.mid`),
+      concept: String(raw.concept || '').slice(0, 100),
+      commentary: String(raw.commentary || '').slice(0, 400),
+      against: source.label,
+      analysis: analysis.text.slice(0, 600),
+      design,
+      seed,
+      ...out,
+      on: true,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /** 応答の設計図 → 音(Geminiなし。振り直しにも使う)。聴くだけの層の音は入らない */
+  function renderResponse(design, seed) {
+    const out = E.render(design, { seed });
+    return { notes: out.notes, partNames: out.partNames || {}, partRoles: out.partRoles || {} };
+  }
+
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
+    analyzeMidi, createResponse, renderResponse,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries },
   });
 })();

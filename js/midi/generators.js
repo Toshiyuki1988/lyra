@@ -1172,6 +1172,69 @@
     },
   });
 
+  /* ================= 模倣・カノン(応答のモデル、2026-10-01) =================
+   * 聴いた旋律(against の層か、主旋律)を、時間差(delay 拍)と音階の上の音程差(transpose の段数)で追いかける。
+   * 変形: inversion(最初の音を軸に上下を反転)/ retrograde(逆から)/ augmentation(2倍の長さ)/ diminution(半分の長さ)。
+   * 声は entries 個まで(2声目以降は delay ずつさらに遅れ、transpose の2つ目・3つ目の段数を使う) */
+  register('imitate', {
+    label: '模倣',
+    roles: ['counter'],
+    listens: true,
+    text: '聴いた旋律(元のMIDIの旋律)を、時間差と音階の上の音程差で追いかける模倣・カノン。反行・逆行・拡大・縮小の変形もできる',
+    params: ['against', 'delay', 'transpose', 'transform', 'entries'],
+    paramText: 'against(追いかける層の name。空なら元の旋律)、delay(何拍遅れて入るか。1小節=4拍が目安)、transpose(音階の段数。例: [-7]=オクターブ下、[4]=5度上、[-2]=3度下。声ごとに1つ)、transform: none / inversion(反行)/ retrograde(逆行)/ augmentation(拡大)/ diminution(縮小)、entries(追いかける声の数 1〜3)',
+    render(ctx, L) {
+      let target = L.against ? ctx.rendered[String(L.against).toLowerCase()] : null;
+      if (!target || !target.length) {
+        const pick = ctx.heard.find((h) => h.notes.length && (h.role === 'melody' || h.role === 'cantus')) || ctx.heard.find((h) => h.notes.length && h.role !== 'bass');
+        target = pick ? pick.notes : null;
+      }
+      if (!target || !target.length) return { voices: [] };
+      // 同時に鳴る音は一番上だけを旋律として追う
+      const byStart = new Map();
+      target.forEach((n) => {
+        const k = Math.round(n.start * 1000);
+        const cur = byStart.get(k);
+        if (!cur || n.pitch > cur.pitch) byStart.set(k, n);
+      });
+      const line = [...byStart.values()].sort((a, b) => a.start - b.start);
+      const first = line[0];
+      const spanStart = first.start;
+      const spanEnd = Math.max(...line.map((n) => n.start + n.duration));
+      const transform = L.transform || 'none';
+      const timeScale = transform === 'augmentation' ? 2 : transform === 'diminution' ? 0.5 : 1;
+      const delay = Number.isFinite(L.delay) ? L.delay : 4;
+      const entries = Math.max(1, Math.min(3, L.entries || 1));
+      const shifts = (L.transpose && L.transpose.length ? L.transpose : [-7]).slice();
+      const voices = [];
+      const names = [];
+      for (let e = 0; e < entries; e++) {
+        const steps = shifts[e] != null ? shifts[e] : shifts[shifts.length - 1] - 2 * e;
+        const lag = delay * (e + 1);
+        const voice = [];
+        line.forEach((n) => {
+          let rel = n.start - spanStart;
+          let dur = n.duration;
+          if (transform === 'retrograde') rel = spanEnd - (n.start + n.duration);
+          rel *= timeScale;
+          dur *= timeScale;
+          const start = spanStart + lag + rel;
+          if (start >= ctx.total - EPS) return;
+          let p = n.pitch;
+          if (transform === 'inversion') p = ctx.src.snap(first.pitch - (n.pitch - first.pitch), start);
+          p = steps ? ctx.src.step(p, steps, start) : ctx.src.snap(p, start);
+          while (p < 28) p += 12;
+          while (p > 104) p -= 12;
+          voice.push(note(p, start, Math.min(dur * 0.98, ctx.total - start), (n.velocity || 80) * (0.92 - 0.06 * e)));
+        });
+        voice.sort((a, b) => a.start - b.start);
+        voices.push(voice);
+        names.push(entries > 1 ? `${e + 1}` : '');
+      }
+      return { voices, names };
+    },
+  });
+
   /* ================= 直接ソニフィケーション ================= */
 
   register('sonify', {

@@ -366,6 +366,11 @@
             return { ...n, duration: Math.max(0.05, Math.min(n.duration, r.end - n.start, total - n.start)) };
           })
           .filter(Boolean);
+        // 聴くだけの層(応答のモデルで、元のMIDIの旋律を入れる。2026-10-01): ほかの生成器が聴けるよう heard には入れるが、音は出さない
+        if (layer.listenOnly) {
+          list.forEach((n) => layerNotes.push({ ...n, pitch: Math.round(n.pitch) }));
+          return;
+        }
         if (!list.length || partNo >= MAX_PARTS) return;
         partNo += 1;
         const part = `p${partNo}`;

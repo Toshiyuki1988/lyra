@@ -266,6 +266,67 @@
       fields: ['form', 'story', 'bars', 'style', 'sources', 'gauges', 'hint'],
     },
 
+    /* ---------------- 応答(2026-10-01、ユーザー要望「MIDIを分析して、対位法で応対するMIDIを生成。いくつかの生成モデルを選べるように」) ----------------
+     * プレミックスのMIDIのカードの「応答」専用(通常のピッカーには出さない)。元のMIDIの旋律は、アプリが「聴くだけの層」(name「元の旋律」)として
+     * 設計図の先頭に入れる。Geminiが書くのは応答の層だけ。拍子・テンポ・小節数は元のMIDIにそろえる(meter: 'source')。
+     * replacesHarmony: 伴奏を付け直すモデル。この応答がオンの時は、元のMIDIからは応答の相手のパートだけを鳴らす(元の和音とぶつからないように) */
+    {
+      id: 'resp_lush', group: '応答', label: '芳醇な伴奏(エモく)', short: '芳醇な伴奏', hidden: true, response: true, replacesHarmony: true,
+      text: '元の旋律の下に、テンションの多い豊かな和音・借用和音・内声の動きで、胸に迫る伴奏を付け直す',
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords'], hint: 'chords で、元の旋律の強拍の音を必ず含むか、その音をテンション(9・11・13)として響かせるコードを選ぶ。maj9、m11、add9、sus2/4、分数コード(C/E、F/G)、同主調からの借用(bVI、iv)、セカンダリードミナント、半音で下がる内声を積極的に。1〜2拍か1小節ごと' },
+      meter: 'source', arc: false, bars: 8, voice: 'piano',
+      guide: '層は chords(voicing open か rootless、comping は arpeggio か broken か sustain。盛り上げたい所は pulse)・bass(pattern は root-fifth か walking。和音の変わり目で順次に動く)。必要なら line(role counter)で、旋律の休みに合いの手を入れる内声を1つ。元の旋律と同じ音域に和音を重ねない(旋律より下)',
+      fields: ['hint'],
+    },
+    {
+      id: 'resp_polychord', group: '応答', label: 'ポリコード(ストラヴィンスキー風)', short: 'ポリコード', hidden: true, response: true, replacesHarmony: true,
+      text: '元の旋律の下で、2つの和音を重ねたポリコードと、ずれたアクセントのオスティナートがぶつかり合う',
+      generators: ['chords', 'ostinato', 'bass'],
+      pitch: { systems: ['chords'], hint: 'chords は「C|F#」「Eb|E」のように「|」で2つの和音を重ねたポリコード(左が下)を中心に。下の和音は元の旋律の調、上の和音は増4度・半音ずれた調など、ぶつかる組み合わせ。ブロックのように数小節ずつ並べる' },
+      meter: 'source', arc: false, bars: 8, voice: 'piano',
+      guide: '層は chords(comping stabs か hits で、ずれたアクセントの連打。例 hits "X..x.X..x..X....")・ostinato(短い音型を繰り返し、拍子とずれる周期で)・bass(pattern pedal か root)。元の旋律は変えずに、その下の地面をぐらつかせる',
+      style: 'ストラヴィンスキーの技法: ポリコード(ペトルーシュカ和音)、オスティナートのブロック並置、ずれたアクセント。既存曲の旋律は使わない',
+      fields: ['hint'],
+    },
+    {
+      id: 'resp_canon', group: '応答', label: '模倣・カノン', short: 'カノン', hidden: true, response: true,
+      text: '元の旋律を、時間と音程をずらして追いかける。反行・逆行・拡大・縮小の変形も',
+      generators: ['imitate', 'bass'],
+      pitch: { systems: ['scale', 'chords'], hint: 'scale で元の旋律の調・旋法(分析の調)を書く。音程差は音階の段数で数える' },
+      meter: 'source', arc: false, bars: 8, voice: 'piano',
+      guide: '層は imitate を1〜2つ(against は「元の旋律」)。1つ目は1〜2小節遅れて5度下(transpose [-4])かオクターブ下([-7])で入る正格なカノン。2つ目を足すなら、反行(inversion)か拡大(augmentation)で性格を変える。必要なら bass(pattern pedal)で地を1つ。元の旋律と同じ高さ・同じ時刻にぴったり重ならない delay を選ぶ',
+      fields: ['hint'],
+    },
+    {
+      id: 'resp_jazz', group: '応答', label: 'ジャズのリハーモナイズ', short: 'リハモ', hidden: true, response: true, replacesHarmony: true,
+      text: '元の旋律に、ii-V・裏コード・テンションのルートレス・ボイシングで和声を付け直す',
+      generators: ['chords', 'bass'],
+      pitch: { systems: ['chords'], hint: 'chords でジャズのリハーモナイズ: 旋律の音を9th・11th・13thとして響かせるコード、ii-V の挿入、裏コード(トライトーン・サブスティテューション、例 Db7#11)、ディミニッシュの経過和音、半音で動くコード。1〜2拍ごとの細かい進行も' },
+      meter: 'source', arc: false, bars: 8, voice: 'epiano',
+      guide: '層は chords(voicing rootless、comping jazz か anticipation か charleston)・bass(pattern walking)。旋律の音と、和音の上の音が半音でぶつからないようにする',
+      style: 'ジャズのリハーモナイズの技法: ii-V-I、裏コード、ルートレス・ボイシング、ディミニッシュの経過和音、テンションの解決。既存曲の和声進行の並びをそのまま使わない',
+      fields: ['hint'],
+    },
+    {
+      id: 'resp_minimal', group: '応答', label: 'ミニマルの応答(ライヒ風)', short: 'ミニマル', hidden: true, response: true,
+      text: '元の旋律の断片を細胞にして、反復・位相のずれ・加算で絡みつかせる',
+      generators: ['process'],
+      pitch: { systems: ['scale'], hint: 'scale で元の旋律の調・旋法(分析の調)' },
+      meter: 'source', arc: false, bars: 8, voice: 'vibes',
+      guide: '層は process を1〜2つ。cell は元の旋律から取り出した3〜8音の断片(印象的な動機の部分。音名・長さは元の音のまま)。rule は phase(同じ細胞がずれていく)・additive(1音ずつ増える)・canon のどれか。2つ目を足すなら、別の断片か別の音域で、rule drone の地にしてもよい',
+      fields: ['hint'],
+    },
+    {
+      id: 'resp_strict', group: '応答', label: '厳格な対位法', short: '厳格対位法', hidden: true, response: true,
+      text: 'フックスの種別対位法の規則(強拍の協和・並達や連続の5度8度の禁止・反行・跳躍の後の順次)で、元の旋律に対旋律を付ける',
+      generators: ['counterpoint'],
+      pitch: { systems: ['scale'], hint: 'scale で元の旋律の調・旋法(分析の調)' },
+      meter: 'source', arc: false, bars: 8, voice: 'piano',
+      guide: '層は counterpoint を1〜2つ(against は「元の旋律」)。1つ目は position below で species 1 か 2(元の旋律の下で支える声)。2つ目を足すなら position above で species 4(掛留を含む華やかな声)。元の旋律の音域から離れすぎない register を選ぶ',
+      fields: ['hint'],
+    },
+
     /* ---------------- リズム(「ビート」の入口専用。ピッカーには出さない) ---------------- */
     {
       id: 'beat', group: 'リズム', label: 'ビート', short: 'ビート', hidden: true,

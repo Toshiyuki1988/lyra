@@ -290,7 +290,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -322,6 +322,7 @@
       if (el) deactivateEditGuide(el);
       if (action === 'save') saveMidiOf(card);
       else if (action === 'info') showMidiAbout(card);
+      else if (action === 'respond') respondTo(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
@@ -729,6 +730,7 @@
         `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
         `<span class="snd-time"></span>` +
         `<button type="button" class="snd-unclip" data-s="unclip" title="切り取った範囲を外して、音の全体に戻す" hidden>✕</button></div>` +
+        (isMidi(s) ? `<div class="snd-resp no-card-drag" aria-label="応答のスロット"></div>` : '') +
         `<div class="snd-fx" aria-label="かかっているネビュラのエフェクト"></div>` +
         `<textarea class="snd-memo" data-s="memo" rows="1" spellcheck="false" ` +
         `placeholder="音のイメージを言葉で(例: 乾いた木の打音、遠くで滲む金属)">${escapeHtml(s.memo || '')}</textarea>` +
@@ -749,6 +751,7 @@
       if (f) refreshFolder(f);
     });
     if (!isSphere(s)) bindCardControls(s, el);
+    if (!isSphere(s) && isMidi(s)) renderSlots(s, el);
     refreshSound(s, el);
   }
 
@@ -1107,7 +1110,7 @@
     const rt = soundRt.get(s.id) || {};
     soundRt.set(s.id, rt);
     if (rt.buffer || rt.loading) return;
-    const card = s.midiInline || findMidiCard(s.midiRef);
+    const card = combinedCard(s); // 元のMIDI + オンの応答のスロット
     if (!card || !window.LyraMidi) {
       rt.missing = true;
       refreshSound(s);
@@ -1239,6 +1242,36 @@
     if (!M || !card || !card.midi) {
       setStatus('元のMIDIが見つかりません', { important: true });
       return;
+    }
+    const slots = responsesOf(s).filter((r) => r.notes && r.notes.length);
+    if (slots.length) {
+      const how = await showChoiceDialog({
+        title: `「${card.name}」を保存します`,
+        message: `このカードには応答のスロットが${slots.length}つあります。楽器を分けるなら「別々のファイルで」を選んでください(切り取りは使わず、全体を保存します)。`,
+        options: [
+          { label: '元のMIDIだけ', value: 'base' },
+          { label: `元とスロットを別々のファイルで(${slots.length + 1}ファイル)`, value: 'each' },
+          { label: '全部を1つのファイルに(パートごとのトラック)', value: 'one' },
+        ],
+      });
+      if (!how) return;
+      if (how === 'each') {
+        await M.saveToFolder({ ...card, selection: null }, 'merged');
+        for (const r of slots) await M.saveToFolder(slotCard(s, r), 'merged');
+        return;
+      }
+      if (how === 'one') {
+        const all = { ...card, midi: { ...card.midi }, selection: null };
+        all.midi.notes = [...card.midi.notes, ...slots.flatMap((r, i) => r.notes.map((n) => ({ ...n, part: `r${i + 1}${n.part || ''}` })))].sort((a, b) => a.start - b.start);
+        all.midi.partNames = { ...(card.midi.partNames || {}) };
+        all.midi.partRoles = { ...(card.midi.partRoles || {}) };
+        slots.forEach((r, i) => Object.keys(r.partNames || {}).forEach((p) => {
+          all.midi.partNames[`r${i + 1}${p}`] = `${r.label}: ${r.partNames[p]}`;
+          all.midi.partRoles[`r${i + 1}${p}`] = (r.partRoles || {})[p] || 'counter';
+        }));
+        await M.saveToFolder(all, 'split');
+        return;
+      }
     }
     const base = { ...card, selection: null };
     let target = base;
@@ -3430,6 +3463,163 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     P.drawFront(gf, items);
   }
 
+  /* ---------------- 応答のスロット(2026-10-01、ユーザー要望「MIDIを分析して対位法で応対するMIDIを生成」「同じMIDIカードに応対MIDIが複数スロットで」
+   * 「スロットはそれぞれ別で保存できるように。楽器を分けたい」) ----------------
+   * MIDIのカードの「応答」で、元のMIDIに応える層を Gemini 1回で作り(js/midi/compose.js の createResponse)、カードの s.responses に入れる。
+   * スロット = { id, model, label, name, concept, commentary, against, againstParts, analysis, design, seed, notes, partNames, partRoles, on, createdAt }
+   * カードの音 = 元のMIDI + オンのスロット(combinedCard)。伴奏を付け直すモデル(replacesHarmony)のスロットがオンの時は、元のMIDIからは応答の相手の
+   * パート(againstParts)だけを鳴らす。スロットごとに オン/オフ・⇩(そのスロットだけの .mid)・↻(振り直し。Geminiなし)・✕ */
+  const responsesOf = (s) => (Array.isArray(s.responses) ? s.responses : []);
+  const baseMidiCard = (s) => s.midiInline || findMidiCard(s.midiRef);
+
+  /** カードの音にするMIDI(元 + オンのスロット) */
+  function combinedCard(s) {
+    const base = baseMidiCard(s);
+    const on = responsesOf(s).filter((r) => r.on && r.notes && r.notes.length);
+    if (!base || !on.length) return base;
+    const P = window.LyraPresets;
+    const m = base.midi;
+    const keepOnly = on.some((r) => P && (P.byId(r.model) || {}).replacesHarmony && r.againstParts && r.againstParts.length)
+      ? new Set(on.flatMap((r) => r.againstParts || []))
+      : null;
+    const notes = m.notes.filter((n) => !keepOnly || keepOnly.has(n.part || ''));
+    const partNames = { ...(m.partNames || {}) };
+    const partRoles = { ...(m.partRoles || {}) };
+    on.forEach((r, i) => {
+      Object.keys(r.partNames || {}).forEach((p) => {
+        partNames[`r${i + 1}${p}`] = `${r.label}: ${r.partNames[p]}`;
+        partRoles[`r${i + 1}${p}`] = (r.partRoles || {})[p] || 'counter';
+      });
+      r.notes.forEach((n) => notes.push({ ...n, part: `r${i + 1}${n.part || ''}` }));
+    });
+    notes.sort((a, b) => a.start - b.start);
+    return { ...base, midi: { ...m, notes, partNames, partRoles } };
+  }
+
+  /** スロットだけのMIDIカード(.mid の保存用) */
+  function slotCard(s, r) {
+    const base = baseMidiCard(s);
+    const m = base ? base.midi : { tempo: 120, beatsPerBar: 4, meters: [{ bar: 1, num: 4, den: 4 }] };
+    const stem = String((base && base.name) || s.fileName || 'midi').replace(/\.mid$/i, '');
+    return {
+      id: r.id,
+      type: 'midi',
+      name: `${stem}_${r.label}.mid`.replace(/[\\/:*?"<>|\s]/g, '_'),
+      midi: { tempo: m.tempo, tempoChanges: m.tempoChanges, beatsPerBar: m.beatsPerBar, meters: m.meters, notes: r.notes.map((n) => ({ ...n })), partNames: r.partNames || {}, partRoles: r.partRoles || {} },
+      selection: null,
+    };
+  }
+
+  /** スロットの並び(カードの波形の下) */
+  function renderSlots(s, el) {
+    const box = el.querySelector('.snd-resp');
+    if (!box) return;
+    const list = responsesOf(s);
+    box.innerHTML = list.map((r) => `<div class="snd-slot${r.on ? '' : ' snd-slot--off'}" data-id="${r.id}" title="${escapeHtml(`${r.label}(${r.against}に応答)${r.concept ? `\n${r.concept}` : ''}`)}">` +
+      `<button type="button" class="snd-slot-on" data-r="toggle" aria-label="オン/オフ">${r.on ? '●' : '○'}</button>` +
+      `<span class="snd-slot-name">${escapeHtml(r.label)}</span>` +
+      `<button type="button" data-r="save" title="このスロットだけを .mid で保存(楽器を分けて Cubase へ)">⇩</button>` +
+      `<button type="button" data-r="reroll" title="同じ設計図で振り直す(Geminiは使いません)">↻</button>` +
+      `<button type="button" data-r="remove" title="このスロットを外す">✕</button></div>`).join('') +
+      `<button type="button" class="snd-resp-add" data-r="add" title="このMIDIに応えるMIDIを作って、スロットに足す(Geminiを1回)">＋ 応答</button>`;
+    box.querySelectorAll('button').forEach((btn) => btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const act = btn.dataset.r;
+      if (act === 'add') {
+        respondTo(s);
+        return;
+      }
+      const r = list.find((x) => x.id === btn.closest('.snd-slot').dataset.id);
+      if (r) slotAction(s, r, act);
+    }));
+  }
+
+  async function slotAction(s, r, act) {
+    const M = window.LyraMidi;
+    if (act === 'save') {
+      await M.saveToFolder(slotCard(s, r), 'merged');
+      return;
+    }
+    if (act === 'toggle') r.on = !r.on;
+    else if (act === 'reroll') {
+      r.seed = Math.floor(Math.random() * 2 ** 31);
+      Object.assign(r, M.renderResponse(r.design, r.seed));
+      r.on = true;
+    } else if (act === 'remove') {
+      const ok = await showChoiceDialog({
+        title: `応答「${r.label}」を外しますか?`,
+        message: 'このスロットの音と設計図が消えます(元のMIDIはそのままです)。',
+        options: [{ label: 'やめる', value: false, secondary: true }, { label: '外す', value: true, danger: true }],
+      });
+      if (!ok) return;
+      s.responses = responsesOf(s).filter((x) => x.id !== r.id);
+    }
+    scheduleAutoSave();
+    const el = cardElById(s.id);
+    if (el) renderSlots(s, el);
+    await resound(s);
+    setStatus(act === 'toggle' ? `応答「${r.label}」を${r.on ? 'オン' : 'オフ'}にしました` : act === 'reroll' ? `応答「${r.label}」を振り直しました(設計図はそのまま)` : `応答「${r.label}」を外しました`);
+  }
+
+  /** スロットが変わったら、カードの音を作り直す(鳴っていたら鳴らし直す) */
+  async function resound(s) {
+    const was = Boolean((soundRt.get(s.id) || {}).playing);
+    stop(s);
+    stopVoicesOf(s.id);
+    const rt = soundRt.get(s.id) || {};
+    Object.assign(rt, { buffer: null, peaks: null, clipPeaks: null, missing: false, loading: false });
+    soundRt.set(s.id, rt);
+    await renderMidiSound(s);
+    if (was && rt.buffer) toggle(s);
+  }
+
+  /** 「応答」: モデル・相手のパート・注文を聞いて、Geminiを1回呼び、スロットに足す */
+  async function respondTo(s) {
+    const M = window.LyraMidi;
+    const P = window.LyraPresets;
+    const base = baseMidiCard(s);
+    if (!M || !P || !base || !base.midi || !base.midi.notes.length) {
+      setStatus('元のMIDIが見つかりません', { important: true });
+      return;
+    }
+    const m = base.midi;
+    const models = P.PRESETS.filter((p) => p.response);
+    const parts = [...new Set(m.notes.map((n) => n.part || ''))];
+    const partOptions = parts.length > 1
+      ? [...parts.map((p) => ({ value: p, label: `${M.partLabel(m, p)}(${m.notes.filter((n) => (n.part || '') === p).length}音)` })), { value: '*', label: '全部' }]
+      : null;
+    const values = await showFormDialog({
+      title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」に応答する`,
+      message: `元のMIDIを分析して(調・小節ごとの響き・音域)、それに応えるMIDIを作り、このカードのスロットに足します。Geminiを1回呼びます。\n\n` +
+        models.map((p) => `・${p.label}: ${p.text}`).join('\n'),
+      submitLabel: '作る',
+      fields: [
+        { name: 'model', label: '応答のモデル', type: 'select', value: models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
+        ...(partOptions ? [{ name: 'part', label: '応答する相手のパート', type: 'select', value: parts.find((p) => M.roleOf(m, p) === 'melody') || parts[0], options: partOptions }] : []),
+        { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: サビの2小節だけ思い切り切なく/低音でゆっくり追いかけて' },
+      ],
+    });
+    if (!values) return;
+    const preset = P.byId(values.model);
+    const chosen = !partOptions || values.part === '*' ? parts : [values.part];
+    const notes = m.notes.filter((n) => chosen.includes(n.part || ''));
+    const label = chosen.length === parts.length ? '全体' : M.partLabel(m, chosen[0]);
+    try {
+      const slot = await M.createResponse({ source: { midi: m, notes, label, name: base.name || s.fileName }, presetId: preset.id, hint: values.hint });
+      slot.againstParts = chosen;
+      s.responses = [...responsesOf(s), slot];
+      scheduleAutoSave();
+      const el = cardElById(s.id);
+      if (el) renderSlots(s, el);
+      if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+      await resound(s);
+      setStatus(`「${label}」への応答「${preset.short}」をスロットに足しました(${slot.notes.length}音)。⇩でこのスロットだけを保存できます`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`応答を作れませんでした: ${err.message}`, { important: true });
+    }
+  }
+
   /* ---------------- KAIROS へ渡す窓口(js/kairos.js) ----------------
    * 聴く音はプレミックスの master(全エリアのバスの合計。待機中のエリアは音量0なので、実際にはアクティブなエリアの音)。
    * リミッターの後ではなく手前から取る: KAIROS のピアノも同じ出口(リミッター)を通るので、後ろから取ると自分の演奏を聴いてしまうため */
@@ -3472,6 +3662,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     const f = folderOf(s);
     const rt = soundRt.get(s.id) || {};
     const copy = { ...s, id: newId(), createdAt: new Date().toISOString() };
+    if (Array.isArray(s.responses)) copy.responses = s.responses.map((r) => ({ ...r, id: newId() }));
     delete copy.height;
     if (f && isTimeline(f) && rt.buffer) {
       // 元の音が鳴り終わった所(ループの外に出る時は最後に置く)
@@ -3501,5 +3692,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, combinedCard, slotCard, saveMidiOf, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

@@ -33,7 +33,7 @@
     density: S('NUMBER'), spread: S('NUMBER'), durMin: S('NUMBER'), durMax: S('NUMBER'), cluster: S('INTEGER'), distribution: S('STRING'),
     mode: S('STRING'), caRule: S('INTEGER'), width: S('INTEGER'), seedCells: S('STRING'), axiom: S('STRING'), productions: ARR(S('STRING')), iterations: S('INTEGER'),
     phrases: ARR(S('STRING')), order: S('INTEGER'),
-    against: S('STRING'), species: S('INTEGER'),
+    against: S('STRING'), species: S('INTEGER'), transform: S('STRING'), entries: S('INTEGER'),
     source: S('STRING'), series: ARR(S('NUMBER')), mapping: S('STRING'),
     temperaments: ARR(S('STRING')),
     chain: ARR(S('STRING')), gap: S('NUMBER'),
@@ -245,6 +245,9 @@
     if (has('order')) L.order = raw.order === 2 ? 2 : 1;
     if (has('against')) L.against = str(raw.against, 20).trim();
     if (has('species')) L.species = [1, 2, 4].includes(Number(raw.species)) ? Number(raw.species) : 1;
+    // 模倣(応答のモデル、2026-10-01): 変形と、追いかける声の数
+    if (has('transform')) L.transform = pickWord(raw.transform, ['inversion', 'retrograde', 'augmentation', 'diminution'], 'none');
+    if (has('entries')) L.entries = int(raw.entries, 1, 3, 1);
     if (has('source')) L.source = ['image-brightness', 'image-hue', 'image-edges', 'series'].includes(raw.source) ? raw.source : 'series';
     if (has('series')) L.series = nums(raw.series, -1e6, 1e6, 96);
     if (has('mapping')) L.mapping = ['pitch', 'density', 'velocity'].includes(raw.mapping) ? raw.mapping : 'pitch';
