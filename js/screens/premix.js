@@ -4105,17 +4105,59 @@ ${choiceLines.join('\n')}
       return;
     }
     const connecting = H.launchAndConnect(); // クリックの中で(await より前に)lyrahost:// を開く
+    connecting.catch(() => {});
+    // 候補リスト(プリセット目録から Gemini が選んだもの。js/presetcat.js)があれば、どの音色で開くかを聞く
+    const lists = [];
+    (state.souls || []).forEach((soul) => (soul.presetPicks || []).forEach((list) => lists.push({ soul, list })));
+    let chosen = null;
+    let candidates = null;
+    if (lists.length && window.LyraPresetCat) {
+      const values = await showFormDialog({
+        title: 'LYRA Host で開く',
+        message: '候補リストを選ぶと、そのプリセットをホストへ送り、ホストの画面で聴き比べられます(ホストが対応していれば)。',
+        submitLabel: '開く',
+        fields: [{ name: 'tone', label: '音色', type: 'select', value: '', options: [{ value: '', label: 'ホストに任せる(前回の状態があれば、それを戻す)' }, ...lists.map((x, i) => ({ value: String(i), label: `候補: ${x.soul.name} / ${x.list.title}` }))] }],
+      });
+      if (!values) return;
+      if (values.tone !== '') {
+        chosen = lists[Number(values.tone)];
+        try {
+          candidates = await window.LyraPresetCat.loadCandidates(chosen.soul, chosen.list); // フォルダの読み取りの許可は、この直前のクリックで
+        } catch (err) {
+          setStatus(err.message, { important: true });
+          return;
+        }
+      }
+    }
     try {
       await connecting;
       const m = base.midi;
-      setStatus('LYRA Host で開いています…(音源の読み込みに数秒かかることがあります)', { busy: true });
+      const caps = H.capabilities();
+      const useCandidates = Boolean(candidates) && caps.includes('candidates');
+      const sendable = useCandidates ? candidates.filter((c) => !c.missing) : [];
+      setStatus(`LYRA Host で開いています…${useCandidates ? `(候補${sendable.length}個を送ります)` : ''}(音源の読み込みに数秒かかることがあります)`, { busy: true });
       const res = await H.request({
         type: 'open',
         cardId: s.id,
         title: String(base.name || s.fileName).replace(/\.mid$/i, ''),
         midi: { tempo: m.tempo, tempoChanges: m.tempoChanges || [], meters: m.meters || [{ bar: 1, num: 4, den: 4 }], notes: m.notes },
-        preferSaved: true,
-      }, 90000);
+        ...(useCandidates
+          ? { plugin: { name: (chosen.soul.hostMap && chosen.soul.hostMap.plugin.name) || chosen.soul.name }, freshPlugin: caps.includes('freshPlugin'), candidates: sendable, selectCandidate: 0, preferSaved: false }
+          : { preferSaved: true }),
+      }, 120000);
+      if (candidates && !useCandidates) {
+        setStatus(`LYRA Host で開きました。ホストがまだ候補の読み込みに対応していないので、Serum2 のブラウザで探してください: ${candidates.map((c) => c.name).join(' / ')}`, { important: true });
+        return;
+      }
+      if (useCandidates) {
+        const results = res.candidateResults || [];
+        const ng = results.filter((r) => !r.ok);
+        const missing = candidates.filter((c) => c.missing);
+        setStatus(`候補${sendable.length}個を LYRA Host に送り、「${sendable[0] ? sendable[0].name : ''}」を読み込みました。ホストの「LYRA の候補」で聴き比べて、詰めたら Ctrl+L` +
+          `${ng.length ? `(読み込めなかった候補: ${ng.map((r) => `${(sendable[r.index] || {}).name || r.index} — ${r.reason || ''}`).join(' / ')})` : ''}` +
+          `${missing.length ? `(この端末に無かったファイル: ${missing.map((c) => c.name).join(' / ')})` : ''}`);
+        return;
+      }
       const warn = (res.warnings || []).length ? `(注意: ${res.warnings.join(' / ')})` : '';
       setStatus(`${res.restored ? '前回の状態で' : ''}LYRA Host で開きました${res.pluginName ? `(${res.pluginName})` : ''}。` +
         `音を詰めたら、ホストの「LYRA へ送る」(Ctrl+L)で、このカードの音が差し替わります${warn}`);

@@ -184,9 +184,59 @@ ${entries.map(catLine).join('\n')}
     return { overlay, close };
   }
 
-  /** 選んだ5つを見せる */
-  function showPicks(title, picks) {
+  /* ---------------- 候補リスト(2026-10-01、ユーザー要望「この厳選リストを、プレミックスの MIDI からホストする時か LYRA Host 側で機能させたい」) ----------------
+   * Gemini が選んだ5つを、ソウルの「候補リスト」(soul.presetPicks、Drive。新しい順に12件まで)として残す。
+   * プレミックスの MIDI のカードの「ホスト」で候補リストを選ぶと、この端末のプリセットのファイルを読み(目録の読み込みで覚えたフォルダのハンドル)、
+   * 中身ごと LYRA Host へ送る(open の candidates。ホストが capabilities に "candidates" を載せている時だけ)。ホストの画面で聴き比べる */
+  function savePicks(soul, title, picks) {
+    if (!soul || !picks.length) return;
+    soul.presetPicks = Array.isArray(soul.presetPicks) ? soul.presetPicks : [];
+    soul.presetPicks.unshift({
+      id: newId(), title: String(title).slice(0, 80), at: new Date().toISOString(),
+      items: picks.map((x) => ({ path: x.e.path, name: x.e.name, pack: x.e.pack, category: x.e.category, s1: x.e.s1, why: x.why })),
+    });
+    soul.presetPicks = soul.presetPicks.slice(0, 12);
+    scheduleAutoSave();
+  }
+
+  function toBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  /**
+   * 候補リストのプリセットのファイルを読み、LYRA Host の open の candidates の形にする。
+   * ページを開き直した後はフォルダの読み取りの許可が要るので、**クリックの中(か、その直後)で呼ぶこと**
+   */
+  async function loadCandidates(soul, list) {
+    const dir = await getHandle(soul.id).catch(() => null);
+    if (!dir) throw new Error('この端末でプリセットのフォルダを読み込んでいません(ソウル画面の「目録」で読み込んでください)');
+    if (dir.queryPermission && (await dir.queryPermission({ mode: 'read' })) !== 'granted') {
+      if (!dir.requestPermission || (await dir.requestPermission({ mode: 'read' })) !== 'granted') throw new Error('プリセットのフォルダの読み取りが許可されませんでした');
+    }
+    const out = [];
+    for (const it of list.items) {
+      const parts = String(it.path || '').split('/').filter(Boolean);
+      try {
+        let d = dir;
+        for (const name of parts.slice(0, -1)) d = await d.getDirectoryHandle(name);
+        const file = await (await d.getFileHandle(parts[parts.length - 1])).getFile();
+        out.push({ name: it.name, fileName: file.name, kind: it.s1 ? 'fxp' : 'SerumPreset', why: it.why || '', dataBase64: toBase64(await file.arrayBuffer()) });
+      } catch (err) {
+        console.error(err);
+        out.push({ name: it.name, missing: true });
+      }
+    }
+    return out;
+  }
+
+  /** 選んだ5つを見せる(候補リストとしてソウルに残す) */
+  function showPicks(title, picks, soul) {
+    savePicks(soul, title, picks);
     const { overlay, close } = modal(`<h2>${escapeHtml(title)}</h2>` +
+      (soul && picks.length ? '<p class="modal-desc">この5つを「候補リスト」として残しました。プレミックスのMIDIのカードの「ホスト」で選ぶと、LYRA Host で聴き比べられます(ホストが対応していれば)。</p>' : '') +
       `<div class="pcat-list">${picks.length ? picks.map((x) => rowHtml(x.e, x.why)).join('') : '<div class="panel-empty">合うものを選べませんでした</div>'}</div>` +
       `<div class="modal-actions"><button type="button" data-close>閉じる</button></div>`);
     overlay.querySelector('[data-close]').addEventListener('click', close);
@@ -233,7 +283,7 @@ ${entries.map(catLine).join('\n')}
       try {
         const picks = await pick(soul, entries, { text });
         close();
-        showPicks(`「${text}」に合う ${soul.name} のプリセット`, picks);
+        showPicks(`「${text}」に合う ${soul.name} のプリセット`, picks, soul);
         setStatus(`${picks.length}個のプリセットを選びました`);
       } catch (err) {
         console.error(err);
@@ -264,7 +314,7 @@ ${entries.map(catLine).join('\n')}
       const cat = await getCatalog(soul.id);
       if (!cat || !cat.entries.length) throw new Error('この端末には目録がありません。ソウル画面の「目録」でフォルダを読み込んでください');
       const picks = await pick(soul, cat.entries, { imageCard, text: values.hint });
-      showPicks(`この画像に合う ${soul.name} のプリセット`, picks);
+      showPicks(`この画像${values.hint ? `(${values.hint})` : ''}に合う ${soul.name} のプリセット`, picks, soul);
       setStatus(`${picks.length}個のプリセットを選びました`);
     } catch (err) {
       console.error(err);
@@ -272,5 +322,5 @@ ${entries.map(catLine).join('\n')}
     }
   }
 
-  window.LyraPresetCat = { openPanel, searchByImage, hasCatalog, _test: { readHeader, scanDir, pick, getCatalog, putCatalog } };
+  window.LyraPresetCat = { openPanel, searchByImage, hasCatalog, loadCandidates, _test: { readHeader, scanDir, pick, getCatalog, putCatalog } };
 })();
