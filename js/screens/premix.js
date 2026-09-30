@@ -327,6 +327,7 @@
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
         ...preset.tools.map((t) => PRESET_TOOLS[t]).filter(Boolean),
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
+        { id: 'host', label: 'ホスト', icon: '<rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 21h8M12 17v4M7 9v4M10 8v5M13 10v3M16 9v4"/>', onClick: () => connectHost() },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
       ]);
       // フォルダを先に描く(オーディオカードが上に来るように)
@@ -336,6 +337,7 @@
 
     afterRender() {
       if (nebulaCards().length) startTicker();
+      setTimeout(placeHostPending, 0);
       folders().forEach((f) => {
         if (!f.virtual && (!folderRt.get(f.id) || !folderRt.get(f.id).handle)) loadFolder(f, { interactive: false });
       });
@@ -4238,14 +4240,96 @@ ${choiceLines.join('\n')}
     }
   }
 
+  /* LYRA Host で新しく作った音を持ち込む(2026-10-01、ユーザー要望「LYRA Host で簡単な MIDI を書いて、プラグインの音を LYRA に持ち込む」)。
+   * LYRA から開かずにホストで作った音は、ホストが付けたカードの ID(host-…)で届く。知らない ID なら、開いているプレミックスのアクティブなエリアに
+   * 新しいカード(MIDI+VST の音)として置く。カードの ID はホストの ID のままにするので、ホストでもう一度「LYRA へ送る」と同じカードの音が差し替わり、
+   * このカードの「ホスト」で開けばホストに保存した状態が戻る。プレミックスを開いていない時は預かって(この端末の localStorage)、開いた時に置く */
+  const HOST_PENDING_KEY = 'lyra.hostPending';
+  function hostPending() {
+    try {
+      return JSON.parse(localStorage.getItem(HOST_PENDING_KEY) || '[]');
+    } catch (err) {
+      return [];
+    }
+  }
+  function setHostPending(list) {
+    try {
+      if (list.length) localStorage.setItem(HOST_PENDING_KEY, JSON.stringify(list));
+      else localStorage.removeItem(HOST_PENDING_KEY);
+    } catch (err) {
+      /* 使えない時は無視(音は IndexedDB にある) */
+    }
+  }
+
+  async function adoptFromHost(result, wav) {
+    await window.LyraHost.putAudio(result.cardId, wav);
+    const slim = { cardId: result.cardId, title: result.title, part: result.part, midi: result.midi, plugin: result.plugin, wav: result.wav };
+    const onScreen = currentRoute && currentRoute.screen === 'premix' && state.premix;
+    if (!onScreen) {
+      setHostPending([...hostPending().filter((x) => x.cardId !== slim.cardId), slim]);
+      setStatus(`LYRA Host から「${slim.title || '新しい音'}」が届きました。プレミックスを開くと、新しいカードとして置きます`, { important: true });
+      return;
+    }
+    placeFromHost(slim);
+  }
+
+  function placeFromHost(r) {
+    if (data().cards.some((c) => c.id === r.cardId)) return; // 置いてある(預かりの二重)
+    const m = r.midi || {};
+    const meters = (m.meters && m.meters.length) ? m.meters : [{ bar: 1, num: 4, den: 4 }];
+    const plugin = (r.plugin && r.plugin.name) || 'VST';
+    const title = String(r.title || `${plugin}の音`).replace(/\.mid$/i, '');
+    const midiCard = {
+      id: newId(),
+      type: 'midi',
+      name: `${title}.mid`,
+      description: `LYRA Host で作った音(${plugin})`,
+      midi: {
+        tempo: m.tempo || 120, tempoChanges: m.tempoChanges || [], meters, beatsPerBar: (meters[0].num * 4) / meters[0].den,
+        notes: (m.notes || []).map((n) => ({ ...n, part: n.part || r.part || 'melody' })),
+        partNames: {}, partRoles: {}, model: 'lyrahost',
+      },
+      createdAt: new Date().toISOString(),
+    };
+    const f = ensureArea();
+    const s = placeSound(f, midiCard.name, soundsOf(f.id).length, {
+      id: r.cardId, midiInline: midiCard, midiVoice: DEFAULT_MIDI_VOICE, loop: true,
+      hostAudio: { plugin, fileName: (r.wav && r.wav.fileName) || '', startBar: r.wav && r.wav.startBar, endBar: r.wav && r.wav.endBar, at: new Date().toISOString() },
+    });
+    s.hostMidiKey = midiCard.midi.notes.length ? hostMidiKey(midiCard.midi) : undefined;
+    if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+    afterMidiPlaced(f, s, `LYRA Host で作った「${title}」(${plugin})を`);
+  }
+
+  /** 預かっていた、ホストで作った音を置く(プレミックスを開いた時) */
+  function placeHostPending() {
+    const list = hostPending();
+    if (!list.length || !state.premix) return; // 案内の画面(プレミックスを開いていない)では置かない(保存されない入れ物に置いてしまう)
+    setHostPending([]);
+    list.forEach((r) => placeFromHost(r));
+  }
+
+  /** 道具バーの「ホスト」: LYRA Host を起動して(起動済みなら前面に)つなぐ。ホストで作った音を「LYRA へ送る」で受け取れるようにする */
+  function connectHost() {
+    const H = window.LyraHost;
+    if (!H) return;
+    H.launchAndConnect().then(() => {
+      H.floatWindow();
+      setStatus('LYRA Host につながりました。ホストで MIDI を書いて音源を鳴らし、「LYRA へ送る」(Ctrl+L)を押すと、このプレミックスに新しいカードとして届きます');
+    }).catch((err) => setStatus(err.message, { important: true }));
+  }
+
   /** ホストの「LYRA へ送る」: 届いた WAV でカードの音を差し替える(開いていないプレミックスのカードでも、読み込んであれば) */
   async function receiveFromHost(result, wav) {
     let s = null;
     premixStore.loaded.forEach((pm) => {
       if (!s) s = (pm.cards || []).find((c) => c.id === result.cardId && c.type === 'sound') || null;
     });
-    if (!s) throw new Error('送り返し先のカードが見つかりません(そのプレミックスを開いてから、もう一度「LYRA へ送る」を押してください)');
     if (!wav) throw new Error('音(WAV)が届きませんでした');
+    if (!s) {
+      await adoptFromHost(result, wav);
+      return;
+    }
     await window.LyraHost.putAudio(s.id, wav);
     s.hostAudio = {
       plugin: (result.plugin && result.plugin.name) || '',
@@ -4568,5 +4652,5 @@ ${choiceLines.join('\n')}
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, placeFromHost, adoptFromHost, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
