@@ -770,6 +770,9 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
   「音源の画面をホストのウィンドウの中に収める」「WebSocket の `window` メッセージ(action: float/normal/hide/show、anchor=ブラウザの窓の画面上の位置と拡大率、place)」
   をクラウドへ依頼した(`capabilities` に "window")。LYRA 側は `LyraHost.floatWindow()` を、MIDI のカードの「ホスト」・画像からの音色・記録した音色で開いた直後に呼ぶ
   (ホストが対応していなければ何もしない)。ホストが覚えた位置があれば、ホストがそちらを優先する
+  → **LYRA Host が対応した(2026-10-01、コミット efd8465)**。LYRA の `floatWindow()` の形は PROTOCOL.md 4 節のままで、変更は要らなかった。返事は `windowState`
+  (位置は CSS px)。`open` に `float: true` を付けても同じ。**ブラウザのページの拡大(Ctrl+ホイール)が 100% でないと位置がずれる**(`devicePixelRatio` だけ変わるため)。
+  小窓の中に音源の画面(Serum2 など)も出せる。実機で確かめること: LYRA Host の UNVERIFIED.md 52〜58(拡大率 125%/150%・複数モニター・Serum2 の操作・Space・行き来)
 - 確認: ブラウザの中に PROTOCOL.md どおりに振る舞う偽のホストを置いて、起動 → hello → open → result と WAV → カードの音の差し替え → ack →
   内部音源に戻す、を確かめた。**本物のホスト(Windows・公開の LYRA)でも連携に成功した**(2026-10-01、ユーザーの実機。Chrome の許可と lyrahost:// の登録の関門も越えた)
 
