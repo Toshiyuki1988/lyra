@@ -793,6 +793,9 @@ MIDIを右隣に置き、**元 → 展開のチェインの線**で結ぶ(▶で
 - **初期状態**: LYRA Host に「`open` の `freshPlugin: true`(音源を読み込み直して Init に)」をクラウドへ依頼済み(`capabilities` に `freshPlugin` が載ったら使う)。
   未対応の間は、公開パラメータを全部初期値(`defaultValue`)に戻してから流し込む(**配線・ウェーブテーブル・エフェクトの種類は前の音色のまま残る**と画面に出す)。
   同じく依頼済み: `open` の `params` でも表示の文字列を受け付ける(`paramResults` で結果を返す)
+  → **LYRA Host が両方に対応した(2026-10-01、コミット 4d9c71a、CI #12)**。LYRA は `capabilities` を見て自動で `freshPlugin` を使う。
+  注意: Init は音源の側が決める(**Serum2 で自分の音色を既定にしていると、それが初期状態になる**)。Serum2 の Init ではフィルターや一部のオシレーターが**オフ**なので、
+  プロンプトで「オフのモジュールを使う時は、On/Enable の設定も入れる」と指示している
 - カード: `s.patch = { soulId, plugin, name, concept, role, root, settings: [{ id, name, text, why, ok, reason, approximate, fromHost }], imageId, at }`。
   「ⓘ」に設定の一覧と、**ホストの今の値を読む**(詰めた値で設定を書き換え、「VST」の印)・**ソウルの音色の記録に残す**(`soul.patches`。同じ名前は上書き)・
   **記録した音色で開く**(どの MIDI のカードからも。音源を名前で読み込み、初期状態にしてから流し込む)
