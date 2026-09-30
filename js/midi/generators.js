@@ -1203,8 +1203,11 @@
       const spanEnd = Math.max(...line.map((n) => n.start + n.duration));
       const transform = L.transform || 'none';
       const timeScale = transform === 'augmentation' ? 2 : transform === 'diminution' ? 0.5 : 1;
-      const delay = Number.isFinite(L.delay) ? L.delay : 4;
       const entries = Math.max(1, Math.min(3, L.entries || 1));
+      // 元のMIDIが短い時、遅れが長すぎると全部が曲の外にはみ出して音が0個になる(4拍の元に delay 4 で起きた)。収まるように縮める
+      const room = ctx.total - spanStart;
+      let delay = Number.isFinite(L.delay) ? L.delay : 4;
+      if (delay * entries > room - 0.5) delay = Math.max(0.25, Math.round(((room - 0.5) / (entries + 1)) * 4) / 4);
       const shifts = (L.transpose && L.transpose.length ? L.transpose : [-7]).slice();
       const voices = [];
       const names = [];

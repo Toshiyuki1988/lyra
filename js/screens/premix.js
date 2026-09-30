@@ -3637,7 +3637,10 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       return resp;
     } catch (err) {
       console.error(err);
-      setStatus(`応答を作れませんでした: ${err.message}`, { important: true });
+      // 原因を事実で特定できるよう、どのファイルの何行目かを出す(?debug のログには全体)
+      const at = String(err.stack || '').split('\n').map((l) => (l.match(/\/js\/([\w/.-]+\.js)[^:]*:(\d+)/) || [])).find((m) => m[1]);
+      if (typeof debugLog === 'function') debugLog(`応答の失敗: ${err.stack || err.message}`);
+      setStatus(`応答を作れませんでした: ${err.message}${at ? `(${at[1]} ${at[2]}行目)` : ''}`, { important: true });
       return null;
     }
   }
