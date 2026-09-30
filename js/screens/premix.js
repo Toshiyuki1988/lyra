@@ -4148,6 +4148,14 @@ ${choiceLines.join('\n')}
    * ホストの「LYRA へ送る」(Ctrl+L): 届いた WAV で**元のカードの音を差し替える**(ユーザー判断。カードは MIDI を持ったまま。s.hostAudio に音源の名前など、
    * 音はこの端末の IndexedDB)。「このMIDIについて」の「内部音源の音に戻す」か「音色を変えて作り直す」で内部音源の音に戻る。
    * ホストで直したノートは、今はカードの MIDI に書き戻さない(次の段階) */
+  /** ホストへ送る MIDI の指紋(ホストが保存した状態のノートと、今のカードの MIDI が同じかを見分ける) */
+  function hostMidiKey(m) {
+    const text = JSON.stringify([m.tempo, m.tempoChanges || [], m.meters || [], m.notes.map((n) => [n.part, n.pitch, n.start, n.duration, n.velocity])]);
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+    return `${m.notes.length}:${(h >>> 0).toString(36)}`;
+  }
+
   async function openInHost(s) {
     const H = window.LyraHost;
     const base = baseMidiCard(s);
@@ -4184,6 +4192,11 @@ ${choiceLines.join('\n')}
       await connecting;
       const m = base.midi;
       const caps = H.capabilities();
+      // ホストは preferSaved のとき、保存した状態(音色だけでなくノートも)を戻し、送った MIDI を使わない。
+      // 伸ばす・編集などで MIDI が変わっていたら、送った MIDI で開かせる(2026-10-01、実機「16小節に伸ばしたのに、ホストには8小節しか渡らなかった」)。
+      // 指紋が無い(この仕組みより前に開いた)カードは、伸ばした履歴があれば変わったとみなす
+      const key = hostMidiKey(m);
+      const midiChanged = s.hostMidiKey ? s.hostMidiKey !== key : (base.history || []).length > 0;
       const useCandidates = Boolean(candidates) && caps.includes('candidates');
       const sendable = useCandidates ? candidates.filter((c) => !c.missing) : [];
       setStatus(`LYRA Host で開いています…${useCandidates ? `(候補${sendable.length}個を送ります)` : ''}(音源の読み込みに数秒かかることがあります)`, { busy: true });
@@ -4194,8 +4207,11 @@ ${choiceLines.join('\n')}
         midi: { tempo: m.tempo, tempoChanges: m.tempoChanges || [], meters: m.meters || [{ bar: 1, num: 4, den: 4 }], notes: m.notes },
         ...(useCandidates
           ? { plugin: { name: (chosen.soul.hostMap && chosen.soul.hostMap.plugin.name) || chosen.soul.name }, freshPlugin: caps.includes('freshPlugin'), candidates: sendable, selectCandidate: 0, preferSaved: false }
-          : { preferSaved: true }),
+          // restoreSound: 保存した音色(音源の状態)だけ戻し、ノートは送った MIDI を使う(LYRA Host へ依頼中。未対応のホストは無視して、今の音色のまま開く)
+          : midiChanged ? { preferSaved: false, restoreSound: true } : { preferSaved: true }),
       }, 120000);
+      s.hostMidiKey = key;
+      scheduleAutoSave();
       H.floatWindow(); // LYRA の上に浮かぶ小窓で出す(ホストが対応していれば)
       if (candidates && !useCandidates) {
         setStatus(`LYRA Host で開きました。ホストがまだ候補の読み込みに対応していないので、Serum2 のブラウザで探してください: ${candidates.map((c) => c.name).join(' / ')}`, { important: true });
@@ -4211,7 +4227,10 @@ ${choiceLines.join('\n')}
         return;
       }
       const warn = (res.warnings || []).length ? `(注意: ${res.warnings.join(' / ')})` : '';
-      setStatus(`${res.restored ? '前回の状態で' : ''}LYRA Host で開きました${res.pluginName ? `(${res.pluginName})` : ''}。` +
+      const changedNote = !midiChanged ? ''
+        : res.soundRestored ? '(MIDIが変わっていたので、前回の音色に新しいMIDIを載せました)'
+        : '(MIDIが変わっていたので、新しいMIDIで開きました。音色はホストで今読み込んでいるままです。前回詰めた音色はホストに保存されたままで、戻すのはホストの対応待ちです)';
+      setStatus(`${res.restored ? '前回の状態で' : ''}LYRA Host で開きました${res.pluginName ? `(${res.pluginName})` : ''}${changedNote}。` +
         `音を詰めたら、ホストの「LYRA へ送る」(Ctrl+L)で、このカードの音が差し替わります${warn}`);
     } catch (err) {
       console.error(err);
