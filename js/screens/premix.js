@@ -385,7 +385,7 @@
       if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
-      if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('patch', '音色') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
+      if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('patch', '音色') + hexHtml('preset', 'プリセット') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
       return hexHtml('delete', 'Delete');
     },
 
@@ -421,6 +421,7 @@
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action === 'patch') patchFromImage(card);
+      else if (action === 'preset' && window.LyraPresetCat) window.LyraPresetCat.searchByImage(card);
       else if (action !== 'delete') return;
       else if (card.type === 'folder') confirmRemoveFolder(card);
       else if (card.type === 'vocab' || card.type === 'nebula') {

@@ -69,7 +69,9 @@
         ...(soul.category === 'plugin'
           ? [{ id: 'chat', label: 'チャット', icon: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 10h8M8 13h5"/>', onClick: () => addChat() },
             // LYRA Host の VST のパラメータとの対応表(js/hostmap.js、2026-10-01)
-            ...(window.LyraHostMap ? [{ id: 'hostmap', label: 'VST', icon: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 9v6M16 11v2"/>', onClick: () => window.LyraHostMap.run(soul, () => { if (panelMode === 'param') renderParamPanel(); }) }] : [])]
+            ...(window.LyraHostMap ? [{ id: 'hostmap', label: 'VST', icon: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 9v6M16 11v2"/>', onClick: () => window.LyraHostMap.run(soul, () => { if (panelMode === 'param') renderParamPanel(); }) }] : []),
+            // プリセット目録(名前・カテゴリ・説明。js/presetcat.js、2026-10-01)
+            ...(window.LyraPresetCat ? [{ id: 'presets', label: '目録', icon: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>', onClick: () => window.LyraPresetCat.openPanel(soul) }] : [])]
           : []),
         { id: 'param', label: 'パラメータ', icon: '<circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>', onClick: () => addParamManually() },
         { id: 'shot', label: 'スクショ', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>', onClick: () => pickScreenshot() },
