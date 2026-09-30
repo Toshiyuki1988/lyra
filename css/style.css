@@ -2566,3 +2566,4 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .sph-name .pm-pin { width: 16px; height: 16px; margin-left: 4px; vertical-align: middle; }
 .star-card.pm-pinned { box-shadow: 0 0 0 1px rgba(242, 196, 109, 0.55), 0 0 14px rgba(242, 196, 109, 0.18); }
 .star-card--folder.pm-pinned, .star-card--nebula.pm-pinned { box-shadow: none; }
+.snd-msg .btn-small { pointer-events: auto; font-size: 10.5px; }

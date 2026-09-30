@@ -135,7 +135,9 @@
   const folders = () => data().cards.filter((c) => c.type === 'folder');
   const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
   const isMidi = (sound) => Boolean(sound && (sound.midiRef || sound.midiInline)); // MIDIを合成音にしたカード(ファイルは無い)
-  const sourceOf = (sound) => (isMidi(sound) ? null : sound.sourceFolderId || sound.folderId);
+  // 単体で読み込んだオーディオ(2026-10-02、ユーザー要望「フォルダだけでなくオーディオデータ単体のインポートも」): どのフォルダのファイルでもない
+  const isSingle = (sound) => Boolean(sound && sound.single);
+  const sourceOf = (sound) => (isMidi(sound) || isSingle(sound) ? null : sound.sourceFolderId || sound.folderId);
   const soundsFrom = (folderId) => data().cards.filter((c) => c.type === 'sound' && sourceOf(c) === folderId); // そのフォルダのファイルのカード
   const folderOf = (sound) => data().cards.find((c) => c.id === sound.folderId) || null;
   const folderName = (id) => (data().cards.find((c) => c.id === id) || {}).name || '';
@@ -337,6 +339,7 @@
       setTools([
         ...LIST_TOOLS,
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
+        { id: 'audio', label: 'オーディオ', icon: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>', onClick: () => pickAudioFiles() },
         ...preset.tools.map((t) => PRESET_TOOLS[t]).filter(Boolean),
         { id: 'timbre', label: '音色', icon: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.6 14.6L20 20"/><path d="M8 10.5c.8-1.6 1.6-1.6 2.5 0s1.7 1.6 2.5 0"/>', onClick: () => toggleTimbre() },
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
@@ -355,6 +358,7 @@
         if (!f.virtual && (!folderRt.get(f.id) || !folderRt.get(f.id).handle)) loadFolder(f, { interactive: false });
       });
       data().cards.filter((c) => isMidi(c)).forEach((c) => decodeSound(c)); // 持ち込んだMIDIは開くたびに音にし直す
+      data().cards.filter((c) => isSingle(c) && !(soundRt.get(c.id) || {}).fileHandle).forEach((c) => loadSingle(c, { interactive: false }));
       migrateSlots();
       renderActive();
       startTicker();
@@ -509,7 +513,8 @@
     const cards = soundsOf(f.id).length;
     const tl = isTimeline(f);
     const chain = isChain(f);
-    const guests = soundsOf(f.id).filter((x) => !isMidi(x) && sourceOf(x) !== f.id).length;
+    const guests = soundsOf(f.id).filter((x) => !isMidi(x) && !isSingle(x) && sourceOf(x) !== f.id).length;
+    const singles = soundsOf(f.id).filter(isSingle).length;
     const midis = soundsOf(f.id).filter(isMidi).length;
     const views = new Set(soundsOf(f.id).map((x) => (isSphere(x) ? 'sphere' : 'card')));
     const viewOn = views.size === 1 ? [...views][0] : '';
@@ -528,7 +533,7 @@
       `<button type="button" class="fold-mode-btn${viewOn === 'card' ? ' fold-mode-btn--on' : ''}" data-f="view-card" title="このエリアのカードを全部カードの見た目に(▭)">▭</button>` +
       `<button type="button" class="fold-mode-btn${viewOn === 'sphere' ? ' fold-mode-btn--on' : ''}" data-f="view-sphere" title="このエリアのカードを全部スフィア(小さな球)に(◯)">◯</button></span>` +
       (tl ? `<span class="tl-time"></span>` : '') +
-      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}${midis ? `(MIDI ${midis})` : ''}</span>` +
+      `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}${singles ? `(単体${singles})` : ''}${midis ? `(MIDI ${midis})` : ''}</span>` +
       (f.virtual ? '' : `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す(外した音は足しません)">読み直す</button>`) +
       (!f.virtual && excludedOf(f).length ? `<button type="button" class="btn-small" data-f="unexclude" title="外した音: ${escapeHtml(excludedOf(f).join('、'))}">外した音 ${excludedOf(f).length}</button>` : '') +
       `</div><div class="fold-row">` +
@@ -764,6 +769,101 @@
     }
   }
 
+  /* ---- オーディオ単体の読み込み(2026-10-02) ----
+   * 道具バーの「オーディオ」(ファイルを選ぶ。複数可)か、PC からキャンバスへドロップ。**音はDriveに上げない**(フォルダと同じ):
+   * ファイルの場所(ハンドル)をこの端末の IndexedDB に覚え(キーはカードの id)、開くたびにそこから読む。PC のファイルは読むだけで、書き換えない。
+   * 置き場所は、落とした所のエリア > アクティブなエリア > 無ければ「オーディオ」のエリアを作る。フォルダの「1フォルダ10個」「読み直す」「外した音」の対象外 */
+  async function pickAudioFiles() {
+    if (typeof window.showOpenFilePicker !== 'function') {
+      setStatus('このブラウザはファイルの選択に対応していません(Chrome・Edgeで開いてください。キャンバスへのドロップでも読み込めます)', { important: true });
+      return;
+    }
+    let handles;
+    try {
+      handles = await window.showOpenFilePicker({
+        id: 'lyra-premix-file', startIn: 'music', multiple: true,
+        types: [{ description: 'オーディオ', accept: { 'audio/*': ['.wav', '.wave', '.mp3', '.ogg', '.oga', '.opus', '.flac', '.m4a', '.aac', '.aif', '.aiff', '.webm'] } }],
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') setStatus(`ファイルを開けませんでした: ${err.message}`, { important: true });
+      return;
+    }
+    importAudio(handles.map((handle) => ({ handle, file: null })), null);
+  }
+
+  /** list: [{ handle(FileSystemFileHandle か null), file(File か null) }]、at: 落とした所(キャンバス座標)か null */
+  async function importAudio(list, at) {
+    const ok = list.filter((x) => AUDIO_EXT.test((x.handle || x.file).name));
+    if (!ok.length) {
+      setStatus('オーディオのファイルではありませんでした', { important: true });
+      return;
+    }
+    const under = at ? folders().filter((f) => {
+      const ry = at.y - f.y;
+      return ry >= 0 && ry <= (f.height || 0) && at.x - f.x >= leftAt(f, ry) && at.x - f.x <= rightAt(f, ry);
+    }).sort((a, b) => a.width * a.height - b.width * b.height)[0] : null;
+    const f = under || ensureArea('オーディオ');
+    let noHandle = 0;
+    for (const [i, x] of ok.entries()) {
+      const name = (x.handle || x.file).name;
+      const s = placeSound(f, name, soundsOf(f.id).length, { single: true });
+      if (at) {
+        s.x = at.x - SOUND_W / 2 + i * 24;
+        s.y = at.y - 40 + i * 24;
+        const el = cardElById(s.id);
+        if (el) {
+          el.dataset.x = String(s.x);
+          el.dataset.y = String(s.y);
+          applyCardTransform(el);
+          clampIntoFolder(s, el);
+        }
+      }
+      if (x.handle) {
+        await putHandle(s.id, x.handle).catch((err) => console.error(err));
+        soundRt.set(s.id, { fileHandle: x.handle, missing: false });
+      } else {
+        noHandle += 1;
+        const file = x.file;
+        soundRt.set(s.id, { fileHandle: { getFile: async () => file }, missing: false, sessionOnly: true });
+      }
+      refreshSound(s);
+      decodeSound(s);
+    }
+    refreshFolder(f);
+    scheduleAutoSave();
+    setStatus(`オーディオを${ok.length}個読み込み、「${f.name}」のエリアに置きました(音はDriveに上げません)` +
+      (noHandle ? `。うち${noHandle}個はファイルの場所を覚えられなかったので、ページを開き直すと読めません(道具バーの「オーディオ」で選ぶと覚えます)` : ''));
+  }
+
+  /** 開いた時: 覚えたファイルの場所から読む(読み取りの許可が切れていれば、カードに「許可」のボタン) */
+  async function loadSingle(s, { interactive }) {
+    const rt = soundRt.get(s.id) || {};
+    soundRt.set(s.id, rt);
+    try {
+      const h = await getHandle(s.id);
+      if (!h) {
+        Object.assign(rt, { missing: true, nohandle: true, needPerm: false });
+        refreshSound(s);
+        return;
+      }
+      let perm = h.queryPermission ? await h.queryPermission({ mode: 'read' }) : 'granted';
+      if (perm !== 'granted' && interactive && h.requestPermission) perm = await h.requestPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        Object.assign(rt, { needPerm: true, missing: false });
+        refreshSound(s);
+        return;
+      }
+      Object.assign(rt, { fileHandle: h, needPerm: false, missing: false, nohandle: false });
+      const msg = cardElById(s.id) && cardElById(s.id).querySelector('.snd-msg');
+      if (msg) msg.textContent = '';
+      await decodeSound(s);
+    } catch (err) {
+      console.error(err);
+      Object.assign(rt, { missing: true, needPerm: false });
+      refreshSound(s);
+    }
+  }
+
   /** 「外した音 n」: 一覧を見せて、戻すなら覚えを消して読み直す(ファイルはフォルダにあるまま) */
   async function restoreExcluded(f) {
     const names = excludedOf(f);
@@ -806,7 +906,7 @@
 
   /** フォルダを外す時に一緒に外すカード(そのフォルダのファイルのカード。どこのエリアにいても) */
   function removableWith(f) {
-    return [...soundsFrom(f.id), ...soundsOf(f.id).filter(isMidi)];
+    return [...soundsFrom(f.id), ...soundsOf(f.id).filter((x) => isMidi(x) || isSingle(x))];
   }
 
   async function confirmRemoveFolder(f) {
@@ -829,6 +929,7 @@
   function removeFolder(f) {
     removableWith(f).forEach((s) => {
       stop(s);
+      if (isSingle(s)) deleteHandle(s.id).catch(() => {}); // 覚えていたファイルの場所を忘れるだけ(PCのファイルはそのまま)
       soundRt.delete(s.id);
       removeCardFromScope(s);
     });
@@ -1043,7 +1144,24 @@
     const unclip = el.querySelector('.snd-unclip');
     if (unclip) unclip.hidden = !hasClip(s);
     const msg = el.querySelector('.snd-msg');
-    if (msg) msg.textContent = rt.missing ? (isMidi(s) ? '元のMIDIが見つかりません' : 'フォルダに見つかりません') : rt.loading ? (isMidi(s) ? '音にしています…' : '読み込み中…') : '';
+    if (msg && rt.needPerm) {
+      if (!msg.querySelector('button')) {
+        msg.textContent = '';
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn-small btn-small--accent';
+        b.textContent = 'ファイルの読み取りを許可';
+        b.addEventListener('pointerdown', (event) => event.stopPropagation());
+        b.addEventListener('click', (event) => {
+          event.stopPropagation();
+          loadSingle(s, { interactive: true });
+        });
+        msg.appendChild(b);
+      }
+    } else if (msg) {
+      msg.textContent = rt.missing ? (isMidi(s) ? '元のMIDIが見つかりません' : isSingle(s) ? (rt.nohandle ? 'この端末ではファイルの場所を覚えていません' : 'ファイルが見つかりません') : 'フォルダに見つかりません')
+        : rt.loading ? (isMidi(s) ? '音にしています…' : '読み込み中…') : '';
+    }
     if (isSphere(s)) {
       el.title = [s.fileName, s.memo, rt.buffer ? `${c.len.toFixed(2)}秒` : '', !f ? '枠の外(鳴りません)' : ''].filter(Boolean).join('\n');
       drawSphere(s, el);
@@ -1573,13 +1691,13 @@
   }
 
   /** アクティブなエリア(無ければ最初のエリア、1つも無ければフォルダの無い「MIDI」エリアを作る) */
-  function ensureArea() {
+  function ensureArea(name) {
     let f = folders().find((x) => x.id === data().activeId) || folders()[0];
     if (!f) {
       const pos = newCardSpawnPos(40);
       const w = PAD + 3 * SLOT_W;
       const h = HEAD_H + 2 * SLOT_H;
-      f = { id: newId(), type: 'folder', name: 'MIDI', virtual: true, x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h, createdAt: new Date().toISOString() };
+      f = { id: newId(), type: 'folder', name: name || 'MIDI', virtual: true, x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h, createdAt: new Date().toISOString() };
       data().cards.unshift(f);
       folderRt.set(f.id, { status: 'ready' });
       const empty = els.overlay.querySelector('.premix-empty');
@@ -1795,6 +1913,7 @@
       stripRt.delete(s.id);
     }
     soundRt.delete(s.id);
+    if (isSingle(s)) deleteHandle(s.id).catch(() => {}); // 覚えていたファイルの場所を忘れるだけ
     removeCardFromScope(s);
     rememberExcluded(s);
     const f = folderOf(s);
@@ -1819,7 +1938,7 @@
     const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
     const prev = folderOf(s);
     if (target && target.id !== s.folderId) {
-      if (!isMidi(s)) s.sourceFolderId = sourceOf(s);
+      if (!isMidi(s) && !isSingle(s)) s.sourceFolderId = sourceOf(s);
       s.folderId = target.id;
       delete s.tlStart; // 移った先のタイムラインでは、置いた位置から時刻を決め直す
       if (s.sourceFolderId === s.folderId) delete s.sourceFolderId; // 元のフォルダへ帰った
@@ -1830,7 +1949,7 @@
       setStatus(`「${s.fileName}」を「${target.name}」のエリアへ${prev ? '移しました' : '戻しました'}` +
         (data().activeId === target.id ? '' : '(このエリアは待機中なので、枠を押してアクティブにすると聞こえます)'));
     } else if (!target && s.folderId) {
-      if (!isMidi(s)) s.sourceFolderId = sourceOf(s);
+      if (!isMidi(s) && !isSingle(s)) s.sourceFolderId = sourceOf(s);
       s.folderId = null;
       delete s.tlStart;
       stop(s);
@@ -3038,10 +3157,27 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   function onNebulaDragOver(event) {
-    if ([...(event.dataTransfer?.types || [])].includes('text/plain')) event.preventDefault();
+    const types = [...(event.dataTransfer?.types || [])];
+    if (types.includes('text/plain') || types.includes('Files')) event.preventDefault();
   }
 
   function onNebulaDrop(event) {
+    // PC から落としたオーディオのファイル(単体の読み込み)
+    const items = [...(event.dataTransfer?.items || [])].filter((it) => it.kind === 'file');
+    if (items.length && !event.defaultPrevented) {
+      const files = [...(event.dataTransfer.files || [])].filter((file) => AUDIO_EXT.test(file.name));
+      if (files.length) {
+        event.preventDefault();
+        const at = clientToContent(event.clientX, event.clientY);
+        // ハンドルが取れれば、開き直した後も同じファイルから読める(Chrome / Edge)。取れなければ、このページを開いている間だけ
+        const handles = items.map((it) => (typeof it.getAsFileSystemHandle === 'function' ? it.getAsFileSystemHandle() : null));
+        Promise.all(handles.map((p) => (p ? p.catch(() => null) : null))).then((hs) => {
+          const list = files.map((file) => ({ file, handle: hs.find((h) => h && h.kind === 'file' && h.name === file.name) || null }));
+          importAudio(list, at);
+        });
+        return;
+      }
+    }
     const planet = hasTool('planetes') && window.LyraPlanetes && window.LyraPlanetes.idFromDrop(event.dataTransfer);
     if (planet) {
       event.preventDefault();
@@ -4811,5 +4947,5 @@ ${choiceLines.join('\n')}
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, placeFromHost, adoptFromHost, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, importAudio, loadSingle, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, placeFromHost, adoptFromHost, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
