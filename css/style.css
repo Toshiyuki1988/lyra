@@ -2438,3 +2438,11 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .settings-keys > summary { cursor: pointer; padding: 10px 0; font-size: 12.5px; font-weight: 600; color: var(--muted); list-style: revert; }
 .settings-keys[open] > summary { color: var(--ink); border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 .settings-keys[open] { padding-bottom: 6px; }
+
+/* ---------- ソウルと VST のパラメータの対応表(js/hostmap.js、2026-10-01) ---------- */
+.hostmap-row { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 8px; border: 1px dashed var(--line); }
+.hostmap-row b { font-size: 13px; }
+.hostmap-row span { font-size: 11px; color: var(--faint); }
+.hostmap-row--ok { border-style: solid; border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.hostmap-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.hostmap-actions button { font-size: 12px; }

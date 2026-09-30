@@ -67,7 +67,9 @@
       buildOverlay();
       setTools([
         ...(soul.category === 'plugin'
-          ? [{ id: 'chat', label: 'チャット', icon: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 10h8M8 13h5"/>', onClick: () => addChat() }]
+          ? [{ id: 'chat', label: 'チャット', icon: '<path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 10h8M8 13h5"/>', onClick: () => addChat() },
+            // LYRA Host の VST のパラメータとの対応表(js/hostmap.js、2026-10-01)
+            ...(window.LyraHostMap ? [{ id: 'hostmap', label: 'VST', icon: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 9v6M16 11v2"/>', onClick: () => window.LyraHostMap.run(soul, () => { if (panelMode === 'param') renderParamPanel(); }) }] : [])]
           : []),
         { id: 'param', label: 'パラメータ', icon: '<circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>', onClick: () => addParamManually() },
         { id: 'shot', label: 'スクショ', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>', onClick: () => pickScreenshot() },
@@ -746,6 +748,7 @@
         ? `<div class="analog-box"><div class="panel-label panel-label--accent">実楽器の奏法対応</div>` +
           `<textarea class="panel-text autosize" spellcheck="false" data-param-field="analog" rows="1" placeholder="近い奏法・楽器の挙動の仮説">${escapeHtml(p.analog || '')}</textarea></div>`
         : '') +
+      (window.LyraHostMap ? window.LyraHostMap.panelHtml(soul, p) : '') +
       `<div class="panel-section"><div class="panel-label">出典</div>${sourcesHtml}</div>` +
       `<div class="panel-section"><div class="panel-label">${isPlugin ? 'UI上の位置' : '配置'}</div>` +
       `<div class="panel-pin"><span class="pin-dot${p.pinned ? ' pin-dot--pinned' : ''}"></span>` +
@@ -761,6 +764,7 @@
       `</div>`
     );
     bindPanelClose(panel);
+    if (window.LyraHostMap) window.LyraHostMap.bindPanel(panel, soul, p, renderParamPanel);
 
     panel.querySelectorAll('[data-param-field]').forEach((input) => {
       input.addEventListener('input', () => {
