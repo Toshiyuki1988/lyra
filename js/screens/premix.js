@@ -3735,6 +3735,28 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
    * MIDIのカードの「展開」: モデルと注文を聞いて Gemini を1回(新しい主旋律を書くモデルは反芻でもう1回)呼び(js/midi/compose.js の createExpansion)、
    * 元とほぼ同じ小節数の「次の場面」のMIDIを右隣に置き、元 → 展開のチェインの線で結ぶ(▶で元の後に続いて鳴る) */
+  /** そのカードから線をたどって見つかる画像カード(近い順に3枚まで。プレミックスでは、画像から作った MIDI は画像カードと線でつながっている) */
+  function relatedImages(s) {
+    const seen = new Set([s.id]);
+    let frontier = [s.id];
+    const imgs = [];
+    for (let depth = 0; depth < 6 && frontier.length && imgs.length < 3; depth++) {
+      const next = [];
+      data().connections.forEach((c) => {
+        [[c.cardIdA, c.cardIdB], [c.cardIdB, c.cardIdA]].forEach(([from, to]) => {
+          if (!frontier.includes(from) || seen.has(to)) return;
+          seen.add(to);
+          const card = data().cards.find((x) => x.id === to);
+          if (!card) return;
+          if (card.type === 'image') imgs.push(card);
+          else next.push(to);
+        });
+      });
+      frontier = next;
+    }
+    return imgs.slice(0, 3);
+  }
+
   async function expandFrom(s) {
     const M = window.LyraMidi;
     const P = window.LyraPresets;
@@ -3778,11 +3800,12 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       /* 使えない時は無視 */
     }
     try {
-      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, genId: values.gen || null, hint: values.hint });
+      const imgs = relatedImages(s); // 元のMIDIを生んだ画像(線をたどって見つける。ソニフィケーションや画像の印象を展開でも使う)
+      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, genId: values.gen || null, hint: values.hint, images: imgs });
       const next = placeResponseCard(s, responseMidiCard(base, slot, slot.model, 'expansion'), s.midiVoice, 0, 'chain');
       scheduleAutoSave();
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
-      setStatus(`次の展開「${slot.label}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''})。` +
+      setStatus(`次の展開「${slot.label}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''}${imgs.length ? `、画像${imgs.length}枚も読みました` : ''})。` +
         'チェインの線でつながっているので、▶で元の後に続いて鳴ります。展開のカードからさらに展開すると、続きが伸びていきます');
       return next;
     } catch (err) {
@@ -4517,5 +4540,5 @@ ${choiceLines.join('\n')}
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, relatedImages, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

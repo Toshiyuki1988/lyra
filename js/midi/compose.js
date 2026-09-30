@@ -1091,7 +1091,8 @@ ${models}
    *   presetId = 展開のモデル(何をするか=方向。direction の文だけを使い、作り方には口を出さない)
    *   genId = 生成モデル(どう作るか。いつものモデル。層の組み方・生成器・様式はそのモデルのもの)。無ければ展開のモデルの組み方(おまかせ)
    */
-  async function createExpansion({ source, presetId, genId, hint }) {
+  async function createExpansion({ source, presetId, genId, hint, images }) {
+    const imgs = (images || []).slice(0, 3); // 元のMIDIを生んだ画像(プレミックスで線をたどって見つけたもの)
     const dir = P.byId(presetId);
     if (!dir || !dir.expansion) throw new Error('展開のモデルが見つかりません');
     const gen = genId ? P.byId(genId) : null;
@@ -1109,6 +1110,7 @@ ${models}
       contextText: `元のMIDI「${source.name}」(この後に続く場面を作る):\n${notesText(m, notes)}\n\n分析(アプリが計算):\n${analysis.text}\n` +
         `最後の小節の響き(推定): ${analysis.chords[analysis.chords.length - 1].symbol}`,
       hint: hint || '',
+      images: imgs,
     };
     const prompt = buildPrompt(preset, input, `${EXPANSION_RULE}
 - 展開の方向「${dir.label}」: ${dir.direction || dir.text}${gen ? `
@@ -1117,7 +1119,8 @@ ${models}
     setStatus(`${tag}の展開を書いています…`, { busy: true });
     let raw;
     try {
-      raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${tag}` });
+      const files = await imageFiles(imgs);
+      raw = await askGeminiJson({ prompt, files, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${tag}` });
     } catch (err) {
       // 切れた時は、原因を見分ける事実(元の長さ・モデル・出力の量・末尾)を添える
       if (err.truncated) err.message += `[元のMIDI ${analysis.bars}小節・${m.notes.length}音、モデル ${tag}、出力${err.outTokens || '?'}トークン、末尾「…${err.tail || ''}」]`;
@@ -1130,6 +1133,21 @@ ${models}
     design.swing = 0;
     if (design.pitch.system === 'chords' && !design.pitch.chords.length) design.pitch.system = 'scale';
     if (design.pitch.system === 'scale' && !design.pitch.scale) Object.assign(design.pitch, { root: analysis.key.root, scale: analysis.key.mode });
+    // ソニフィケーション(2026-10-01、実機で「躍動する旋律からの自然なソニフィ展開」が単純な反復になった件): 画像を読む層には、画像の列をその場で計算して渡す。
+    // 画像が無い時は、緊張曲線(展開には時間の設計図が無いのでほぼ一定=同じ音の反復になっていた)ではなく、元の旋律の起伏を読む
+    const sonifyImg = design.layers.filter((l) => l.generator === 'sonify' && l.source && l.source !== 'series');
+    if (sonifyImg.length) {
+      const series = imgs.length ? await imageSeries(imgs) : {};
+      const contour = melodyContour(notes);
+      sonifyImg.forEach((l) => {
+        if (series[l.source] && series[l.source].length) l.series = series[l.source];
+        else {
+          l.source = 'series';
+          if (!l.series || !l.series.length) l.series = contour;
+        }
+      });
+    }
+    design.layers.filter((l) => l.generator === 'sonify' && l.source === 'series' && !(l.series || []).length).forEach((l) => { l.series = melodyContour(notes); });
     if (!design.layers.some((l) => E.GENERATORS[l.generator])) {
       throw new Error(`鳴らせる層が1つもありませんでした(Geminiが書いた層: ${(raw.layers || []).map((l) => `${l.name || '?'}=${l.generator || '(空)'}`).join(' / ') || '層が空'})`);
     }
@@ -1153,6 +1171,20 @@ ${models}
       ...out,
       createdAt: new Date().toISOString(),
     };
+  }
+
+  /** 旋律の起伏(拍ごとの一番上の音の高さを32点に並べ直したもの)。ソニフィケーションの受け皿に使う */
+  function melodyContour(notes) {
+    if (!notes.length) return [];
+    const end = Math.max(...notes.map((n) => n.start + n.duration));
+    const out = [];
+    for (let k = 0; k < 32; k++) {
+      const t = (k / 32) * end;
+      const sounding = notes.filter((n) => n.start <= t + 1e-6 && n.start + n.duration > t);
+      const near = sounding.length ? sounding : notes.slice().sort((a, b) => Math.abs(a.start - t) - Math.abs(b.start - t)).slice(0, 1);
+      out.push(Math.max(...near.map((n) => n.pitch)));
+    }
+    return out;
   }
 
   /** 応答の設計図 → 音(Geminiなし。振り直しにも使う)。聴くだけの層の音は入らない */
