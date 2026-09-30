@@ -376,6 +376,7 @@
       else if (card.type === 'image') buildImage(card, el);
       else if (card.type === 'nebula') buildNebula(card, el);
       else buildSound(card, el);
+      attachPin(card, el);
       // エリア(フォルダカード)を押した時だけ、そのエリアをアクティブにする。オーディオカードを押しても切り替えない
       // (2026-09-29、ユーザー要望「アクティブなエリアの再生中に、別のエリアから音を取ってくる時に止まる。止まるのは他のエリアを触った時だけに」)
       el.addEventListener('pointerdown', () => {
@@ -435,6 +436,10 @@
      * 確認なし・★の判別なしで、選んだものをアプリから外す。PCのフォルダ・ファイルには触れない */
     rejectCards(cards, rect) {
       rejectSelection(cards, rect);
+    },
+    /** ピン留めしたカード(と、ピン留めしたカードを抱えたエリア)はリジェクトしない */
+    marqueeKeep(card) {
+      return keepOnReject(card);
     },
     /** 枠の中の、カードではないもの(天体)の数。天体は中心が囲みの中にあれば選ぶ */
     marqueeExtras(rect) {
@@ -604,6 +609,7 @@
     buildFolder(f, tmp);
     [...tmp.children].reverse().forEach((c) => el.insertBefore(c, el.firstChild));
     el.classList.toggle('star-card--edit-guide', guide);
+    attachPin(f, el); // 見出しを作り直したので、ピンのボタンも付け直す
     drawFolderShape(el);
     renderActive(); // 作り直したバッジ(ACTIVE/待機)を埋める
   }
@@ -956,6 +962,7 @@
         el.style.height = `${SPHERE_W}px`;
       }
       buildSound(s, el);
+      attachPin(s, el);
       if (next === 'card') syncCardHeight(el);
       if (s.folderId) clampIntoFolder(s, el);
     }
@@ -1679,11 +1686,48 @@
     } else removeSound(card);
   }
 
+  /* ---- ピン留め(2026-10-01、ユーザー要望「本当に大事なカードにはピン留めして、リジェクト対象外に」「カードヘッダに」) ----
+   * どのカードも見出しにピンのボタン(星雲は見出しが無いので左上に浮かせる)。card.pinned に保存。矩形選択のリジェクトだけが見る
+   * (編集ガイドの Delete は今までどおり外せる) */
+  const PIN_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M9 3h6l-1 6 4 4H6l4-4z" fill="currentColor"/><path d="M12 13v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  function attachPin(card, el) {
+    el.classList.toggle('pm-pinned', Boolean(card.pinned));
+    const old = el.querySelector(':scope .pm-pin');
+    if (old) old.remove();
+    const head = el.querySelector('.snd-head, .sph-name, .fold-row, .pmv-head, .pmi-name');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `pm-pin no-card-drag${head ? '' : ' pm-pin--float'}${card.pinned ? ' pm-pin--on' : ''}`;
+    btn.title = card.pinned ? 'ピン留め中(矩形選択のリジェクトで外れない)。押すと外す' : 'ピン留めする(矩形選択のリジェクトで外れなくなる)';
+    btn.setAttribute('aria-pressed', card.pinned ? 'true' : 'false');
+    btn.innerHTML = PIN_SVG;
+    btn.addEventListener('pointerdown', (event) => event.stopPropagation());
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      card.pinned = !card.pinned;
+      if (!card.pinned) delete card.pinned;
+      attachPin(card, el);
+      if (window.LyraMarquee) window.LyraMarquee.refresh();
+      scheduleAutoSave();
+      setStatus(card.pinned ? 'ピン留めしました(矩形選択のリジェクトで外れません)' : 'ピン留めを外しました');
+    });
+    (head || el).appendChild(btn);
+  }
+
+  /** リジェクトで残すカード: ピン留めしたもの・ピン留めしたカードを抱えたエリア(外すと中のカードも外れるため) */
+  function keepOnReject(card) {
+    if (card.pinned) return true;
+    return card.type === 'folder' && removableWith(card).some((s) => s.pinned);
+  }
+
   const planetsIn = (r) => planets().filter((p) => p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2);
 
   /** 矩形選択のリジェクト: 先にフォルダ以外、次にエリア(外すと中のカードの扱いが決まる)、最後に天体 */
   function rejectSelection(cards, rect) {
     const present = (c) => data().cards.includes(c);
+    const kept = cards.filter(keepOnReject);
+    cards = cards.filter((c) => !keepOnReject(c));
     const folderCards = cards.filter((c) => c.type === 'folder');
     let n = 0;
     cards.filter((c) => c.type !== 'folder').forEach((c) => {
@@ -1704,7 +1748,7 @@
       if (selectedPlanetId === p.id) selectedPlanetId = null;
     });
     scheduleAutoSave();
-    setStatus(`リジェクトしました(カード${n}枚${pls.length ? `・天体${pls.length}個` : ''}。PCのフォルダ・ファイルはそのままです)`);
+    setStatus(`リジェクトしました(カード${n}枚${pls.length ? `・天体${pls.length}個` : ''}${kept.length ? `。ピン留めの${kept.length}枚は残しました` : ''}。PCのフォルダ・ファイルはそのままです)`);
   }
 
   function removeSound(s) {
@@ -2828,6 +2872,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     [...tmp.children].reverse().forEach((c) => el.insertBefore(c, el.firstChild));
     tmp.classList.forEach((cls) => el.classList.add(cls));
     el.classList.toggle('star-card--edit-guide', guide);
+    el.classList.toggle('pm-pinned', Boolean(card.pinned));
     card.height = null;
     el.style.height = '';
     syncCardHeight(el);

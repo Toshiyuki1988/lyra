@@ -100,21 +100,23 @@
 
   /** プレミックス: 確認なしのリジェクトのボタンだけ */
   function renderRejectBar() {
-    const cards = selectedIds.map((id) => getCardById(id)).filter(Boolean);
-    if (!cards.length && !extraCount) {
+    const all = selectedIds.map((id) => getCardById(id)).filter(Boolean);
+    const keep = currentScreen && typeof currentScreen.marqueeKeep === 'function' ? all.filter((c) => currentScreen.marqueeKeep(c)) : [];
+    const cards = all.filter((c) => !keep.includes(c));
+    if (!all.length && !extraCount) {
       if (barEl) {
         barEl.remove();
         barEl = null;
       }
       return;
     }
-    const key = `reject|${cards.length}|${extraCount}`;
+    const key = `reject|${cards.length}|${keep.length}|${extraCount}`;
     if (barEl && barEl.dataset.key === key) return;
     ensureBar();
     barEl.dataset.key = key;
     const what = [cards.length ? `${cards.length}枚` : '', extraCount ? `天体${extraCount}個` : ''].filter(Boolean).join('・');
-    barEl.innerHTML = `<span class="marquee-actions-count">${what}を選択中</span>` +
-      `<button type="button" class="marquee-action marquee-action--danger" data-marquee="reject" title="アプリから外します(PCのフォルダ・ファイルはそのまま)">アプリからリジェクト</button>`;
+    barEl.innerHTML = `<span class="marquee-actions-count">${what || 'なし'}を選択中${keep.length ? `(ピン留め${keep.length}枚は残す)` : ''}</span>` +
+      `<button type="button" class="marquee-action marquee-action--danger" data-marquee="reject" title="アプリから外します(PCのフォルダ・ファイルはそのまま。ピン留めしたカードは残します)"${cards.length || extraCount ? '' : ' disabled'}>アプリからリジェクト</button>`;
     barEl.querySelector('[data-marquee="reject"]').addEventListener('click', rejectSelected);
   }
 

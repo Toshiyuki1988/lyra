@@ -2551,3 +2551,18 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 @media (max-width: 699px) {
   .timbre-win { left: 10px !important; right: 10px; top: auto !important; bottom: 66px !important; width: auto !important; height: 55vh !important; resize: none; }
 }
+
+/* ---------- プレミックスのカードのピン留め(見出しのボタン。js/screens/premix.js の attachPin、2026-10-01) ---------- */
+.pm-pin {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; margin-left: 2px;
+  border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.04); color: rgba(226, 230, 240, 0.45); cursor: pointer;
+  transform: rotate(35deg); transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+.pm-pin:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+.pm-pin--on { color: #f2c46d; border-color: rgba(242, 196, 109, 0.6); background: rgba(242, 196, 109, 0.14); transform: rotate(0deg); }
+.pm-pin--float { position: absolute; left: 8px; top: 8px; z-index: 3; opacity: 0; }
+.star-card--nebula:hover .pm-pin--float, .pm-pin--float.pm-pin--on { opacity: 1; }
+.pmi-name .pm-pin { width: 18px; height: 18px; vertical-align: middle; margin-left: 6px; }
+.sph-name .pm-pin { width: 16px; height: 16px; margin-left: 4px; vertical-align: middle; }
+.star-card.pm-pinned { box-shadow: 0 0 0 1px rgba(242, 196, 109, 0.55), 0 0 14px rgba(242, 196, 109, 0.18); }
+.star-card--folder.pm-pinned, .star-card--nebula.pm-pinned { box-shadow: none; }
