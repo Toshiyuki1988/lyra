@@ -2126,11 +2126,11 @@ body[data-screen="premix"] .asterism-line--manual[data-mode="link"].asterism-lin
 .star-card--pm-src .star-card-hex--beat { transform: translate(3px, calc(-100% - 10px)); }
 /* オーディオカードの上の「語彙」(音を聞かせて長文の語彙カードにする) */
 .star-card-hex--vocab { left: 50%; top: 0; transform: translate(-50%, calc(-100% - 10px)); background: #4f7392; letter-spacing: 0.04em; }
-/* MIDIのカードの上の外側: 応答 | 語彙 | 展開(2026-10-01) */
+/* MIDIのカードの上の外側: 応答 | 語彙 | 伸ばす(2026-10-01) */
 .star-card-hex--respond { left: 50%; top: 0; transform: translate(calc(-50% - 74px), calc(-100% - 10px)); background: #2f7f93; letter-spacing: 0.04em; }
-.star-card-hex--expand { left: 50%; top: 0; transform: translate(calc(-50% + 74px), calc(-100% - 10px)); background: #8a6a2e; letter-spacing: 0.04em; }
+.star-card-hex--extend { left: 50%; top: 0; transform: translate(calc(-50% + 74px), calc(-100% - 10px)); background: #8a6a2e; letter-spacing: 0.04em; }
 .star-card-hex--host { left: 100%; top: 100%; transform: translate(-55%, 14px); background: #3d6e4f; letter-spacing: 0.04em; } /* LYRA Host で開く(右下の外側) */
-.star-card-hex-strut--vocab, .star-card-hex-strut--respond, .star-card-hex-strut--expand, .star-card-hex-strut--host, .star-card-hex-strut--patch, .star-card-hex-strut--preset { display: none; }
+.star-card-hex-strut--vocab, .star-card-hex-strut--respond, .star-card-hex-strut--extend, .star-card-hex-strut--host, .star-card-hex-strut--patch, .star-card-hex-strut--preset { display: none; }
 .snd-vocab {
   flex: none; height: 20px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--pm-line-2);
   background: #1b1d24; color: var(--pm-muted); font-size: 10px; letter-spacing: 0.06em; cursor: pointer;

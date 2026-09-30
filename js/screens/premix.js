@@ -382,7 +382,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('extend', '伸ばす') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('patch', '音色') + hexHtml('preset', 'プリセット') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -416,7 +416,7 @@
       if (action === 'save') saveMidiOf(card);
       else if (action === 'info') showMidiAbout(card);
       else if (action === 'respond') respondTo(card);
-      else if (action === 'expand') expandFrom(card);
+      else if (action === 'extend') extendCard(card);
       else if (action === 'host') openInHost(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
@@ -1409,6 +1409,7 @@
     overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
       `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
       `${patchAboutHtml(s)}${M.aboutHtml(card)}<div class="modal-actions">` +
+      ((card.history || []).length ? `<button type="button" class="secondary" data-unextend>伸ばす前に戻す(${card.history.length})</button>` : '') +
       (s.patch ? `<button type="button" class="secondary" data-patchread>ホストの今の値を読む</button><button type="button" class="secondary" data-patchsave>ソウルの音色の記録に残す</button>` : '') +
       ((state.souls || []).some((x) => (x.patches || []).length) ? `<button type="button" class="secondary" data-withpatch>記録した音色で開く</button>` : '') +
       (s.hostAudio ? `<button type="button" class="secondary" data-unhost>内部音源の音に戻す</button>` : '') +
@@ -1425,6 +1426,11 @@
       }
     };
     overlay.querySelector('[data-close]').addEventListener('click', close);
+    const ue = overlay.querySelector('[data-unextend]');
+    if (ue) ue.addEventListener('click', () => {
+      close();
+      undoExtend(s);
+    });
     const pr = overlay.querySelector('[data-patchread]');
     if (pr) pr.addEventListener('click', () => {
       close();
@@ -3643,18 +3649,16 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   /** 応答のMIDIカードの中身(元のMIDIのテンポ・拍子で、応答の音だけ) */
-  function responseMidiCard(base, slot, presetId, kind) {
+  function responseMidiCard(base, slot, presetId) {
     const m = base.midi;
     return {
       id: newId(),
       type: 'midi',
       name: slot.name || `${String(base.name || 'midi').replace(/\.mid$/i, '')}_${slot.label}.mid`,
-      description: kind === 'expansion'
-        ? `「${String(base.name || '').replace(/\.mid$/i, '')}」の次の展開(${slot.label})`
-        : `「${String(base.name || '').replace(/\.mid$/i, '')}」の${slot.against || ''}への応答(${slot.label})`,
+      description: `「${String(base.name || '').replace(/\.mid$/i, '')}」の${slot.against || ''}への応答(${slot.label})`,
       concept: slot.concept || '',
       commentary: slot.commentary || '',
-      [kind === 'expansion' ? 'expansionOf' : 'responseTo']: base.id || null,
+      responseTo: base.id || null,
       midi: {
         tempo: m.tempo, tempoChanges: m.tempoChanges, beatsPerBar: m.beatsPerBar, meters: m.meters,
         notes: slot.notes, partNames: slot.partNames || {}, partRoles: slot.partRoles || {},
@@ -3732,89 +3736,91 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     }
   }
 
-  /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
-   * MIDIのカードの「展開」: モデルと注文を聞いて Gemini を1回(新しい主旋律を書くモデルは反芻でもう1回)呼び(js/midi/compose.js の createExpansion)、
-   * 元とほぼ同じ小節数の「次の場面」のMIDIを右隣に置き、元 → 展開のチェインの線で結ぶ(▶で元の後に続いて鳴る) */
-  /** そのカードから線をたどって見つかる画像カード(近い順に3枚まで。プレミックスでは、画像から作った MIDI は画像カードと線でつながっている) */
-  function relatedImages(s) {
-    const seen = new Set([s.id]);
-    let frontier = [s.id];
-    const imgs = [];
-    for (let depth = 0; depth < 6 && frontier.length && imgs.length < 3; depth++) {
-      const next = [];
-      data().connections.forEach((c) => {
-        [[c.cardIdA, c.cardIdB], [c.cardIdB, c.cardIdA]].forEach(([from, to]) => {
-          if (!frontier.includes(from) || seen.has(to)) return;
-          seen.add(to);
-          const card = data().cards.find((x) => x.id === to);
-          if (!card) return;
-          if (card.type === 'image') imgs.push(card);
-          else next.push(to);
-        });
-      });
-      frontier = next;
-    }
-    return imgs.slice(0, 3);
-  }
-
-  async function expandFrom(s) {
+  /* ---------------- 伸ばす(2026-10-01、ユーザー要望「『展開』はカード新規作成じゃなくて、SUNO みたいに同カード内で伸ばす方法論に」。js/midi/extend.js) ----------------
+   * MIDI のカードの「伸ばす」: 伸ばし方(続ける・高揚・動機・対比・ブレイク・反復)・足す小節・伸ばし始める所・注文を聞き、同じカードの MIDI を後ろに伸ばす。
+   * 元の音はそのまま残す。前の版は MIDI カードの history に5つまで残し、「ⓘ」の「伸ばす前に戻す」で戻せる。
+   * アンサンブルから持ち込んだ MIDI は、アンサンブルのカードを書き換えないよう、このカードの中に写しを作ってから伸ばす。
+   * VST の音(LYRA Host)で鳴らしていたカードは、MIDI が長くなって音と合わなくなるので、内部音源の音に戻す(ユーザー確認) */
+  async function extendCard(s) {
     const M = window.LyraMidi;
     const P = window.LyraPresets;
-    const base = baseMidiCard(s);
-    if (!M || !P || !base || !base.midi || !base.midi.notes.length) {
+    const T = window.LyraTheory;
+    let base = baseMidiCard(s);
+    if (!M || !M.extendMidi || !base || !base.midi || !base.midi.notes.length) {
       setStatus('元のMIDIが見つかりません', { important: true });
-      return null;
+      return;
     }
-    const models = P.PRESETS.filter((p) => p.expansion);
-    // 二段構え: 展開のモデル(何をするか)× 生成モデル(どう作るか。いつものモデル)。前回の組み合わせを覚える
-    const gens = P.PRESETS.filter((p) => !p.hidden);
-    let lastExp = null;
-    let lastGen = '';
+    if (s.midiRef) {
+      const ok = await showChoiceDialog({
+        title: 'アンサンブルのMIDIを伸ばします',
+        message: 'アンサンブルのMIDIのカードは書き換えず、このカードの中に写しを作ってから伸ばします。',
+        options: [{ label: 'やめる', value: false, secondary: true }, { label: '写しを作って伸ばす', value: true }],
+      });
+      if (!ok) return;
+      s.midiInline = JSON.parse(JSON.stringify(base));
+      delete s.midiRef;
+      base = s.midiInline;
+      scheduleAutoSave();
+    }
+    const dirs = P.PRESETS.filter((p) => p.extend);
+    const nBars = T.barList(base.midi, T.endBeat(base.midi.notes) || 4).length;
+    let lastDir = null;
     try {
-      lastExp = localStorage.getItem('lyra.expandDir');
-      lastGen = localStorage.getItem('lyra.expandGen') || '';
+      lastDir = localStorage.getItem('lyra.extendDir');
     } catch (err) {
       /* 使えない時は無視 */
     }
     const values = await showFormDialog({
-      title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」の次を展開する`,
-      message: '元のMIDIを分析して(調・小節ごとの響き・音域)、ほぼ同じ長さの「次の場面」を作り、右隣に別のカードとして置きます。' +
-        '元のカードとはチェインの線(元 → 展開の順に鳴る)でつなぎます。\n' +
-        '「展開のモデル」で何をするか(方向)を、「生成モデル」でどう作るか(いつものモデルの層の組み方・様式)を選びます。' +
-        'Geminiを1回(新しい主旋律を書く時は、旋律の反芻でもう1回)呼びます。\n\n' +
-        models.map((p) => `・${p.label}: ${p.direction || p.text}`).join('\n'),
-      submitLabel: '作る',
+      title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」を伸ばす`,
+      message: '同じカードのMIDIを後ろに伸ばします(元の音はそのまま。前の版は「ⓘ」から戻せます)。\n' +
+        '仕組みで動く層(ソニフィケーション・漸進プロセス・確率過程・身振りなど)は、Geminiを使わずに、伸ばし方に合わせてアプリが続きを作ります。' +
+        '旋律・コード進行が書かれたMIDIは、その続きをGeminiに1回で書き足してもらいます(新しい主旋律は反芻でもう1回)。\n\n' +
+        dirs.map((p) => `・${p.label}: ${p.direction || ''}`).join('\n'),
+      submitLabel: '伸ばす',
       fields: [
-        { name: 'model', label: '展開のモデル(何をするか)', type: 'select', value: models.some((p) => p.id === lastExp) ? lastExp : models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
-        { name: 'gen', label: '生成モデル(どう作るか)', type: 'select', value: gens.some((p) => p.id === lastGen) ? lastGen : '',
-          options: [{ value: '', label: 'おまかせ(展開のモデルの組み方。コード・ベース・旋律など)' }, ...gens.map((p) => ({ value: p.id, label: `${p.group} · ${p.label}` }))] },
-        { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: 後半で一度止めてから盛り上げて/ピアノだけの静かな場面に' },
+        { name: 'dir', label: '伸ばし方', type: 'select', value: dirs.some((p) => p.id === lastDir) ? lastDir : dirs[0].id, options: dirs.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'bars', label: '足す小節', type: 'select', value: String(Math.min(16, Math.max(4, nBars >= 12 ? 16 : nBars >= 6 ? 8 : 4))), options: [4, 8, 16].map((n) => ({ value: String(n), label: `${n}小節` })) },
+        { name: 'from', label: '伸ばし始める所', type: 'select', value: '', options: [{ value: '', label: `最後から(${nBars}小節の後ろに)` }, ...Array.from({ length: Math.max(0, nBars - 1) }, (_, i) => ({ value: String(i + 2), label: `${i + 2}小節目から作り直す(${i + 1}小節を残す)` }))] },
+        { name: 'hint', label: '注文(任意。旋律・コードの続きを書く時に使います)', type: 'textarea', placeholder: '例: 最後に向かって少しずつ明るく/一度止めてから戻る' },
       ],
     });
-    if (!values) return null;
-    const preset = P.byId(values.model);
+    if (!values) return;
     try {
-      localStorage.setItem('lyra.expandDir', values.model);
-      localStorage.setItem('lyra.expandGen', values.gen || '');
+      localStorage.setItem('lyra.extendDir', values.dir);
     } catch (err) {
       /* 使えない時は無視 */
     }
     try {
-      const imgs = relatedImages(s); // 元のMIDIを生んだ画像(線をたどって見つける。ソニフィケーションや画像の印象を展開でも使う)
-      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, genId: values.gen || null, hint: values.hint, images: imgs });
-      const next = placeResponseCard(s, responseMidiCard(base, slot, slot.model, 'expansion'), s.midiVoice, 0, 'chain');
+      const res = await M.extendMidi(base, { dirId: values.dir, bars: Number(values.bars), fromBar: values.from ? Number(values.from) : null, hint: values.hint });
+      base.history = [...(base.history || []), { at: new Date().toISOString(), midi: base.midi }].slice(-5);
+      base.midi = res.midi;
+      let hostNote = '';
+      if (s.hostAudio) {
+        await dropHostAudio(s, false);
+        hostNote = '。VSTの音は長さが合わなくなるので外して、内部音源の音で鳴らし直しました(もう一度「ホスト」で開いて Ctrl+L で差し替えられます)';
+      }
       scheduleAutoSave();
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
-      setStatus(`次の展開「${slot.label}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''}${imgs.length ? `、画像${imgs.length}枚も読みました` : ''})。` +
-        'チェインの線でつながっているので、▶で元の後に続いて鳴ります。展開のカードからさらに展開すると、続きが伸びていきます');
-      return next;
+      await resoundCard(s);
+      setStatus(`${res.note}${hostNote}`);
     } catch (err) {
       console.error(err);
       const at = String(err.stack || '').split('\n').map((l) => (l.match(/\/js\/([\w/.-]+\.js)[^:]*:(\d+)/) || [])).find((x) => x[1]);
-      if (typeof debugLog === 'function') debugLog(`展開の失敗: ${err.stack || err.message}`);
-      setStatus(`展開を作れませんでした: ${err.message}${at ? `(${at[1]} ${at[2]}行目)` : ''}`, { important: true });
-      return null;
+      if (typeof debugLog === 'function') debugLog(`伸ばすの失敗: ${err.stack || err.message}`);
+      setStatus(`伸ばせませんでした: ${err.message}${at ? `(${at[1]} ${at[2]}行目)` : ''}`, { important: true });
     }
+  }
+
+  /** 伸ばす前の版に戻す */
+  async function undoExtend(s) {
+    const base = baseMidiCard(s);
+    if (!base || !(base.history || []).length) return;
+    const h = base.history.pop();
+    base.midi = h.midi;
+    if (s.hostAudio) await dropHostAudio(s, false);
+    scheduleAutoSave();
+    await resoundCard(s);
+    setStatus(`伸ばす前の版に戻しました(残りの版: ${base.history.length})`);
   }
 
   /* ---------------- 画像から VST の新しい音色(パッチ)を作る(2026-10-01、ユーザー要望「花の画像から、Serum2の新音色を作る最速動線」) ----------------
@@ -4543,5 +4549,5 @@ ${choiceLines.join('\n')}
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, relatedImages, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

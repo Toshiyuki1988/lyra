@@ -327,11 +327,14 @@
       fields: ['hint'],
     },
 
-    /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
+    /* ---------------- 伸ばす(2026-10-01。最初は「展開」=別カードに新しく作るモデルだったが廃止し、同じカードの中で伸ばす js/midi/extend.js の伸ばし方にした) ----------------
+     * extend: アプリが伸ばした部分で動かすもの { tension(伸ばした区間の緊張度), gauges(ゲージの増減), register(1=音域を上げる), registerSwap, modulate(半音の転調),
+     *   modeSwap(長調⇔短調), thin(地・和音・ベース以外を黙らせる), series(ソニフィケーションの列の続け方 mirror/rise/invert/flat/loop/motif), motifOps(動機変容の変換を足す) }
+     * direction: Gemini が書かれた素材(旋律・コード)の続きを書く時の方向。generators・guide などは旧「展開」の名残(使わない)
      * プレミックスのMIDIのカードの「展開」専用(通常のピッカーには出さない)。応答と違い元と同時には鳴らないので、元の音は「聴くだけの層」に入れず、
      * 材料としてプロンプトに渡す。拍子・テンポ・小節数は元のMIDIにそろえる。新しい主旋律を書くモデルは今までの決まりどおり反芻する(ruminate) */
     {
-      id: 'exp_next', group: '展開', label: '自然な続き', short: '続き', hidden: true, expansion: true,
+      id: 'exp_next', group: '伸ばす', label: '自然に続ける', short: '続ける', hidden: true, extend: { tension: 6, gauges: {}, register: 0, series: 'mirror' },
       direction: '元の動機・和声の流れ・音域を受け継ぎ、同じことを繰り返さずに一歩先へ進める。つなぎ目は自然に、終わりは半終止か終止で締める',
       text: '元のMIDIの動機・和声の流れを受け継いで、その次の場面を自然につなげる(起→承、承→転のような一歩先)',
       generators: ['chords', 'bass', 'line'],
@@ -341,7 +344,7 @@
       fields: ['hint'],
     },
     {
-      id: 'exp_lift', group: '展開', label: '転調して高揚(サビへ)', short: '高揚', hidden: true, expansion: true, modulate: true,
+      id: 'exp_lift', group: '伸ばす', label: '高揚(サビへ)', short: '高揚', hidden: true, extend: { tension: 9, gauges: { grain: 20, emotion: 25 }, register: 1, modulate: 2, series: 'rise' }, modulate: true,
       direction: '元の調から半音上・全音上・4度上・平行調などへ転調した感触で視界を開き、音域と音の密度を上げて、後半ほど強く高揚させる(サビへ向かう)',
       text: '半音・全音・4度などの転調で視界を開き、音域と密度を上げて、サビへ向かって高揚させる',
       generators: ['chords', 'bass', 'line'],
@@ -351,7 +354,7 @@
       fields: ['hint'],
     },
     {
-      id: 'exp_motif', group: '展開', label: '動機変容(ベートーヴェン風)', short: '動機変容', hidden: true, expansion: true,
+      id: 'exp_motif', group: '伸ばす', label: '動機を育てる', short: '動機', hidden: true, extend: { tension: 7, gauges: { grain: 10 }, register: 0, series: 'motif', motifOps: ['T+2', 'FRAG', 'FRAG', 'I', 'AUG'] },
       direction: '元の印象的な動機を取り出し、移高・反行・断片化・拡大縮小などの変形を重ねて、執拗に発展させる。緊張を高め、最後に元の形へ戻す',
       text: '元のMIDIの印象的な動機を取り出し、移高・反行・断片化・拡大などの変換を鎖のようにつないで執拗に発展させる',
       generators: ['motif', 'chords', 'bass'],
@@ -362,7 +365,7 @@
       fields: ['hint'],
     },
     {
-      id: 'exp_contrast', group: '展開', label: '対比のBセクション', short: '対比', hidden: true, expansion: true,
+      id: 'exp_contrast', group: '伸ばす', label: '対比(別の顔へ)', short: '対比', hidden: true, extend: { tension: 5, gauges: { grain: -15 }, registerSwap: true, modeSwap: true, series: 'invert' },
       direction: '調・リズムの密度・音域・質感を元とはっきり対比させた、別の顔のセクションにする(A → B)。元の動機の音程の形をどこか1か所だけ引用して、つながりを残す',
       text: '調・リズム・音域・質感を元と対比させた、別の顔のセクション(A → B)',
       generators: ['chords', 'bass', 'line'],
@@ -372,7 +375,7 @@
       fields: ['hint'],
     },
     {
-      id: 'exp_break', group: '展開', label: 'ブレイクダウン(静かな間奏)', short: 'ブレイク', hidden: true, expansion: true,
+      id: 'exp_break', group: '伸ばす', label: 'ブレイクダウン(静かな間奏)', short: 'ブレイク', hidden: true, extend: { tension: 2, gauges: { grain: -30, emotion: -20 }, thin: true, series: 'flat' },
       direction: '音数を大きく減らし、持続音と余白で息をつく間奏にする。元の動機の断片が、かすかに2〜3回だけ残る',
       text: '音数を大きく減らし、持続音と余白で息をつく間奏。元の動機の断片がかすかに残る',
       generators: ['chords', 'gesture', 'line'],
@@ -382,7 +385,7 @@
       fields: ['hint'],
     },
     {
-      id: 'exp_minimal', group: '展開', label: 'ミニマル展開(ライヒ風)', short: 'ミニマル展開', hidden: true, expansion: true,
+      id: 'exp_minimal', group: '伸ばす', label: '反復で深める(ミニマル)', short: '反復', hidden: true, extend: { tension: 5, gauges: {}, series: 'loop' },
       direction: '元の断片を細胞にして、反復・加算・位相のずれで少しずつ変化させながら続ける',
       text: '元のMIDIの断片を細胞にして、加算・位相のずれで少しずつ変化させながら続ける',
       generators: ['process'],
