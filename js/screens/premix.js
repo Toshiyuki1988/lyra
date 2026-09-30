@@ -385,7 +385,7 @@
       if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
-      if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
+      if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('patch', '音色') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
       return hexHtml('delete', 'Delete');
     },
 
@@ -420,6 +420,7 @@
       else if (action === 'host') openInHost(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
+      else if (action === 'patch') patchFromImage(card);
       else if (action !== 'delete') return;
       else if (card.type === 'folder') confirmRemoveFolder(card);
       else if (card.type === 'vocab' || card.type === 'nebula') {
@@ -1406,7 +1407,9 @@
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
       `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
-      `${M.aboutHtml(card)}<div class="modal-actions">` +
+      `${patchAboutHtml(s)}${M.aboutHtml(card)}<div class="modal-actions">` +
+      (s.patch ? `<button type="button" class="secondary" data-patchread>ホストの今の値を読む</button><button type="button" class="secondary" data-patchsave>ソウルの音色の記録に残す</button>` : '') +
+      ((state.souls || []).some((x) => (x.patches || []).length) ? `<button type="button" class="secondary" data-withpatch>記録した音色で開く</button>` : '') +
       (s.hostAudio ? `<button type="button" class="secondary" data-unhost>内部音源の音に戻す</button>` : '') +
       `<button type="button" class="secondary" data-revoice>音色を変えて作り直す</button>` +
       `<button type="button" class="secondary" data-close>閉じる</button></div></div>`;
@@ -1421,6 +1424,21 @@
       }
     };
     overlay.querySelector('[data-close]').addEventListener('click', close);
+    const pr = overlay.querySelector('[data-patchread]');
+    if (pr) pr.addEventListener('click', () => {
+      close();
+      readPatchFromHost(s);
+    });
+    const ps = overlay.querySelector('[data-patchsave]');
+    if (ps) ps.addEventListener('click', () => {
+      close();
+      savePatchToSoul(s);
+    });
+    const wp = overlay.querySelector('[data-withpatch]');
+    if (wp) wp.addEventListener('click', () => {
+      close();
+      openWithPatch(s);
+    });
     const unhost = overlay.querySelector('[data-unhost]');
     if (unhost) unhost.addEventListener('click', () => {
       close();
@@ -3755,6 +3773,322 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     }
   }
 
+  /* ---------------- 画像から VST の新しい音色(パッチ)を作る(2026-10-01、ユーザー要望「花の画像から、Serum2の新音色を作る最速動線」) ----------------
+   * 画像カードの「音色」: 音源(対応表のあるプラグインのソウル)と注文を聞き、LYRA Host に音源を名前で読み込ませ(この動線だけは音源を送る。ユーザー判断)、
+   * 初期状態にしてから(ホストが freshPlugin に対応していれば読み込み直し、無ければ公開パラメータを全部初期値へ。配線・ウェーブテーブルは残る)、
+   * ホストの選択肢つきのパラメータの一覧と画像を Gemini に1回渡して、Init からの設定一式を作らせる(実在する ID・実在する選択肢だけに絞る)。
+   * 役割(パッド・プラックなど)に合わせた試奏の MIDI をアプリが作って開き直し(Gemini なし)、設定を流し込む。
+   * できたカードは s.patch = { soulId, plugin, name, concept, role, root, settings: [{ id, name, text, why, ok, reason }], imageId, at } を持つ。
+   * 「ⓘ」で設定の一覧・ホストの今の値を読む・ソウルの「音色の記録」(soul.patches)に残す。記録した音色は、どの MIDI のカードの「ⓘ」からも開ける */
+  const PATCH_ROLES = { pad: 'パッド', pluck: 'プラック', bass: 'ベース', lead: 'リード', keys: '鍵盤', fx: '効果音' };
+  const PATCH_SOUL_KEY = 'lyra.patchSoul';
+  const patchSouls = () => (state.souls || []).filter((x) => x.category === 'plugin' && x.hostMap && Array.isArray(x.hostMap.vst) && x.hostMap.vst.length);
+  const normName = (t) => String(t || '').toLowerCase().replace(/[\s_-]+/g, '');
+
+  /** 試奏の MIDI(役割に合わせる。Gemini なし)。root は主音(0〜11) */
+  function auditionMidi(role, root) {
+    const r = ((Number(root) || 0) % 12 + 12) % 12;
+    const notes = [];
+    const add = (pitch, start, duration, velocity) => notes.push({ part: 'p', pitch, start, duration, velocity: velocity || 90 });
+    const chordA = (base) => [base, base + 7, base + 12, base + 15];
+    const chordB = (base) => [base - 4, base + 3, base + 8, base + 12];
+    if (role === 'bass') {
+      for (let i = 0; i < 16; i++) add(36 + r + (i % 4 === 3 ? 12 : 0) - (i >= 8 ? 4 : 0), i * 1, 0.8, i % 2 ? 80 : 100);
+    } else if (role === 'pluck') {
+      const seq = [...chordA(60 + r), ...chordA(60 + r).slice(1, 3).reverse()];
+      for (let i = 0; i < 32; i++) {
+        const chord = i < 16 ? chordA(60 + r) : chordB(60 + r);
+        add(chord[[0, 1, 2, 3, 2, 1][i % 6]] + (i % 8 === 7 ? 12 : 0), i * 0.5, 0.45, i % 4 ? 80 : 100);
+      }
+      void seq;
+    } else if (role === 'lead') {
+      [0, 3, 5, 7, 10, 7, 5, 3].forEach((d, i) => add(60 + r + d, i, i === 7 ? 1 : 0.9, 95));
+      add(60 + r + 12, 8, 6, 100);
+    } else if (role === 'keys') {
+      for (let b = 0; b < 16; b++) (b < 8 ? chordA(48 + r) : chordB(48 + r)).forEach((p) => add(p, b, 0.9, b % 4 ? 75 : 95));
+    } else if (role === 'fx') {
+      add(60 + r, 0, 14, 100);
+    } else {
+      chordA(48 + r).forEach((p) => add(p, 0, 8, 85));
+      chordB(48 + r).forEach((p) => add(p, 8, 8, 85));
+    }
+    return { tempo: 100, beatsPerBar: 4, meters: [{ bar: 1, num: 4, den: 4 }], notes, partNames: { p: '試奏' }, partRoles: { p: role === 'bass' ? 'bass' : 'melody' } };
+  }
+
+  /** Gemini に Init からの設定一式を作らせる(画像を添付)。実在する ID・選択肢だけに絞る */
+  async function designPatch(imageCard, soul, params, hint) {
+    const usable = params.filter((q) => q.automatable !== false && q.name
+      && !/\bparam\s*\d+$/i.test(q.name) && !/^mod\s*\d+\s*(amount|out)/i.test(q.name)
+      && !/^(bank|bypass|pitch bend|mod wheel|main tuning|amp)$/i.test(q.name));
+    const choiceSets = new Map(); // 同じ選択肢の並びは1回だけ書く(Warp の型・フィルターの型など)
+    const lines = usable.map((q) => {
+      const id = String(q.id);
+      if (Array.isArray(q.valueStrings) && q.valueStrings.length) {
+        const key = q.valueStrings.join('|');
+        if (!choiceSets.has(key)) choiceSets.set(key, `C${choiceSets.size + 1}`);
+        return `${id}: ${q.name}(選択肢 ${choiceSets.get(key)}、初期値 ${q.defaultText || ''})`;
+      }
+      return `${id}: ${q.name}(${q.minText} 〜 ${q.maxText}、初期値 ${q.defaultText || ''})`;
+    });
+    const choiceLines = [...choiceSets.entries()].map(([k, label]) => `${label}: ${k.split('|').join(' / ')}`);
+    const prompt = `あなたはシンセサイザー「${soul.name}」の音色デザイナーです。添付の画像から受ける印象を、この音源の新しい音色(パッチ)にしてください。
+${hint ? `ユーザーの注文: ${hint}\n` : ''}音源は初期状態(Init。基本のウェーブテーブル、モジュレーションの配線なし、エフェクトの種類は既定)から始めます。
+触れるのは下の「公開されているパラメータ」だけです(ウェーブテーブルの選択・モジュレーションの配線・エフェクトの種類は変えられないので、それ以外で音色を作る)。
+
+公開されているパラメータ(ID: 名前(範囲か選択肢、初期値)):
+${lines.join('\n')}
+
+選択肢の並び:
+${choiceLines.join('\n')}
+
+書くこと:
+- name: 音色の短い名前(英数字、例: Petal Bloom)。concept: 画像のどこをどんな音にしたか(60字)
+- role: pad / pluck / bass / lead / keys / fx のどれか(この音色が映える弾き方)。root: 試奏の主音の音名(例: D)
+- settings: 初期値から変えるパラメータを15〜40個。id は上の数字のIDをそのまま、text は設定する値を範囲の表示と同じ単位・書き方で(選択肢なら選択肢の文字列を一字一句そのまま)、
+  why は画像のどこを表すか(20字)。オシレーター(音量・オクターブ・ユニゾン・デチューン・WT Pos・Warp の型)、フィルター(型・周波数・レゾナンス・ドライブ)、
+  エンベロープ(アタック・ディケイ・サステイン・リリース)をまず決め、必要ならLFOの速さ・マクロ・全体の音量も
+- 初期値のままでよいものは書かない。同じ id を2回書かない`;
+    const schema = {
+      type: 'OBJECT',
+      properties: {
+        name: { type: 'STRING' }, concept: { type: 'STRING' }, role: { type: 'STRING' }, root: { type: 'STRING' },
+        settings: { type: 'ARRAY', items: { type: 'OBJECT', properties: { id: { type: 'STRING' }, text: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['id', 'text'] } },
+      },
+      required: ['name', 'role', 'settings'],
+    };
+    const files = [await localImageForGemini(imageCard.id)];
+    setStatus(`画像から「${soul.name}」の音色を設計しています…`, { busy: true });
+    const raw = await askGeminiJson({ prompt, files, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: '音色の設計' });
+    const byId = new Map(usable.map((q) => [String(q.id), q]));
+    const seen = new Set();
+    const settings = [];
+    (raw.settings || []).forEach((x) => {
+      const id = String(x.id || '').trim();
+      const q = byId.get(id);
+      const text = String(x.text || '').trim();
+      if (!q || !text || seen.has(id)) return; // 実在しない ID・同じ ID の2回目は捨てる
+      if (Array.isArray(q.valueStrings) && q.valueStrings.length && !q.valueStrings.includes(text)) return; // 選択肢に無い文字列は捨てる
+      seen.add(id);
+      settings.push({ id, name: q.name, text, why: String(x.why || '').slice(0, 40) });
+    });
+    if (!settings.length) throw new Error('使える設定が1つも返ってきませんでした');
+    const role = PATCH_ROLES[String(raw.role || '').toLowerCase()] ? String(raw.role).toLowerCase() : 'pad';
+    return {
+      name: String(raw.name || 'New Patch').replace(/[\\/:*?"<>|]/g, '').slice(0, 32) || 'New Patch',
+      concept: String(raw.concept || '').slice(0, 100),
+      role,
+      root: T_pc(raw.root),
+      settings: settings.slice(0, 45),
+    };
+  }
+  const T_pc = (name) => {
+    const T = window.LyraTheory;
+    return T && T.pcOf ? T.pcOf(name, 0) : 0;
+  };
+
+  /** 画像カードの「音色」。クリックの中で呼ぶこと */
+  async function patchFromImage(imageCard) {
+    const H = window.LyraHost;
+    const souls = patchSouls();
+    if (!H) return;
+    if (!souls.length) {
+      setStatus('LYRA Host との対応表があるプラグインのソウルがありません(ソウル画面の「VST」で、先に突き合わせてください)', { important: true });
+      return;
+    }
+    const connecting = H.launchAndConnect(); // クリックの中で(ダイアログより前に)lyrahost:// を開く
+    connecting.catch(() => {});
+    let last = null;
+    try {
+      last = localStorage.getItem(PATCH_SOUL_KEY);
+    } catch (err) {
+      /* 使えない時は無視 */
+    }
+    const values = await showFormDialog({
+      title: 'この画像から新しい音色を作る',
+      message: 'LYRA Host に音源を読み込み、初期状態から、画像の印象の音色(パラメータの設定一式)を作って流し込みます。Geminiを1回呼びます。\n' +
+        '触れるのは音源が公開しているパラメータだけです(ウェーブテーブルの選択・モジュレーションの配線・エフェクトの種類は、ホストで手で足してください)。',
+      submitLabel: '作る',
+      fields: [
+        { name: 'soul', label: '音源(ソウル)', type: 'select', value: souls.some((x) => x.id === last) ? last : souls[0].id, options: souls.map((x) => ({ value: x.id, label: `${x.name}(${x.hostMap.plugin.name || 'VST'})` })) },
+        { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: 花が開く瞬間の、きらめくパッド/朝露のような短い音' },
+      ],
+    });
+    if (!values) return;
+    const soul = souls.find((x) => x.id === values.soul);
+    try {
+      localStorage.setItem(PATCH_SOUL_KEY, soul.id);
+    } catch (err) {
+      /* 使えない時は無視 */
+    }
+    const plugin = soul.hostMap.plugin || {};
+    const cardId = newId();
+    try {
+      await connecting;
+      const fresh = H.capabilities().includes('freshPlugin');
+      setStatus(`LYRA Host で「${plugin.name || soul.name}」を読み込んでいます…`, { busy: true });
+      await H.request({ type: 'open', cardId, title: '新しい音色', midi: auditionMidi('pad', 0), plugin: { name: plugin.name || soul.name }, freshPlugin: true, preferSaved: false }, 90000);
+      const list = await H.request({ type: 'listParams', includeValueStrings: true, includeMidiCC: false }, 60000);
+      if (normName((list.plugin || {}).name) !== normName(plugin.name)) {
+        throw new Error(`LYRA Host で「${plugin.name}」を読み込めませんでした(今は「${(list.plugin || {}).name || 'なし'}」)。ホストで音源を読み込んでから、もう一度押してください`);
+      }
+      if (!fresh) {
+        // ホストが初期状態からの読み込み直しに対応していない間の代わり: 公開されているパラメータを全部初期値へ(配線・ウェーブテーブルは前のまま残る)
+        const defaults = (list.params || []).filter((q) => q.automatable !== false && Number.isFinite(q.defaultValue)).map((q) => ({ id: String(q.id), value: q.defaultValue }));
+        await H.request({ type: 'setParams', params: defaults }, 60000);
+      }
+      const patch = await designPatch(imageCard, soul, list.params || [], values.hint);
+      const midi = auditionMidi(patch.role, patch.root);
+      await H.request({ type: 'open', cardId, title: patch.name, midi, preferSaved: false }, 90000);
+      setStatus(`音色「${patch.name}」の設定を流し込んでいます…`, { busy: true });
+      const res = await H.request({ type: 'setParams', params: patch.settings.map((x) => ({ id: x.id, text: x.text })) }, 60000);
+      (res.results || []).forEach((q, i) => {
+        const x = patch.settings[i];
+        if (!x) return;
+        x.ok = Boolean(q && q.ok);
+        if (q && q.ok && q.text) x.text = q.text;
+        if (q && q.approximate) x.approximate = true;
+        if (q && !q.ok) x.reason = q.reason || '';
+      });
+      const s = placePatchCard(imageCard, cardId, soul, patch, midi);
+      if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+      const okN = patch.settings.filter((x) => x.ok).length;
+      const failed = patch.settings.filter((x) => !x.ok);
+      showChoiceDialog({
+        title: `新しい音色「${patch.name}」(${PATCH_ROLES[patch.role]})`,
+        message: `${patch.concept}\n\n${okN}項目を流し込み、試奏のMIDIをホストで開きました。ホストで耳で詰めて、Ctrl+L(LYRA へ送る)でカードの音が差し替わります。` +
+          `${fresh ? '' : '\n(ホストが初期状態からの読み込み直しに対応していないので、公開パラメータを初期値に戻してから流し込みました。配線・ウェーブテーブルは前のまま残っています)'}` +
+          (failed.length ? `\n\n流し込めなかったもの:\n${failed.map((x) => `・${x.name}「${x.text}」: ${x.reason || ''}`).join('\n')}` : '') +
+          '\n\n詰め終えたら、カードの「ⓘ」の「ホストの今の値を読む」で値を残し、「ソウルの音色の記録に残す」で、ほかのMIDIでも使えるようになります。',
+        options: [{ label: '閉じる', value: true }],
+      });
+      setStatus(`「${soul.name}」の新しい音色「${patch.name}」を作りました(${okN}項目)。ホストで詰めて Ctrl+L でカードの音が差し替わります`);
+      return s;
+    } catch (err) {
+      console.error(err);
+      if (typeof debugLog === 'function') debugLog(`音色づくりの失敗: ${err.stack || err.message}`);
+      setStatus(`音色を作れませんでした: ${err.message}`, { important: true });
+      return null;
+    }
+  }
+
+  /** 音色のカードを画像カードの右隣に置き、線で結ぶ(カードの ID はホストに送った cardId と同じにする) */
+  function placePatchCard(imageCard, cardId, soul, patch, midi) {
+    const f = folderOf(imageCard) || ensureArea();
+    const midiCard = { id: newId(), type: 'midi', name: `${patch.name}.mid`, description: `${soul.name}の新しい音色「${patch.name}」の試奏`, concept: patch.concept, midi };
+    const s = placeSound(f, `${patch.name}.mid`, soundsOf(f.id).length, {
+      id: cardId, midiInline: midiCard, midiVoice: DEFAULT_MIDI_VOICE, loop: true,
+      patch: { soulId: soul.id, plugin: soul.hostMap.plugin.name || '', name: patch.name, concept: patch.concept, role: patch.role, root: patch.root, settings: patch.settings, imageId: imageCard.id, at: new Date().toISOString() },
+    });
+    const srcEl = cardElById(imageCard.id);
+    s.x = (imageCard.x || 0) + (srcEl ? srcEl.offsetWidth : 220) + 24;
+    s.y = imageCard.y || 0;
+    const el = cardElById(s.id);
+    if (el) {
+      el.dataset.x = String(s.x);
+      el.dataset.y = String(s.y);
+      applyCardTransform(el);
+      clampIntoFolder(s, el);
+    }
+    soundRt.set(s.id, {});
+    linkCards(imageCard.id, s.id);
+    refreshFolder(f);
+    scheduleAutoSave();
+    renderMidiSound(s);
+    return s;
+  }
+
+  /** 音色のカードの「ⓘ」に出す部分 */
+  function patchAboutHtml(s) {
+    const p = s.patch;
+    if (!p) return '';
+    return `<div class="patch-about"><div class="patch-about-head"><b>${escapeHtml(p.name)}</b><span>${escapeHtml(p.plugin)} · ${escapeHtml(PATCH_ROLES[p.role] || '')}</span></div>` +
+      (p.concept ? `<p>${escapeHtml(p.concept)}</p>` : '') +
+      `<div class="patch-rows">${p.settings.map((x) => `<div class="patch-row${x.ok === false ? ' patch-row--ng' : ''}"><span>${escapeHtml(x.name)}</span><b>${escapeHtml(x.text)}${x.approximate ? '〜' : ''}${x.fromHost ? ' <i>VST</i>' : ''}</b>` +
+        `${x.why ? `<em>${escapeHtml(x.why)}</em>` : ''}${x.ok === false ? `<em>流し込めず: ${escapeHtml(x.reason || '')}</em>` : ''}</div>`).join('')}</div></div>`;
+  }
+
+  /** ホストの今の値で、音色の設定を書き換える。クリックの中で呼ぶこと */
+  async function readPatchFromHost(s) {
+    const H = window.LyraHost;
+    const connecting = H.launchAndConnect();
+    try {
+      await connecting;
+      const res = await H.request({ type: 'getParams', params: s.patch.settings.map((x) => ({ id: x.id })) });
+      const byId = new Map((res.params || []).map((q) => [String(q.id), q]));
+      let n = 0;
+      s.patch.settings.forEach((x) => {
+        const q = byId.get(x.id);
+        if (q && q.text != null && String(q.text) !== x.text) {
+          x.text = String(q.text);
+          x.fromHost = true;
+          x.ok = true;
+          n += 1;
+        }
+      });
+      scheduleAutoSave();
+      setStatus(n ? `音色「${s.patch.name}」の${n}項目を、ホストで詰めた値に書き換えました` : '音色の設定は、ホストの今の値と同じでした');
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
+  /** ソウルの「音色の記録」に残す(同じ名前があれば上書き) */
+  function savePatchToSoul(s) {
+    const soul = getSoul(s.patch.soulId);
+    if (!soul) {
+      setStatus('音源のソウルが見つかりません', { important: true });
+      return;
+    }
+    soul.patches = Array.isArray(soul.patches) ? soul.patches : [];
+    const rec = { id: newId(), name: s.patch.name, concept: s.patch.concept, role: s.patch.role, plugin: s.patch.plugin,
+      settings: s.patch.settings.filter((x) => x.ok !== false).map((x) => ({ id: x.id, name: x.name, text: x.text })), at: new Date().toISOString() };
+    const i = soul.patches.findIndex((x) => x.name === rec.name);
+    if (i >= 0) soul.patches[i] = { ...rec, id: soul.patches[i].id };
+    else soul.patches.push(rec);
+    scheduleAutoSave();
+    setStatus(`「${soul.name}」の音色の記録に「${rec.name}」を残しました(${rec.settings.length}項目)`);
+  }
+
+  /** 記録した音色で、この MIDI のカードをホストで開く。クリックの中で呼ぶこと */
+  async function openWithPatch(s) {
+    const H = window.LyraHost;
+    const base = baseMidiCard(s);
+    const recs = [];
+    (state.souls || []).forEach((soul) => (soul.patches || []).forEach((p) => recs.push({ soul, p })));
+    if (!H || !base || !recs.length) {
+      setStatus(recs.length ? '元のMIDIが見つかりません' : 'まだ音色の記録がありません(画像カードの「音色」で作り、「ⓘ」から残せます)', { important: true });
+      return;
+    }
+    const connecting = H.launchAndConnect();
+    connecting.catch(() => {});
+    const values = await showFormDialog({
+      title: '記録した音色で開く',
+      submitLabel: '開く',
+      fields: [{ name: 'rec', label: '音色', type: 'select', value: '0', options: recs.map((x, i) => ({ value: String(i), label: `${x.soul.name} / ${x.p.name}(${PATCH_ROLES[x.p.role] || ''})` })) }],
+    });
+    if (!values) return;
+    const { soul, p } = recs[Number(values.rec)];
+    try {
+      await connecting;
+      const m = base.midi;
+      await H.request({ type: 'open', cardId: s.id, title: String(base.name || s.fileName).replace(/\.mid$/i, ''), midi: { tempo: m.tempo, tempoChanges: m.tempoChanges || [], meters: m.meters || [{ bar: 1, num: 4, den: 4 }], notes: m.notes },
+        plugin: { name: (soul.hostMap && soul.hostMap.plugin.name) || p.plugin || soul.name }, freshPlugin: true, preferSaved: false }, 90000);
+      if (!H.capabilities().includes('freshPlugin')) {
+        // 初期状態からの読み込み直しに未対応のホスト: 前の音色の値が残らないよう、公開パラメータを全部初期値へ(配線・ウェーブテーブルは残る)
+        const list = await H.request({ type: 'listParams', includeValueStrings: false, includeMidiCC: false }, 60000);
+        const defaults = (list.params || []).filter((q) => q.automatable !== false && Number.isFinite(q.defaultValue)).map((q) => ({ id: String(q.id), value: q.defaultValue }));
+        await H.request({ type: 'setParams', params: defaults }, 60000);
+      }
+      const res = await H.request({ type: 'setParams', params: p.settings.map((x) => ({ id: x.id, text: x.text })) }, 60000);
+      const okN = res.okCount != null ? res.okCount : (res.results || []).filter((q) => q && q.ok).length;
+      setStatus(`音色「${p.name}」で LYRA Host に開きました(${okN}項目)。詰めて Ctrl+L でカードの音が差し替わります`);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
   /* ---------------- LYRA Host で開く・送り返しを受け取る(2026-10-01、js/lyrahost.js。形は lyra-host の PROTOCOL.md) ----------------
    * MIDIのカードの「ホスト」: カードの ID と MIDI を送ってホストで開く(同じカードなら、ホストに保存した音源・状態を戻す)。音源はホストに任せる(ユーザー判断)。
    * ホストの「LYRA へ送る」(Ctrl+L): 届いた WAV で**元のカードの音を差し替える**(ユーザー判断。カードは MIDI を持ったまま。s.hostAudio に音源の名前など、
@@ -4118,5 +4452,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, openInHost, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
