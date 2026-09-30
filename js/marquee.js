@@ -8,6 +8,10 @@
 //     削除は2段階の確認(showChoiceDialog を2回)。削除の中身は画面ごとに違うので、画面が deleteCards(cards) を持つ時だけ出す
 //     (アンサンブル・ソウル画面。入口画面のソウルは対象外)。画面の deletableCard(card) が false のカード(ソウル画面のモジュールの
 //     ハブなど)は数えない。「★2以下」には★を付けていないMIDIも含める(同日、ユーザー判断。当初は★3以下・未評価を除く、から2回変更)
+//   - **プレミックスは「アプリからリジェクト」**(2026-10-01、ユーザー要望): 画面が rejectCards(cards, rect) を持つ時は、削除のボタンの代わりに
+//     「リジェクト」を1つだけ出す。確認のダイアログも★の判別も無く、押すとすぐ外す(PCのフォルダ・ファイルには触れない)。
+//     カードではないもの(プレミックスの天体)は、画面の marqueeExtras(rect) が囲みの中の数を返し、rect(キャンバス座標)で渡す。
+//     大きなカード(エリア・星雲)は marqueeNeedsFull(card) で「全部囲んだ時だけ選ぶ」にし、marqueeStartOn(card) でその上から囲み始められる
 //   - 削除した分は js/trash.js の削除履歴(直近10件)に残り、ヘッダーの削除履歴から戻せる。場所は画面の trashPlace() が返す
 //   - モードを持たない(CONSTELLATIONのFlight Engineerはモジュールとして開くが、LYRAではShiftだけで使えるようにした)。
 //     Shiftの無いスマホ・タブレットでは使えない
@@ -21,6 +25,8 @@
   let group = null; // { pointerId, last: {x,y}(client), tickDist }
   let barEl = null; // 選択中に出す削除のバー(viewportEl の中に固定。ズームしても大きさが変わらない)
   let deleting = false;
+  let selRect = null; // 囲んだ四角(キャンバス座標 {x1,y1,x2,y2})。カードではないもの(天体)を選ぶのに使う
+  let extraCount = 0; // 囲みの中の、カードではないものの数
   const PAD = 12;
   const LOW_RATING_MAX = 2;
 
@@ -42,6 +48,8 @@
   function clearSelection() {
     selectedEls().forEach((el) => el.classList.remove('star-card--selected'));
     selectedIds = [];
+    selRect = null;
+    extraCount = 0;
     if (boxEl) {
       boxEl.remove();
       boxEl = null;
@@ -78,7 +86,53 @@
     return [...counts].map(([k, n]) => `${k} ${n}枚`).join('、');
   }
 
+  const screenCanReject = () => Boolean(currentScreen && typeof currentScreen.rejectCards === 'function');
+
+  function ensureBar() {
+    if (!barEl) {
+      barEl = document.createElement('div');
+      barEl.className = 'marquee-actions';
+      viewportEl.appendChild(barEl);
+      // バーの上の操作は、矩形選択の解除・キャンバスのパンに渡さない
+      barEl.addEventListener('pointerdown', (event) => event.stopPropagation());
+    }
+  }
+
+  /** プレミックス: 確認なしのリジェクトのボタンだけ */
+  function renderRejectBar() {
+    const cards = selectedIds.map((id) => getCardById(id)).filter(Boolean);
+    if (!cards.length && !extraCount) {
+      if (barEl) {
+        barEl.remove();
+        barEl = null;
+      }
+      return;
+    }
+    const key = `reject|${cards.length}|${extraCount}`;
+    if (barEl && barEl.dataset.key === key) return;
+    ensureBar();
+    barEl.dataset.key = key;
+    const what = [cards.length ? `${cards.length}枚` : '', extraCount ? `天体${extraCount}個` : ''].filter(Boolean).join('・');
+    barEl.innerHTML = `<span class="marquee-actions-count">${what}を選択中</span>` +
+      `<button type="button" class="marquee-action marquee-action--danger" data-marquee="reject" title="アプリから外します(PCのフォルダ・ファイルはそのまま)">アプリからリジェクト</button>`;
+    barEl.querySelector('[data-marquee="reject"]').addEventListener('click', rejectSelected);
+  }
+
+  function rejectSelected() {
+    if (!screenCanReject()) return;
+    const cards = selectedIds.map((id) => getCardById(id)).filter(Boolean);
+    const rect = selRect;
+    clearSelection();
+    currentScreen.rejectCards(cards, rect);
+    redrawAsterismLines();
+    scheduleAutoSave();
+  }
+
   function renderBar() {
+    if (screenCanReject()) {
+      renderRejectBar();
+      return;
+    }
     const cards = selectedIds.length && screenCanDelete() ? deletableSelected() : [];
     if (!cards.length) {
       if (barEl) {
@@ -168,11 +222,13 @@
   function drawBox() {
     const els = selectedEls();
     selectedIds = els.map((el) => el.dataset.id);
-    if (!els.length) {
+    if (!els.length && !(extraCount && selRect)) {
       clearSelection();
       return;
     }
     const rects = els.map(cardRect);
+    // カードではないもの(天体)だけを囲んだ時は、囲んだ四角そのものを枠にする
+    if (extraCount && selRect) rects.push({ x: selRect.x1, y: selRect.y1, w: selRect.x2 - selRect.x1, h: selRect.y2 - selRect.y1 });
     const x1 = Math.min(...rects.map((r) => r.x)) - PAD;
     const y1 = Math.min(...rects.map((r) => r.y)) - PAD;
     const x2 = Math.max(...rects.map((r) => r.x + r.w)) + PAD;
@@ -186,7 +242,7 @@
     boxEl.style.transform = `translate(${x1}px, ${y1}px)`;
     boxEl.style.width = `${x2 - x1}px`;
     boxEl.style.height = `${y2 - y1}px`;
-    boxEl.querySelector('.marquee-box-label').textContent = `${els.length}枚 · Shift+ドラッグで移動 · Escで解除`;
+    boxEl.querySelector('.marquee-box-label').textContent = `${els.length}枚${extraCount ? `・天体${extraCount}個` : ''} · Shift+ドラッグで移動 · Escで解除`;
     renderBar();
   }
 
@@ -198,7 +254,13 @@
   }
 
   function isBackground(target) {
-    return viewportEl.contains(target) && !target.closest('.star-card, .marquee-box, .marquee-actions, button, input, textarea, select, a');
+    if (!viewportEl.contains(target) || target.closest('.marquee-box, .marquee-actions, button, input, textarea, select, a')) return false;
+    const cardEl = target.closest('.star-card');
+    if (!cardEl) return true;
+    // 大きなカード(プレミックスのエリア・星雲)の上からでも囲み始められる(カードの中の部品は除く)
+    if (!currentScreen || typeof currentScreen.marqueeStartOn !== 'function' || target.closest('.no-card-drag')) return false;
+    const card = getCardById(cardEl.dataset.id);
+    return Boolean(card && currentScreen.marqueeStartOn(card));
   }
 
   function lockPan(lock) {
@@ -238,16 +300,26 @@
     const x2 = Math.max(a.x, b.x);
     const y2 = Math.max(a.y, b.y);
     if (x2 - x1 < 4 && y2 - y1 < 4) return; // ほぼ動かしていなければ何も選ばない
+    const needsFull = (el) => {
+      if (!currentScreen || typeof currentScreen.marqueeNeedsFull !== 'function') return false;
+      const card = getCardById(el.dataset.id);
+      return Boolean(card && currentScreen.marqueeNeedsFull(card));
+    };
+    selRect = { x1, y1, x2, y2 };
+    extraCount = currentScreen && typeof currentScreen.marqueeExtras === 'function' ? currentScreen.marqueeExtras(selRect) || 0 : 0;
     contentEl.querySelectorAll('.star-card').forEach((el) => {
       const r = cardRect(el);
-      if (r.x < x2 && r.x + r.w > x1 && r.y < y2 && r.y + r.h > y1) {
+      const hit = needsFull(el)
+        ? r.x >= x1 && r.x + r.w <= x2 && r.y >= y1 && r.y + r.h <= y2
+        : r.x < x2 && r.x + r.w > x1 && r.y < y2 && r.y + r.h > y1;
+      if (hit) {
         selectedIds.push(el.dataset.id);
         el.classList.add('star-card--selected');
       }
     });
-    if (selectedIds.length) {
+    if (selectedIds.length || extraCount) {
       drawBox();
-      setStatus(`${selectedIds.length}枚を選びました。Shiftを押しながら枠の中をドラッグすると、まとめて動かせます(Escで解除)`);
+      setStatus(`${selectedIds.length}枚${extraCount ? `・天体${extraCount}個` : ''}を選びました。Shiftを押しながら枠の中をドラッグすると、まとめて動かせます(Escで解除)`);
     }
   }
 
@@ -298,7 +370,7 @@
     if (event.target.closest && event.target.closest('.marquee-actions')) return;
     if (!event.shiftKey) {
       // Shiftなしで背景を押したら選択を解く(枠の中でもShiftなしならいつものパン)
-      if (selectedIds.length && isBackground(event.target) && !insideBox(event.clientX, event.clientY)) clearSelection();
+      if ((selectedIds.length || extraCount) && isBackground(event.target) && !insideBox(event.clientX, event.clientY)) clearSelection();
       return;
     }
     if (marquee || group) return;

@@ -428,16 +428,25 @@
       else if (action === 'preset' && window.LyraPresetCat) window.LyraPresetCat.searchByImage(card);
       else if (action !== 'delete') return;
       else if (card.type === 'folder') confirmRemoveFolder(card);
-      else if (card.type === 'vocab' || card.type === 'nebula') {
-        removeCardFromScope(card);
-        nebRt.delete(card.id);
-        scheduleAutoSave();
-      } else if (card.type === 'image') {
-        removeCardFromScope(card);
-        deleteLocalImage(card.id).catch((err) => console.error(err)); // 端末内の一時置き場(Driveではない)
-        if (searchTargetId === card.id) searchTargetId = null;
-        scheduleAutoSave();
-      } else removeSound(card);
+      else removeOne(card);
+    },
+
+    /* ---- 矩形選択(Shift+ドラッグ、js/marquee.js)からのリジェクト(2026-10-01、ユーザー要望) ----
+     * 確認なし・★の判別なしで、選んだものをアプリから外す。PCのフォルダ・ファイルには触れない */
+    rejectCards(cards, rect) {
+      rejectSelection(cards, rect);
+    },
+    /** 枠の中の、カードではないもの(天体)の数。天体は中心が囲みの中にあれば選ぶ */
+    marqueeExtras(rect) {
+      return planetsIn(rect).length;
+    },
+    /** エリア・星雲は大きいので、囲みに全部入った時だけ選ぶ(中でShift+ドラッグして中のカードだけを選べるように) */
+    marqueeNeedsFull(card) {
+      return card.type === 'folder' || card.type === 'nebula';
+    },
+    /** エリア・星雲の上からでも、Shift+ドラッグで囲み始められる */
+    marqueeStartOn(card) {
+      return card.type === 'folder' || card.type === 'nebula';
     },
 
     onCardTap(card) {
@@ -773,6 +782,12 @@
       ],
     });
     if (choice !== 'remove') return;
+    removeFolder(f);
+    setStatus('フォルダを外しました');
+  }
+
+  /** フォルダカード(エリア)を外す。PCのフォルダ・ファイルには触れない(覚えていた読み取りのハンドルを忘れるだけ) */
+  function removeFolder(f) {
     removableWith(f).forEach((s) => {
       stop(s);
       soundRt.delete(s.id);
@@ -802,7 +817,6 @@
     if (data().activeId === f.id) data().activeId = folders()[0] ? folders()[0].id : null;
     renderActive();
     scheduleAutoSave();
-    setStatus('フォルダを外しました');
   }
 
   /* ---------------- オーディオカード ---------------- */
@@ -1649,6 +1663,48 @@
   function stopAll() {
     data().cards.filter((c) => c.type === 'sound').forEach(stop);
     folders().forEach(stopTransport);
+  }
+
+  /** フォルダ以外のカードを1枚外す(編集ガイドの Delete と、矩形選択のリジェクト) */
+  function removeOne(card) {
+    if (card.type === 'vocab' || card.type === 'nebula') {
+      removeCardFromScope(card);
+      nebRt.delete(card.id);
+      scheduleAutoSave();
+    } else if (card.type === 'image') {
+      removeCardFromScope(card);
+      deleteLocalImage(card.id).catch((err) => console.error(err)); // 端末内の一時置き場(Driveではない)
+      if (searchTargetId === card.id) searchTargetId = null;
+      scheduleAutoSave();
+    } else removeSound(card);
+  }
+
+  const planetsIn = (r) => planets().filter((p) => p.x >= r.x1 && p.x <= r.x2 && p.y >= r.y1 && p.y <= r.y2);
+
+  /** 矩形選択のリジェクト: 先にフォルダ以外、次にエリア(外すと中のカードの扱いが決まる)、最後に天体 */
+  function rejectSelection(cards, rect) {
+    const present = (c) => data().cards.includes(c);
+    const folderCards = cards.filter((c) => c.type === 'folder');
+    let n = 0;
+    cards.filter((c) => c.type !== 'folder').forEach((c) => {
+      if (!present(c)) return;
+      removeOne(c);
+      n += 1;
+    });
+    folderCards.forEach((f) => {
+      if (!present(f)) return;
+      const inside = removableWith(f).length;
+      removeFolder(f);
+      n += 1 + inside;
+    });
+    const pls = rect ? planetsIn(rect) : [];
+    pls.forEach((p) => {
+      const i = planets().indexOf(p);
+      if (i >= 0) planets().splice(i, 1);
+      if (selectedPlanetId === p.id) selectedPlanetId = null;
+    });
+    scheduleAutoSave();
+    setStatus(`リジェクトしました(カード${n}枚${pls.length ? `・天体${pls.length}個` : ''}。PCのフォルダ・ファイルはそのままです)`);
   }
 
   function removeSound(s) {
