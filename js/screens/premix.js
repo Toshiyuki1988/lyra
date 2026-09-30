@@ -156,6 +156,18 @@
     return { start: a, end: b, len: b - a, dur };
   }
   const fileCount = (folderId) => new Set(soundsFrom(folderId).map((x) => x.fileName)).size; // 複製は数えない
+  // 外したファイル(2026-10-02、ユーザー要望「リジェクトしたのに、リロードで元のフォルダの音が復活するのを止めたい。元データは絶対にいじらずに」):
+  // エリアから外したファイルの名前をフォルダカードの excluded(Drive のデータだけ)に覚え、読み込み・「読み直す」でカードにしない。PC のファイルには触れない
+  const excludedOf = (f) => (f && Array.isArray(f.excluded) ? f.excluded : []);
+
+  /** オーディオカードを外した後: そのフォルダのファイルのカードがもう1枚も無ければ(複製が残っていれば覚えない)、外したファイルとして覚える */
+  function rememberExcluded(s) {
+    const fid = sourceOf(s);
+    const f = fid && data().cards.find((c) => c.id === fid && c.type === 'folder');
+    if (!f || f.virtual || !s.fileName) return;
+    if (soundsFrom(fid).some((x) => x.fileName === s.fileName)) return;
+    f.excluded = [...new Set([...excludedOf(f), s.fileName])];
+  }
 
   /* ---------------- ハンドルの保存(IndexedDB) ---------------- */
 
@@ -517,7 +529,8 @@
       `<button type="button" class="fold-mode-btn${viewOn === 'sphere' ? ' fold-mode-btn--on' : ''}" data-f="view-sphere" title="このエリアのカードを全部スフィア(小さな球)に(◯)">◯</button></span>` +
       (tl ? `<span class="tl-time"></span>` : '') +
       `<span class="fold-count" title="読み込んだファイル / 上限 · エリアのカードの枚数">${count}/${MAX_SOUNDS} · ${cards}枚${guests ? `(他のフォルダから${guests})` : ''}${midis ? `(MIDI ${midis})` : ''}</span>` +
-      (f.virtual ? '' : `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す">読み直す</button>`) +
+      (f.virtual ? '' : `<button type="button" class="btn-small" data-f="reload" title="フォルダを読み直して、増えたファイルを足す(外した音は足しません)">読み直す</button>`) +
+      (!f.virtual && excludedOf(f).length ? `<button type="button" class="btn-small" data-f="unexclude" title="外した音: ${escapeHtml(excludedOf(f).join('、'))}">外した音 ${excludedOf(f).length}</button>` : '') +
       `</div><div class="fold-row">` +
       // ▶再生/■ は左端(タイムラインの0秒の側)に置く(2026-09-29、ユーザー要望)
       `<span class="fold-transport-group">` +
@@ -555,6 +568,7 @@
         } else if (a === 'transport') toggleTransport(f);
         else if (a === 'free' || a === 'timeline' || a === 'chain') setMode(f, a);
         else if (a === 'reload') loadFolder(f, { interactive: true });
+        else if (a === 'unexclude') restoreExcluded(f);
         else if (a === 'perm') loadFolder(f, { interactive: true });
         else if (a === 'pick') repickFolder(f);
       });
@@ -723,10 +737,11 @@
         srt.missing = !srt.fileHandle;
         soundRt.set(s.id, srt);
       });
-      // 増えたファイル: 空きの分だけカードにする
+      // 増えたファイル: 空きの分だけカードにする。外したファイル(excluded)はカードにしない。外した分も上限に数える(空いた枠に別のファイルが湧いてこないように)
       const have = new Set(existing.map((s) => s.fileName));
-      const room = MAX_SOUNDS - new Set(existing.map((x) => x.fileName)).size;
-      const added = files.filter((x) => !have.has(x.name)).slice(0, Math.max(0, room));
+      const excluded = new Set(excludedOf(f).filter((name) => byName.has(name) && !have.has(name)));
+      const room = MAX_SOUNDS - have.size - excluded.size;
+      const added = files.filter((x) => !have.has(x.name) && !excluded.has(x.name)).slice(0, Math.max(0, room));
       const inArea = soundsOf(f.id).length;
       added.forEach((x, i) => {
         const slot = inArea + i;
@@ -737,7 +752,7 @@
       refreshFolder(f);
       soundsFrom(f.id).forEach((s) => refreshSound(s));
       scheduleAutoSave();
-      setStatus(`「${f.name}」: ${files.length}個のオーディオ${added.length ? `のうち${added.length}個をカードにしました` : ''}` +
+      setStatus(`「${f.name}」: ${files.length}個のオーディオ${added.length ? `のうち${added.length}個をカードにしました` : ''}${excluded.size ? `(外した${excluded.size}個はカードにしません)` : ''}` +
         (files.length > MAX_SOUNDS ? `(1フォルダ${MAX_SOUNDS}個まで。ファイル名の順)` : ''));
       // 波形と再生の準備(ファイルから読むだけ。Driveには上げない)
       for (const s of soundsFrom(f.id)) await decodeSound(s);
@@ -747,6 +762,24 @@
       rt.error = err.message;
       refreshFolder(f);
     }
+  }
+
+  /** 「外した音 n」: 一覧を見せて、戻すなら覚えを消して読み直す(ファイルはフォルダにあるまま) */
+  async function restoreExcluded(f) {
+    const names = excludedOf(f);
+    if (!names.length) return;
+    const choice = await showChoiceDialog({
+      title: `「${f.name}」から外した音(${names.length}個)`,
+      message: `${names.join('\n')}\n\nエリアから外したので、読み込み・「読み直す」でカードにしていません。PCのフォルダのファイルはそのままです。`,
+      options: [
+        { label: '外したままにする', value: 'keep', secondary: true },
+        { label: '全部をエリアに戻す', value: 'restore' },
+      ],
+    });
+    if (choice !== 'restore') return;
+    delete f.excluded;
+    scheduleAutoSave();
+    await loadFolder(f, { interactive: true });
   }
 
   function placeSound(f, fileName, slot, extra) {
@@ -1763,8 +1796,11 @@
     }
     soundRt.delete(s.id);
     removeCardFromScope(s);
+    rememberExcluded(s);
     const f = folderOf(s);
     if (f) refreshFolder(f);
+    const src = sourceOf(s) && data().cards.find((c) => c.id === sourceOf(s));
+    if (src && src !== f) refreshFolder(src);
     scheduleAutoSave();
   }
 
