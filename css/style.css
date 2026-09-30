@@ -2475,3 +2475,79 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .pcat-main em { font-style: normal; font-size: 12px; }
 .pcat-main i { font-style: normal; font-size: 12px; color: var(--accent); }
 .pcat-copy { flex: none; font-size: 11.5px; padding: 4px 9px; }
+
+/* ---------- 音色の窓(プレミックスの道具バーの「音色」、js/timbre.js、2026-10-01) ----------
+   左に縦長で浮かぶグラスモーフィズムの窓。右に LYRA Host の小窓を並べて見比べる。見出しで動かし、右下の角で大きさを変える */
+.timbre-win {
+  position: fixed; left: 18px; top: 64px; bottom: 82px; width: 400px; min-width: 300px; min-height: 240px;
+  max-width: calc(100vw - 20px);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; z-index: 60;
+  resize: both; overflow: hidden;
+  border-radius: 20px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.03) 40%, rgba(150, 160, 255, 0.07));
+  background-color: rgba(14, 16, 24, 0.2);
+  -webkit-backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  backdrop-filter: blur(14px) saturate(180%) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 24px 70px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.3);
+  color: #eef0f6; font-size: 12.5px;
+}
+.timbre-head { display: flex; align-items: center; gap: 6px; cursor: grab; user-select: none; touch-action: none; }
+.timbre-head:active { cursor: grabbing; }
+.timbre-title { font-size: 13px; letter-spacing: 0.08em; color: #f2f4fa; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); margin-right: 2px; }
+.timbre-win select, .timbre-win input, .timbre-win button {
+  font: inherit; font-size: 12px; color: #eef0f6; border-radius: 8px; padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.16); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.timbre-win button { cursor: pointer; }
+.timbre-win button:hover { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.34); color: #fff; }
+.timbre-win button:disabled { opacity: 0.5; cursor: default; }
+.timbre-win input::placeholder { color: rgba(226, 230, 240, 0.4); }
+.timbre-win input:focus, .timbre-win select:focus { outline: none; border-color: rgba(190, 200, 255, 0.55); background: rgba(255, 255, 255, 0.1); }
+.timbre-win select option { background: #161923; color: #eef0f6; }
+.timbre-soul { flex: 1; min-width: 0; }
+.timbre-close { width: 28px; padding: 4px 0 !important; }
+.timbre-info { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: rgba(226, 230, 240, 0.55); }
+.timbre-info .is-ok { color: #9fe3c4; }
+.timbre-tabs { display: flex; gap: 4px; }
+.timbre-tabs button { flex: 1; }
+.timbre-tabs button.is-on { background: rgba(190, 200, 255, 0.22); border-color: rgba(200, 210, 255, 0.5); color: #fff; }
+.timbre-search, .timbre-ask { display: flex; gap: 6px; }
+.timbre-search input, .timbre-ask input { flex: 1; min-width: 0; }
+.timbre-ask[hidden] { display: none; }
+.timbre-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }
+.timbre-sub { display: flex; align-items: center; gap: 8px; font-size: 11px; color: rgba(226, 230, 240, 0.62); margin-top: 2px; }
+.timbre-sub small { margin-left: auto; opacity: 0.7; }
+.timbre-sub button { margin-left: auto; padding: 2px 8px; font-size: 11px; }
+.timbre-empty { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; color: rgba(226, 230, 240, 0.7); line-height: 1.6; }
+.timbre-win .panel-empty { color: rgba(226, 230, 240, 0.5); font-size: 11.5px; }
+.timbre-win .pcat-row, .timbre-prow, .timbre-patch {
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: rgba(255, 255, 255, 0.035);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.timbre-win .pcat-row:hover, .timbre-prow:hover, .timbre-patch:hover { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.timbre-win .pcat-main span { color: rgba(226, 230, 240, 0.5); }
+.timbre-win .pcat-main em { color: rgba(236, 238, 246, 0.82); }
+.timbre-win .pcat-main i { color: #f2c46d; }
+.timbre-win .pcat-copy { font-size: 11px; padding: 3px 7px; white-space: nowrap; }
+.timbre-prow { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; }
+.timbre-prow--vstonly { opacity: 0.7; border-style: dashed; }
+.timbre-pmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.timbre-pmain b { font-size: 13px; }
+.timbre-pmain > span { font-size: 11px; color: rgba(226, 230, 240, 0.5); }
+.timbre-pmain em { font-style: normal; font-size: 12px; color: rgba(236, 238, 246, 0.82); line-height: 1.5; }
+.timbre-pmain em small { display: inline-block; font-size: 10px; color: rgba(190, 200, 255, 0.75); margin-right: 6px; }
+.timbre-vst { align-self: flex-start; font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px dashed rgba(190, 200, 255, 0.55); color: #cdd5ff; margin-top: 2px; }
+.timbre-vst.is-ok { border-style: solid; color: #9fe3c4; border-color: rgba(159, 227, 196, 0.6); }
+.timbre-vst.is-none { color: rgba(226, 230, 240, 0.4); border-color: rgba(255, 255, 255, 0.18); }
+.timbre-val { font-size: 12px; color: #f2c46d; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timbre-patch { padding: 8px 10px; }
+.timbre-patch summary { cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.timbre-patch summary span { font-size: 11px; color: rgba(226, 230, 240, 0.55); }
+.timbre-settings { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-size: 11.5px; }
+.timbre-settings div { display: flex; justify-content: space-between; gap: 10px; }
+.timbre-settings span { color: rgba(226, 230, 240, 0.6); }
+@media (max-width: 699px) {
+  .timbre-win { left: 10px !important; right: 10px; top: auto !important; bottom: 66px !important; width: auto !important; height: 55vh !important; resize: none; }
+}

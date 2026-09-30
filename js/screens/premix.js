@@ -326,6 +326,7 @@
         ...LIST_TOOLS,
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
         ...preset.tools.map((t) => PRESET_TOOLS[t]).filter(Boolean),
+        { id: 'timbre', label: '音色', icon: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.6 14.6L20 20"/><path d="M8 10.5c.8-1.6 1.6-1.6 2.5 0s1.7 1.6 2.5 0"/>', onClick: () => toggleTimbre() },
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
         { id: 'host', label: 'ホスト', icon: '<rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 21h8M12 17v4M7 9v4M10 8v5M13 10v3M16 9v4"/>', onClick: () => connectHost() },
         { id: 'stop', label: '全部止める', icon: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>', onClick: () => stopAll() },
@@ -356,6 +357,7 @@
       if (window.LyraNebula) window.LyraNebula.close();
       if (window.LyraPlanetes) window.LyraPlanetes.close();
       if (window.LyraKairos) window.LyraKairos.close();
+      if (window.LyraTimbre) window.LyraTimbre.close();
       els.viewport.removeEventListener('dragover', onNebulaDragOver);
       els.viewport.removeEventListener('drop', onNebulaDrop);
       detachPlanetLayer();
@@ -2777,6 +2779,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
 
   function openImageSearch(target) {
     if (!window.LyraImageSearch) return;
+    if (window.LyraTimbre) window.LyraTimbre.close(); // 同じ左の場所に出る
     searchTargetId = target ? target.id : null;
     const pickInto = async (file, meta) => {
       const t = searchTargetId ? data().cards.find((c) => c.id === searchTargetId && c.type === 'image') : null;
@@ -2918,6 +2921,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   function toggleAlbum(which) {
     const N = window.LyraNebula;
     const P = window.LyraPlanetes;
+    if (window.LyraTimbre) window.LyraTimbre.close();
     if (which === 'nebula') {
       if (P) P.close();
       if (N) (N.isOpen() ? N.close() : N.open((id) => placeNebula(id, null)));
@@ -2925,6 +2929,18 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       if (N) N.close();
       if (P) (P.isOpen() ? P.close() : P.open((id) => placePlanet(id, null)));
     }
+  }
+
+  /** 道具バーの「音色」(js/timbre.js): 左に浮かぶ音色の窓。同じ左の場所に出るアルバム・Pixabayの窓は閉じる */
+  function toggleTimbre() {
+    if (!window.LyraTimbre) return;
+    window.LyraTimbre.toggle({
+      onOpen: () => {
+        if (window.LyraNebula) window.LyraNebula.close();
+        if (window.LyraPlanetes) window.LyraPlanetes.close();
+        if (window.LyraImageSearch && window.LyraImageSearch.isOpen()) window.LyraImageSearch.close();
+      },
+    });
   }
 
   /** 毎フレーム: 星雲の見た目(大きさが変わったら描き直す・動く光) */

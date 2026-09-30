@@ -9,7 +9,7 @@
 // 目録は大きい(2000件ほど)ので、この端末の IndexedDB(lyra-presets)に置く。Drive のソウルには件数と日時だけ(soul.presetCatalog)。
 // 探す: 目録の窓での言葉の絞り込み(Gemini なし)/ 言葉か画像から、合う5つを Gemini 1回で理由つきで選ぶ(目録の番号で答えさせ、実在するものだけ)。
 //
-// window.LyraPresetCat = { openPanel(soul), searchByImage(imageCard), hasCatalog(soul) }
+// window.LyraPresetCat = { openPanel(soul), searchByImage(imageCard), hasCatalog(soul), …(音色の窓 js/timbre.js も rowHtml・bindCopy・scanFolder・savePicks を使う) }
 
 (function () {
   const DB = 'lyra-presets';
@@ -322,5 +322,5 @@ ${entries.map(catLine).join('\n')}
     }
   }
 
-  window.LyraPresetCat = { openPanel, searchByImage, hasCatalog, loadCandidates, _test: { readHeader, scanDir, pick, getCatalog, putCatalog } };
+  window.LyraPresetCat = { openPanel, searchByImage, hasCatalog, loadCandidates, scanFolder, savePicks, rowHtml, bindCopy, _test: { readHeader, scanDir, pick, getCatalog, putCatalog } };
 })();
