@@ -1104,7 +1104,14 @@ ${models}
     const prompt = buildPrompt(preset, input, EXPANSION_RULE);
     const schema = D.buildSchema(preset, {});
     setStatus(`${preset.short}の展開を書いています…`, { busy: true });
-    const raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${preset.short}` });
+    let raw;
+    try {
+      raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${preset.short}` });
+    } catch (err) {
+      // 切れた時は、原因を見分ける事実(元の長さ・モデル・出力の量・末尾)を添える
+      if (err.truncated) err.message += `[元のMIDI ${analysis.bars}小節・${m.notes.length}音、モデル ${preset.short}、出力${err.outTokens || '?'}トークン、末尾「…${err.tail || ''}」]`;
+      throw err;
+    }
     const design = D.sanitizeDesign(raw, preset, { bars });
     design.tempo = m.tempo;
     design.meters = T.metersOf(m).map((x) => ({ ...x }));

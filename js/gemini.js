@@ -117,7 +117,10 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
   //  Liteモデルが同じ語句を繰り返し続けて上限に達したとみられる)
   if (responseSchema && data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
     debugLog(`Gemini${label ? `[${label}]` : ''}: 出力が上限で切れた。末尾: ${text.slice(-200)}`);
-    throw Object.assign(new Error('Geminiの出力が長くなりすぎて途中で切れました(同じ語句を繰り返し続けた可能性があります)'), { truncated: true });
+    // 原因(同じ語句の繰り返しか、単に量が多いか)を事実で見分けられるよう、出力の量と末尾をエラーに付ける(2026-10-01、展開で起きた件)
+    throw Object.assign(new Error('Geminiの出力が長くなりすぎて途中で切れました(同じ語句を繰り返し続けた可能性があります)'), {
+      truncated: true, outTokens: usage.candidatesTokenCount, tail: text.slice(-120).replace(/\s+/g, ' '),
+    });
   }
   return text;
 }
