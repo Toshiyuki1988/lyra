@@ -569,7 +569,7 @@
     const yaw = Math.sin(t * 0.25) * 0.22;
     const cyw = Math.cos(yaw);
     const syw = Math.sin(yaw);
-    const pit = -0.05 + Math.sin(t * 0.18) * 0.03;
+    const pit = -0.3 + Math.sin(t * 0.18) * 0.03; // ピアノへうつむく(2026-10-01、ユーザー要望。最初は -0.05 でほぼ正面)
     const cp = Math.cos(pit);
     const sp = Math.sin(pit);
     const proj = (x, y, z) => {
