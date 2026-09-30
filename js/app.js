@@ -1371,10 +1371,16 @@ function redrawAsterismLines() {
     if (!elA || !elB) return;
     const line = drawAsterismLine(elA, elB, 'asterism-line--manual');
     line.dataset.connectionId = conn.id;
+    if (conn.mode) line.dataset.mode = conn.mode; // プレミックスの線の種類(link / chain。2026-10-01)
     const hit = drawAsterismLine(elA, elB, 'asterism-line-hit');
+    // カーソルを合わせると線が光る(押せることが分かるように)
+    hit.addEventListener('pointerenter', () => line.classList.add('asterism-line--hover'));
+    hit.addEventListener('pointerleave', () => line.classList.remove('asterism-line--hover'));
     hit.addEventListener('click', (event) => {
       event.stopPropagation();
-      confirmRemoveAstrConnection(conn.id);
+      // 画面が線の操作を持っていれば任せる(プレミックス: リンク/チェイン/削除のメニュー)。無ければ削除の確認
+      if (currentScreen && currentScreen.onLineTap) currentScreen.onLineTap(conn, event);
+      else confirmRemoveAstrConnection(conn.id);
     });
   });
 }

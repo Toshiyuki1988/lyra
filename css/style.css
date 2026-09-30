@@ -2082,6 +2082,28 @@ body[data-screen="premix"] .asterism-line--manual.pm-line-hot {
   0% { stroke: #fff4d6; stroke-width: 4; filter: drop-shadow(0 0 8px rgba(242, 178, 76, 0.95)); }
   100% { stroke: rgba(242, 178, 76, 0.85); stroke-width: 2.4; filter: none; }
 }
+/* 線の種類(2026-10-01): リンク=同時に鳴らす(まっすぐな水色の二重線)、チェイン=順に鳴らす(流れる琥珀の点線。以前からの線) */
+body[data-screen="premix"] .asterism-line--manual[data-mode="link"] {
+  stroke: rgba(127, 224, 255, 0.9); stroke-width: 3; stroke-dasharray: none; animation: none;
+  filter: drop-shadow(0 0 3px rgba(127, 224, 255, 0.55));
+}
+/* カーソルを合わせると光る(押すとリンク/チェイン/削除のメニュー) */
+.asterism-line--hover { stroke-width: 4 !important; filter: drop-shadow(0 0 6px rgba(255, 244, 214, 0.9)); }
+body[data-screen="premix"] .asterism-line--manual.asterism-line--hover { stroke: #fff4d6; filter: drop-shadow(0 0 8px rgba(242, 178, 76, 0.95)); }
+body[data-screen="premix"] .asterism-line--manual[data-mode="link"].asterism-line--hover { stroke: #e6fbff; filter: drop-shadow(0 0 8px rgba(127, 224, 255, 0.95)); }
+.pm-line-menu {
+  position: fixed; z-index: 80; display: flex; gap: 4px; padding: 5px; border-radius: 12px;
+  background: rgba(14, 16, 24, 0.55); -webkit-backdrop-filter: blur(14px) saturate(170%); backdrop-filter: blur(14px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.18); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+.pm-line-menu button {
+  font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); color: #eef0f6;
+}
+.pm-line-menu button:hover { background: rgba(255, 255, 255, 0.14); }
+.pm-line-menu button[data-m="link"].on { border-color: #7fe0ff; color: #7fe0ff; background: rgba(127, 224, 255, 0.12); }
+.pm-line-menu button[data-m="chain"].on { border-color: #f2b24c; color: #f2b24c; background: rgba(242, 178, 76, 0.12); }
+.pm-line-menu button.danger:hover { border-color: #ff5d52; color: #ff8a80; }
 /* タイムラインでは左端=鳴り始めの印 */
 .star-card--sphere.star-card--sound-tl .sph::after {
   content: ""; position: absolute; left: -3px; top: 28%; height: 44%; width: 2px; border-radius: 1px;
@@ -2191,16 +2213,6 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .star-card--nebula:hover .neb-label, .star-card--nebula.star-card--edit-guide .neb-label { display: block; }
 
 /* オーディオカードに、かかっているエフェクト(カード=帯、スフィア=色の輪) */
-/* 応答のスロット(MIDIのカード、js/screens/premix.js、2026-10-01): ●/○ でオン/オフ、⇩ でそのスロットだけを保存、↻ 振り直し、✕ 外す */
-.snd-resp { display: flex; flex-wrap: wrap; gap: 4px; }
-.snd-slot { display: inline-flex; align-items: center; gap: 1px; padding: 1px 2px 1px 4px; border-radius: 999px; border: 1px solid color-mix(in srgb, #7fe0ff 45%, transparent); background: rgba(127, 224, 255, 0.08); font-size: 10.5px; color: var(--pm-text); }
-.snd-slot--off { opacity: 0.5; border-color: #3a3f4a; background: transparent; }
-.snd-slot-name { padding: 0 3px; white-space: nowrap; }
-.snd-slot button, .snd-resp-add { border: 0; background: transparent; color: var(--pm-muted); font-size: 10.5px; line-height: 1; padding: 3px 4px; border-radius: 999px; cursor: pointer; }
-.snd-slot button:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
-.snd-slot .snd-slot-on { color: #7fe0ff; }
-.snd-resp-add { border: 1px dashed #3a3f4a; padding: 3px 8px; }
-.snd-resp-add:hover { color: #7fe0ff; border-color: #7fe0ff; }
 .snd-fx { display: flex; flex-direction: column; gap: 3px; }
 .snd-fx:empty { display: none; }
 .snd-fx-row { display: grid; grid-template-columns: 7.6em 1fr 2.4em; align-items: center; gap: 5px; font-size: 10px; color: var(--pm-muted); white-space: nowrap; }

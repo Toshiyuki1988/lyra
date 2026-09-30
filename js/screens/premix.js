@@ -310,11 +310,13 @@
         if (!f.virtual && (!folderRt.get(f.id) || !folderRt.get(f.id).handle)) loadFolder(f, { interactive: false });
       });
       data().cards.filter((c) => isMidi(c)).forEach((c) => decodeSound(c)); // 持ち込んだMIDIは開くたびに音にし直す
+      migrateSlots();
       renderActive();
       startTicker();
     },
 
     leave() {
+      closeLineMenu();
       delete document.body.dataset.premixPreset;
       closePremixList();
       document.removeEventListener('keydown', onKeydown);
@@ -366,8 +368,9 @@
       const b = conn && data().cards.find((c) => c.id === conn.cardIdB);
       const f = a && folderOf(a);
       if (!f) return;
+      if (conn && !conn.mode) conn.mode = 'chain';
       if (!isChain(f)) {
-        setStatus('線でつなぎました。エリアを「チェーン」にすると、つないだカードが反復ループ(アステリズムベルト)として鳴ります');
+        setStatus('チェインの線でつなぎました(▶で線の順に鳴ります)。線にカーソルを合わせて押すと、リンク(同時に鳴らす)に変えられます');
         return;
       }
       if (!b || b.folderId !== f.id) return;
@@ -401,6 +404,11 @@
 
     onCardTap(card) {
       if (card.type === 'folder') setActive(card.id);
+    },
+
+    /** 線を押した時(js/app.js): リンク/チェイン/削除のメニュー */
+    onLineTap(conn, event) {
+      showLineMenu(conn, event);
     },
 
     /** フォルダをドラッグしている間、中のオーディオカードも一緒に動かす(js/canvas.js の updateMove から) */
@@ -790,7 +798,6 @@
         `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
         `<span class="snd-time"></span>` +
         `<button type="button" class="snd-unclip" data-s="unclip" title="切り取った範囲を外して、音の全体に戻す" hidden>✕</button></div>` +
-        (isMidi(s) ? `<div class="snd-resp no-card-drag" aria-label="応答のスロット"></div>` : '') +
         `<div class="snd-fx" aria-label="かかっているネビュラのエフェクト"></div>` +
         `<textarea class="snd-memo" data-s="memo" rows="1" spellcheck="false" ` +
         `placeholder="音のイメージを言葉で(例: 乾いた木の打音、遠くで滲む金属)">${escapeHtml(s.memo || '')}</textarea>` +
@@ -811,7 +818,6 @@
       if (f) refreshFolder(f);
     });
     if (!isSphere(s)) bindCardControls(s, el);
-    if (!isSphere(s) && isMidi(s)) renderSlots(s, el);
     refreshSound(s, el);
   }
 
@@ -904,7 +910,8 @@
     el.classList.toggle('star-card--sound-missing', Boolean(rt.missing));
     el.classList.toggle('star-card--sound-tl', isTimeline(f)); // タイムラインではループのボタンを隠す
     el.classList.toggle('star-card--sound-chain', isChain(f)); // チェーンでもカードのループは使わない
-    const on = Boolean(rt.playing) || (isChain(f) && Boolean(walkerOnBelt(f, beltOf(f, s.id)))); // チェーンでは▶がそのベルトの再生/停止
+    // チェーンのエリアと、フリーのエリアの線でつないだカードでは、▶がその流れ(ベルト)の再生/停止
+    const on = Boolean(rt.playing) || (Boolean(f) && !isTimeline(f) && Boolean(walkerOnBelt(f, beltOf(f, s.id))));
     el.classList.toggle('star-card--sound-out', !f);
     const play = el.querySelector('[data-s="play"]');
     if (play) {
@@ -1170,7 +1177,7 @@
     const rt = soundRt.get(s.id) || {};
     soundRt.set(s.id, rt);
     if (rt.buffer || rt.loading) return;
-    const card = combinedCard(s); // 元のMIDI + オンの応答のスロット
+    const card = s.midiInline || findMidiCard(s.midiRef);
     if (!card || !window.LyraMidi) {
       rt.missing = true;
       refreshSound(s);
@@ -1302,36 +1309,6 @@
     if (!M || !card || !card.midi) {
       setStatus('元のMIDIが見つかりません', { important: true });
       return;
-    }
-    const slots = responsesOf(s).filter((r) => r.notes && r.notes.length);
-    if (slots.length) {
-      const how = await showChoiceDialog({
-        title: `「${card.name}」を保存します`,
-        message: `このカードには応答のスロットが${slots.length}つあります。楽器を分けるなら「別々のファイルで」を選んでください(切り取りは使わず、全体を保存します)。`,
-        options: [
-          { label: '元のMIDIだけ', value: 'base' },
-          { label: `元とスロットを別々のファイルで(${slots.length + 1}ファイル)`, value: 'each' },
-          { label: '全部を1つのファイルに(パートごとのトラック)', value: 'one' },
-        ],
-      });
-      if (!how) return;
-      if (how === 'each') {
-        await M.saveToFolder({ ...card, selection: null }, 'merged');
-        for (const r of slots) await M.saveToFolder(slotCard(s, r), 'merged');
-        return;
-      }
-      if (how === 'one') {
-        const all = { ...card, midi: { ...card.midi }, selection: null };
-        all.midi.notes = [...card.midi.notes, ...slots.flatMap((r, i) => r.notes.map((n) => ({ ...n, part: `r${i + 1}${n.part || ''}` })))].sort((a, b) => a.start - b.start);
-        all.midi.partNames = { ...(card.midi.partNames || {}) };
-        all.midi.partRoles = { ...(card.midi.partRoles || {}) };
-        slots.forEach((r, i) => Object.keys(r.partNames || {}).forEach((p) => {
-          all.midi.partNames[`r${i + 1}${p}`] = `${r.label}: ${r.partNames[p]}`;
-          all.midi.partRoles[`r${i + 1}${p}`] = (r.partRoles || {})[p] || 'counter';
-        }));
-        await M.saveToFolder(all, 'split');
-        return;
-      }
     }
     const base = { ...card, selection: null };
     let target = base;
@@ -1472,10 +1449,14 @@
 
   function toggle(s) {
     const f = folderOf(s);
-    if (isChain(f)) {
+    if (isChain(f) || (f && !isTimeline(f) && hasLines(f, s))) {
       const w = walkerOnBelt(f, beltOf(f, s.id));
       if (w) stopWalker(f, w);
-      else startChain(f, [s.id]);
+      else {
+        stop(s);
+        // フリーのエリアでは、ループを外したカードから鳴らした時は1周で止める(チェーンのエリアのベルトは今までどおり繰り返す)
+        startChain(f, [s.id], false, { once: !isChain(f) && !s.loop });
+      }
       return;
     }
     const rt = soundRt.get(s.id);
@@ -2033,8 +2014,10 @@
 
   /** そのカードから出ている線のうち、同じエリアのカードへ向かうものを1本ランダムに選ぶ */
   function nextInChain(f, cardId) {
+    // リンクのまとまりの誰かから出ているチェインの線(リンクでつないだカードは一緒に鳴るので、まとまりごとに次へ進む)
+    const group = linkGroupOf(f, cardId);
     const outs = data().connections
-      .filter((c) => c.cardIdA === cardId)
+      .filter((c) => lineMode(c) === 'chain' && group.has(c.cardIdA) && !group.has(c.cardIdB))
       .map((conn) => ({ conn, card: data().cards.find((x) => x.id === conn.cardIdB) }))
       .filter((o) => o.card && o.card.type === 'sound' && o.card.folderId === f.id);
     return outs.length ? outs[Math.floor(Math.random() * outs.length)] : null;
@@ -2074,7 +2057,7 @@
   /** ベルトの頭: 線が入ってこないカード(複数なら左上)。輪だけなら最後に触ったカード、無ければ左上のカード */
   function beltHead(f, belt) {
     const cards = soundsOf(f.id).filter((s) => belt.has(s.id));
-    const incoming = new Set(data().connections.filter((c) => belt.has(c.cardIdA) && belt.has(c.cardIdB)).map((c) => c.cardIdB));
+    const incoming = new Set(data().connections.filter((c) => lineMode(c) === 'chain' && belt.has(c.cardIdA) && belt.has(c.cardIdB)).map((c) => c.cardIdB));
     const topLeft = (list) => list.slice().sort((p, q) => (p.y - q.y) || (p.x - q.x))[0];
     const heads = cards.filter((s) => !incoming.has(s.id));
     if (heads.length) return topLeft(heads).id;
@@ -2123,7 +2106,7 @@
   }
 
   /** activate: 見出しの▶(エリアを触った)の時だけ true。カードの▶・線を引いた時はアクティブを切り替えない */
-  async function startChain(f, fromIds, activate) {
+  async function startChain(f, fromIds, activate, opts) {
     if (!fromIds.length) {
       setStatus('カードをASTRでつなぐと、アステリズムベルト(反復ループ)になります');
       return;
@@ -2139,7 +2122,7 @@
     const t = c.currentTime + 0.08;
     fromIds.forEach((id) => {
       if (walkerOnBelt(f, beltOf(f, id))) return; // 同じベルトに流れは1つ
-      tl.walkers.push({ start: id, cardId: id, when: t, via: null });
+      tl.walkers.push({ start: id, cardId: id, when: t, via: null, once: Boolean(opts && opts.once) });
     });
     if (activate) setActive(f.id);
     else hintIfIdle(f);
@@ -2172,18 +2155,27 @@
           w.via = null;
           s = inArea(w.start);
         }
-        const rt = soundRt.get(s.id);
-        let len = SNAP_SEC; // まだ読めていない・見つからない音は、短い休みとして通り過ぎる
-        if (rt && rt.buffer && !rt.missing) {
-          const clip = clipOf(s, rt);
-          len = Math.max(0.05, clip.len);
-          voiceAt(f, s, rt, clip, w.when, w.when + clip.len, w);
-        }
+        // リンクでつながったカードは同じ時刻に鳴らす。次へ進むのは一番長い音が鳴り終わった時
+        let len = 0;
+        linkGroupOf(f, s.id).forEach((id) => {
+          const x = inArea(id);
+          const rt = x && soundRt.get(x.id);
+          if (!rt || !rt.buffer || rt.missing) return;
+          const clip = clipOf(x, rt);
+          len = Math.max(len, clip.len);
+          voiceAt(f, x, rt, clip, w.when, w.when + clip.len, w);
+        });
+        len = Math.max(len ? 0.05 : SNAP_SEC, len); // まだ読めていない・見つからない音は、短い休みとして通り過ぎる
         if (w.via) flashLineAt(w.via, w.when - now);
         const next = nextInChain(f, s.id);
         if (next) {
           w.via = next.conn.id;
           w.cardId = next.card.id;
+        } else if (w.once) {
+          // ループを外したカードから鳴らした時: 行き止まりで終わる(予約した音は最後まで鳴る)
+          w.when += len;
+          w.done = true;
+          break;
         } else {
           // 行き止まり: 頭へ戻って繰り返す。線を消して頭が別のまとまりになっていたら、今のベルトの頭から
           const belt = beltOf(f, s.id);
@@ -2193,7 +2185,7 @@
         }
         w.when += len;
       }
-      return true;
+      return !w.done;
     });
     if (!tl.walkers.length && !tl.voices.some((v) => v.end > now)) stopTransport(f);
   }
@@ -2279,7 +2271,7 @@
       schedTimer = setInterval(() => {
         folders().forEach((f) => {
           if (isTimeline(f)) scheduleTimeline(f);
-          else if (isChain(f)) scheduleChain(f);
+          else scheduleChain(f); // チェーンのエリアのベルトと、フリーのエリアの線でつないだカード(流れが無ければ何もしない)
         });
         nebulaTick();
         planetTick();
@@ -2290,7 +2282,7 @@
       const now = ctx ? ctx.currentTime : 0;
       folders().forEach((f) => {
         if (isTimeline(f)) scheduleTimeline(f);
-        else if (isChain(f)) scheduleChain(f);
+        else scheduleChain(f);
         drawPlayhead(f, now);
         drawAreaMeter(f);
       });
@@ -3523,117 +3515,88 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     P.drawFront(gf, items);
   }
 
-  /* ---------------- 応答のスロット(2026-10-01、ユーザー要望「MIDIを分析して対位法で応対するMIDIを生成」「同じMIDIカードに応対MIDIが複数スロットで」
-   * 「スロットはそれぞれ別で保存できるように。楽器を分けたい」) ----------------
-   * MIDIのカードの「応答」で、元のMIDIに応える層を Gemini 1回で作り(js/midi/compose.js の createResponse)、カードの s.responses に入れる。
-   * スロット = { id, model, label, name, concept, commentary, against, againstParts, analysis, design, seed, notes, partNames, partRoles, on, createdAt }
-   * カードの音 = 元のMIDI + オンのスロット(combinedCard)。伴奏を付け直すモデル(replacesHarmony)のスロットがオンの時は、元のMIDIからは応答の相手の
-   * パート(againstParts)だけを鳴らす。スロットごとに オン/オフ・⇩(そのスロットだけの .mid)・↻(振り直し。Geminiなし)・✕ */
-  const responsesOf = (s) => (Array.isArray(s.responses) ? s.responses : []);
+  /* ---------------- 応答(2026-10-01、ユーザー要望「MIDIを分析して対位法で応対するMIDIを生成」) ----------------
+   * MIDIのカードの「応答」で、元のMIDIに応える層を Gemini 1回で作り(js/midi/compose.js の createResponse)、**別のMIDIのカード**として
+   * 元のカードの右隣に置き、元のカードと**リンクの線**(同時に鳴らす)で結ぶ。
+   * 最初は同じカードの中の「スロット」にしていたが、カードの音が「元+応答」で作り直されて元の音を上書きしたように見え、
+   * 「音色を変えて作り直す」も合わさった音を作り直していたため、ユーザー判断で別のカードにした(スロットは廃止。古いスロットは読み込んだ時に移す) */
   const baseMidiCard = (s) => s.midiInline || findMidiCard(s.midiRef);
 
-  /** カードの音にするMIDI(元 + オンのスロット) */
-  function combinedCard(s) {
-    const base = baseMidiCard(s);
-    const on = responsesOf(s).filter((r) => r.on && r.notes && r.notes.length);
-    if (!base || !on.length) return base;
-    const P = window.LyraPresets;
-    const m = base.midi;
-    const keepOnly = on.some((r) => P && (P.byId(r.model) || {}).replacesHarmony && r.againstParts && r.againstParts.length)
-      ? new Set(on.flatMap((r) => r.againstParts || []))
-      : null;
-    const notes = m.notes.filter((n) => !keepOnly || keepOnly.has(n.part || ''));
-    const partNames = { ...(m.partNames || {}) };
-    const partRoles = { ...(m.partRoles || {}) };
-    on.forEach((r, i) => {
-      Object.keys(r.partNames || {}).forEach((p) => {
-        partNames[`r${i + 1}${p}`] = `${r.label}: ${r.partNames[p]}`;
-        partRoles[`r${i + 1}${p}`] = (r.partRoles || {})[p] || 'counter';
-      });
-      r.notes.forEach((n) => notes.push({ ...n, part: `r${i + 1}${n.part || ''}` }));
+  /** 応答のMIDIのカードを、元のカードの右隣に置いてリンクで結ぶ */
+  function placeResponseCard(s, midiCard, voice, offset) {
+    const f = folderOf(s) || ensureArea();
+    const resp = placeSound(f, midiCard.name, soundsOf(f.id).length, { midiInline: midiCard, midiVoice: voice || s.midiVoice || DEFAULT_MIDI_VOICE, loop: true });
+    const srcEl = cardElById(s.id);
+    resp.x = (s.x || 0) + (srcEl ? srcEl.offsetWidth : SOUND_W) + 24;
+    // 右隣に、ほかのカードと重ならない所が見つかるまで下へずらす(応答を続けて作ると同じ位置に重なったため)
+    const el = cardElById(resp.id);
+    const w = el ? el.offsetWidth : SOUND_W;
+    const h = el ? el.offsetHeight : 200;
+    const hits = (y) => soundsOf(f.id).some((o) => {
+      if (o.id === resp.id) return false;
+      const oe = cardElById(o.id);
+      const ow = oe ? oe.offsetWidth : o.width || SOUND_W;
+      const oh = oe ? oe.offsetHeight : 200;
+      return resp.x < o.x + ow && o.x < resp.x + w && y < o.y + oh && o.y < y + h;
     });
-    notes.sort((a, b) => a.start - b.start);
-    return { ...base, midi: { ...m, notes, partNames, partRoles } };
+    let y = (s.y || 0) + (offset || 0) * 16;
+    for (let i = 0; i < 40 && hits(y); i++) y += 24;
+    resp.y = y;
+    if (el) {
+      el.dataset.x = String(resp.x);
+      el.dataset.y = String(resp.y);
+      applyCardTransform(el);
+      clampIntoFolder(resp, el);
+    }
+    data().connections.push({ id: newId(), cardIdA: s.id, cardIdB: resp.id, mode: 'link' });
+    connCount = data().connections.length;
+    soundRt.set(resp.id, {});
+    redrawAsterismLines();
+    refreshFolder(f);
+    renderMidiSound(resp);
+    return resp;
   }
 
-  /** スロットだけのMIDIカード(.mid の保存用) */
-  function slotCard(s, r) {
-    const base = baseMidiCard(s);
-    const m = base ? base.midi : { tempo: 120, beatsPerBar: 4, meters: [{ bar: 1, num: 4, den: 4 }] };
-    const stem = String((base && base.name) || s.fileName || 'midi').replace(/\.mid$/i, '');
+  /** 応答のMIDIカードの中身(元のMIDIのテンポ・拍子で、応答の音だけ) */
+  function responseMidiCard(base, slot, presetId) {
+    const m = base.midi;
     return {
-      id: r.id,
+      id: newId(),
       type: 'midi',
-      name: `${stem}_${r.label}.mid`.replace(/[\\/:*?"<>|\s]/g, '_'),
-      midi: { tempo: m.tempo, tempoChanges: m.tempoChanges, beatsPerBar: m.beatsPerBar, meters: m.meters, notes: r.notes.map((n) => ({ ...n })), partNames: r.partNames || {}, partRoles: r.partRoles || {} },
-      selection: null,
+      name: slot.name || `${String(base.name || 'midi').replace(/\.mid$/i, '')}_${slot.label}.mid`,
+      description: `「${String(base.name || '').replace(/\.mid$/i, '')}」の${slot.against || ''}への応答(${slot.label})`,
+      concept: slot.concept || '',
+      commentary: slot.commentary || '',
+      responseTo: base.id || null,
+      midi: {
+        tempo: m.tempo, tempoChanges: m.tempoChanges, beatsPerBar: m.beatsPerBar, meters: m.meters,
+        notes: slot.notes, partNames: slot.partNames || {}, partRoles: slot.partRoles || {},
+        model: presetId || slot.model, design: slot.design, seed: slot.seed,
+      },
+      createdAt: new Date().toISOString(),
     };
   }
 
-  /** スロットの並び(カードの波形の下) */
-  function renderSlots(s, el) {
-    const box = el.querySelector('.snd-resp');
-    if (!box) return;
-    const list = responsesOf(s);
-    box.innerHTML = list.map((r) => `<div class="snd-slot${r.on ? '' : ' snd-slot--off'}" data-id="${r.id}" title="${escapeHtml(`${r.label}(${r.against}に応答)${r.concept ? `\n${r.concept}` : ''}`)}">` +
-      `<button type="button" class="snd-slot-on" data-r="toggle" aria-label="オン/オフ">${r.on ? '●' : '○'}</button>` +
-      `<span class="snd-slot-name">${escapeHtml(r.label)}</span>` +
-      `<button type="button" data-r="save" title="このスロットだけを .mid で保存(楽器を分けて Cubase へ)">⇩</button>` +
-      `<button type="button" data-r="reroll" title="同じ設計図で振り直す(Geminiは使いません)">↻</button>` +
-      `<button type="button" data-r="remove" title="このスロットを外す">✕</button></div>`).join('') +
-      `<button type="button" class="snd-resp-add" data-r="add" title="このMIDIに応えるMIDIを作って、スロットに足す(Geminiを1回)">＋ 応答</button>`;
-    box.querySelectorAll('button').forEach((btn) => btn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const act = btn.dataset.r;
-      if (act === 'add') {
-        respondTo(s);
-        return;
-      }
-      const r = list.find((x) => x.id === btn.closest('.snd-slot').dataset.id);
-      if (r) slotAction(s, r, act);
-    }));
-  }
-
-  async function slotAction(s, r, act) {
-    const M = window.LyraMidi;
-    if (act === 'save') {
-      await M.saveToFolder(slotCard(s, r), 'merged');
-      return;
-    }
-    if (act === 'toggle') r.on = !r.on;
-    else if (act === 'reroll') {
-      r.seed = Math.floor(Math.random() * 2 ** 31);
-      Object.assign(r, M.renderResponse(r.design, r.seed));
-      r.on = true;
-    } else if (act === 'remove') {
-      const ok = await showChoiceDialog({
-        title: `応答「${r.label}」を外しますか?`,
-        message: 'このスロットの音と設計図が消えます(元のMIDIはそのままです)。',
-        options: [{ label: 'やめる', value: false, secondary: true }, { label: '外す', value: true, danger: true }],
+  /** 以前の「スロット」(s.responses)を、別々のカード(リンクの線つき)へ移す */
+  function migrateSlots() {
+    let moved = 0;
+    data().cards.filter((c) => c.type === 'sound' && Array.isArray(c.responses) && c.responses.length).forEach((s) => {
+      const base = baseMidiCard(s);
+      if (base) s.responses.forEach((r, i) => {
+        if (r.notes && r.notes.length) {
+          placeResponseCard(s, responseMidiCard(base, r, r.model), s.midiVoice, i);
+          moved += 1;
+        }
       });
-      if (!ok) return;
-      s.responses = responsesOf(s).filter((x) => x.id !== r.id);
+      delete s.responses;
+    });
+    if (moved) {
+      scheduleAutoSave();
+      setStatus(`応答のスロット${moved}つを、別々のMIDIカード(元のカードとリンクの線でつないだもの)に移しました`);
     }
-    scheduleAutoSave();
-    const el = cardElById(s.id);
-    if (el) renderSlots(s, el);
-    await resound(s);
-    setStatus(act === 'toggle' ? `応答「${r.label}」を${r.on ? 'オン' : 'オフ'}にしました` : act === 'reroll' ? `応答「${r.label}」を振り直しました(設計図はそのまま)` : `応答「${r.label}」を外しました`);
   }
 
-  /** スロットが変わったら、カードの音を作り直す(鳴っていたら鳴らし直す) */
-  async function resound(s) {
-    const was = Boolean((soundRt.get(s.id) || {}).playing);
-    stop(s);
-    stopVoicesOf(s.id);
-    const rt = soundRt.get(s.id) || {};
-    Object.assign(rt, { buffer: null, peaks: null, clipPeaks: null, missing: false, loading: false });
-    soundRt.set(s.id, rt);
-    await renderMidiSound(s);
-    if (was && rt.buffer) toggle(s);
-  }
-
-  /** 「応答」: モデル・相手のパート・注文を聞いて、Geminiを1回呼び、スロットに足す */
+  /** 「応答」: モデル・相手のパート・注文を聞いて、Geminiを1回呼び、応答のMIDIカードを右隣に置く */
   async function respondTo(s) {
     const M = window.LyraMidi;
     const P = window.LyraPresets;
@@ -3650,7 +3613,8 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       : null;
     const values = await showFormDialog({
       title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」に応答する`,
-      message: `元のMIDIを分析して(調・小節ごとの響き・音域)、それに応えるMIDIを作り、このカードのスロットに足します。Geminiを1回呼びます。\n\n` +
+      message: '元のMIDIを分析して(調・小節ごとの響き・音域)、それに応えるMIDIを作り、右隣に別のカードとして置きます。' +
+        '元のカードとはリンクの線(同時に鳴らす)でつなぐので、▶で重ねて聴けます。Geminiを1回呼びます。\n\n' +
         models.map((p) => `・${p.label}: ${p.text}`).join('\n'),
       submitLabel: '作る',
       fields: [
@@ -3666,19 +3630,103 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     const label = chosen.length === parts.length ? '全体' : M.partLabel(m, chosen[0]);
     try {
       const slot = await M.createResponse({ source: { midi: m, notes, label, name: base.name || s.fileName }, presetId: preset.id, hint: values.hint });
-      slot.againstParts = chosen;
-      s.responses = [...responsesOf(s), slot];
+      const resp = placeResponseCard(s, responseMidiCard(base, slot, preset.id), s.midiVoice);
       scheduleAutoSave();
-      const el = cardElById(s.id);
-      if (el) renderSlots(s, el);
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
-      await resound(s);
-      setStatus(`「${label}」への応答「${preset.short}」をスロットに足しました(${slot.notes.length}音)。⇩でこのスロットだけを保存できます`);
+      setStatus(`「${label}」への応答「${preset.short}」を右隣に置きました(${slot.notes.length}音)。リンクの線でつながっているので、▶で元と一緒に鳴ります`);
+      return resp;
     } catch (err) {
       console.error(err);
       setStatus(`応答を作れませんでした: ${err.message}`, { important: true });
+      return null;
     }
   }
+
+  /* ---------------- アステリズムの線の種類(2026-10-01、ユーザー要望) ----------------
+   * 線にカーソルを合わせると光り(js/app.js)、押すとメニュー: 「リンク」=同じタイミングで鳴らす(ループの時は、全部が鳴り終わってから揃って頭に戻る)/
+   * 「チェイン」=つないだ順に鳴らす/「削除」。connection.mode = 'link' | 'chain'(無ければ chain。以前からの線)。
+   * 鳴らし方は「流れ(歩き手)」でまとめる(チェーンの節): 流れがカードを鳴らす時、そのカードとリンクでつながったカードも同じ時刻に鳴らし、
+   * 一番長い音が鳴り終わった時に、チェインの線をたどって次へ進む。行き止まりでは流し始めたカードへ戻る(リンクだけなら揃ってループ) */
+  const lineMode = (conn) => (conn && conn.mode === 'link' ? 'link' : 'chain');
+  let lineMenu = null;
+
+  function closeLineMenu() {
+    if (lineMenu) lineMenu.remove();
+    lineMenu = null;
+    document.removeEventListener('pointerdown', onLineMenuOutside, true);
+    document.removeEventListener('keydown', onLineMenuKey, true);
+  }
+  function onLineMenuOutside(event) {
+    if (lineMenu && !lineMenu.contains(event.target)) closeLineMenu();
+  }
+  function onLineMenuKey(event) {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closeLineMenu();
+    }
+  }
+
+  function showLineMenu(conn, event) {
+    closeLineMenu();
+    const mode = lineMode(conn);
+    lineMenu = document.createElement('div');
+    lineMenu.className = 'pm-line-menu';
+    lineMenu.innerHTML =
+      `<button type="button" data-m="link" class="${mode === 'link' ? 'on' : ''}" title="つないだカードを同じタイミングで鳴らす(ループの時は、全部鳴り終わってから揃って頭に戻る)">リンク</button>` +
+      `<button type="button" data-m="chain" class="${mode === 'chain' ? 'on' : ''}" title="線の向き(引き始め → 引いた先)の順に鳴らす">チェイン</button>` +
+      `<button type="button" data-m="delete" class="danger" title="この線を消す">削除</button>`;
+    lineMenu.style.left = `${Math.min(window.innerWidth - 220, event.clientX + 8)}px`;
+    lineMenu.style.top = `${Math.min(window.innerHeight - 60, event.clientY + 8)}px`;
+    lineMenu.querySelectorAll('button').forEach((btn) => btn.addEventListener('click', () => {
+      closeLineMenu();
+      setLineMode(conn, btn.dataset.m);
+    }));
+    document.body.appendChild(lineMenu);
+    setTimeout(() => {
+      document.addEventListener('pointerdown', onLineMenuOutside, true);
+      document.addEventListener('keydown', onLineMenuKey, true);
+    }, 0);
+  }
+
+  function setLineMode(conn, m) {
+    const a = data().cards.find((c) => c.id === conn.cardIdA);
+    const f = a && folderOf(a);
+    if (m === 'delete') {
+      const i = data().connections.indexOf(conn);
+      if (i >= 0) data().connections.splice(i, 1);
+      connCount = data().connections.length;
+      setStatus('線を削除しました');
+    } else {
+      if (lineMode(conn) === m) return;
+      conn.mode = m;
+      setStatus(m === 'link' ? 'リンクにしました(つないだカードを同じタイミングで鳴らします)' : 'チェインにしました(線の向きの順に鳴らします)');
+    }
+    redrawAsterismLines();
+    scheduleAutoSave();
+    if (f) soundsOf(f.id).forEach((s) => refreshSound(s));
+  }
+
+  /** リンクでつながったカードのまとまり(同じエリアの中)。自分を含む */
+  function linkGroupOf(f, cardId) {
+    const ids = new Set(soundsOf(f.id).map((x) => x.id));
+    const group = new Set([cardId]);
+    const queue = [cardId];
+    while (queue.length) {
+      const id = queue.shift();
+      data().connections.forEach((c) => {
+        if (lineMode(c) !== 'link') return;
+        const other = c.cardIdA === id ? c.cardIdB : c.cardIdB === id ? c.cardIdA : null;
+        if (other && ids.has(other) && !group.has(other)) {
+          group.add(other);
+          queue.push(other);
+        }
+      });
+    }
+    return group;
+  }
+
+  /** そのカードが同じエリアの誰かと線でつながっているか */
+  const hasLines = (f, s) => Boolean(f) && beltOf(f, s.id).size >= 2;
 
   /* ---------------- KAIROS へ渡す窓口(js/kairos.js) ----------------
    * 聴く音はプレミックスの master(全エリアのバスの合計。待機中のエリアは音量0なので、実際にはアクティブなエリアの音)。
@@ -3847,7 +3895,6 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     const f = folderOf(s);
     const rt = soundRt.get(s.id) || {};
     const copy = { ...s, id: newId(), createdAt: new Date().toISOString() };
-    if (Array.isArray(s.responses)) copy.responses = s.responses.map((r) => ({ ...r, id: newId() }));
     delete copy.height;
     if (f && isTimeline(f) && rt.buffer) {
       // 元の音が鳴り終わった所(ループの外に出る時は最後に置く)
@@ -3877,5 +3924,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, combinedCard, slotCard, saveMidiOf, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();
