@@ -200,6 +200,24 @@
     });
   }
 
+  /**
+   * LYRA Host を、LYRA のブラウザの窓の上に浮かぶ小窓として出す(2026-10-01、ユーザー要望「別ウィンドウとのやり取りを抑えたい。埋め込みではなく、
+   * ウィンドウの操作の工夫で」)。ホストが capabilities に "window" を載せている時だけ。位置はブラウザの窓の画面上の位置(CSS の px と拡大率)を渡し、
+   * ホストが覚えた位置があればホストがそちらを優先する。失敗しても開く流れは止めない
+   */
+  async function floatWindow(place) {
+    if (!isConnected() || !(welcome.capabilities || []).includes('window')) return null;
+    try {
+      return await request({
+        type: 'window', action: 'float', place: place || 'bottom-right',
+        anchor: { screenX: window.screenX, screenY: window.screenY, width: window.outerWidth, height: window.outerHeight, devicePixelRatio: window.devicePixelRatio || 1 },
+      }, 8000);
+    } catch (err) {
+      if (typeof debugLog === 'function') debugLog(`LYRA Host の小窓: ${err.message}`);
+      return null;
+    }
+  }
+
   /* ---------- 受け取った音の置き場(この端末の IndexedDB) ---------- */
   const DB = 'lyra-hostaudio';
   const STORE = 'wav';
@@ -230,6 +248,7 @@
   window.LyraHost = {
     launchAndConnect,
     request,
+    floatWindow,
     isConnected,
     capabilities: () => (welcome && welcome.capabilities) || [],
     onResult: (fn) => { resultHandler = fn; },

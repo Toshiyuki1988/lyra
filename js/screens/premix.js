@@ -3995,6 +3995,7 @@ ${choiceLines.join('\n')}
         if (q && q.approximate) x.approximate = true;
         if (q && !q.ok) x.reason = q.reason || '';
       });
+      H.floatWindow();
       const s = placePatchCard(imageCard, cardId, soul, patch, midi);
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
       const okN = patch.settings.filter((x) => x.ok).length;
@@ -4127,6 +4128,7 @@ ${choiceLines.join('\n')}
         await H.request({ type: 'setParams', params: defaults }, 60000);
       }
       const res = await H.request({ type: 'setParams', params: p.settings.map((x) => ({ id: x.id, text: x.text })) }, 60000);
+      H.floatWindow();
       const okN = res.okCount != null ? res.okCount : (res.results || []).filter((q) => q && q.ok).length;
       setStatus(`音色「${p.name}」で LYRA Host に開きました(${okN}項目)。詰めて Ctrl+L でカードの音が差し替わります`);
     } catch (err) {
@@ -4188,6 +4190,7 @@ ${choiceLines.join('\n')}
           ? { plugin: { name: (chosen.soul.hostMap && chosen.soul.hostMap.plugin.name) || chosen.soul.name }, freshPlugin: caps.includes('freshPlugin'), candidates: sendable, selectCandidate: 0, preferSaved: false }
           : { preferSaved: true }),
       }, 120000);
+      H.floatWindow(); // LYRA の上に浮かぶ小窓で出す(ホストが対応していれば)
       if (candidates && !useCandidates) {
         setStatus(`LYRA Host で開きました。ホストがまだ候補の読み込みに対応していないので、Serum2 のブラウザで探してください: ${candidates.map((c) => c.name).join(' / ')}`, { important: true });
         return;
