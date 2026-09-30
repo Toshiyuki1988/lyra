@@ -779,7 +779,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
 
   /** { text: ざっくりした要望, draft?: 前に整えた文(手を入れているかもしれない), context?: つながっているカードの行 } → { prompt, model, bars, gauges, why } */
   async function refinePrompt({ text, draft, context }) {
-    const models = P.PRESETS.filter((p) => !p.response).map((p) => `- ${p.id}: ${p.label} — ${p.text}${p.hidden ? '(ドラムだけのビート。「ビート」の入口で作る)' : ''}`).join('\n');
+    const models = P.PRESETS.filter((p) => !p.response && !p.expansion).map((p) => `- ${p.id}: ${p.label} — ${p.text}${p.hidden ? '(ドラムだけのビート。「ビート」の入口で作る)' : ''}`).join('\n');
     const prompt = `あなたは作曲支援アプリLYRAのプロンプト係です。ユーザーのざっくりした要望を、このアプリのMIDI生成に最も効く文章に書き直してください。
 MIDI生成では、別のGeminiがこの文章を読んで設計図(音高の器・拍子・時間の設計図・層ごとの生成器とパラメータ)を書き、アプリがそれを音にします。
 
@@ -1077,6 +1077,65 @@ ${models}
     };
   }
 
+  /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
+   * 応答と同じ分析をして、元のMIDIの「次の場面」を、元とほぼ同じ小節数で作る。応答と違い元と同時には鳴らないので、元の音は聴くだけの層に入れず、
+   * 材料としてプロンプトに渡す。新しい主旋律を書いたら、今までの決まりどおり反芻する(Gemini 2回。反芻に失敗したら作らない) */
+  const EXPANSION_RULE = `これは「展開」です。ユーザーのMIDI(下の「元のMIDI」)の、すぐ後に続く次の場面を作ります。
+- 元のMIDIが鳴り終わった直後に、このMIDIが頭(0拍目)から鳴る。つなぎ目が自然に聞こえるよう、最初の小節は元の最後の響き・音域から無理なく入る
+- 元のMIDIの材料(動機・和声・リズムの特徴)を受け継ぎつつ、同じことを繰り返さず、場面を一歩先へ進める
+- 元のMIDIの音をそのまま写さない(動機は変形して使う)
+- 拍子・テンポ・小節数は元のMIDIにそろえる(アプリが決める)`;
+
+  async function createExpansion({ source, presetId, hint }) {
+    const preset = P.byId(presetId);
+    if (!preset || !preset.expansion) throw new Error('展開のモデルが見つかりません');
+    const m = source.midi;
+    const notes = source.notes.map((n) => ({ ...n }));
+    if (!notes.length) throw new Error('元のMIDIに音がありません');
+    const analysis = analyzeMidi(m, notes);
+    const bars = Math.min(64, analysis.bars);
+    const input = {
+      bars,
+      meterLabel: T.meterLabel(m),
+      contextText: `元のMIDI「${source.name}」(この後に続く場面を作る):\n${notesText(m, notes)}\n\n分析(アプリが計算):\n${analysis.text}\n` +
+        `最後の小節の響き(推定): ${analysis.chords[analysis.chords.length - 1].symbol}`,
+      hint: hint || '',
+    };
+    const prompt = buildPrompt(preset, input, EXPANSION_RULE);
+    const schema = D.buildSchema(preset, {});
+    setStatus(`${preset.short}の展開を書いています…`, { busy: true });
+    const raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${preset.short}` });
+    const design = D.sanitizeDesign(raw, preset, { bars });
+    design.tempo = m.tempo;
+    design.meters = T.metersOf(m).map((x) => ({ ...x }));
+    design.meterMode = 'fixed';
+    design.swing = 0;
+    if (design.pitch.system === 'chords' && !design.pitch.chords.length) design.pitch.system = 'scale';
+    if (design.pitch.system === 'scale' && !design.pitch.scale) Object.assign(design.pitch, { root: analysis.key.root, scale: analysis.key.mode });
+    if (!design.layers.some((l) => E.GENERATORS[l.generator])) {
+      throw new Error(`鳴らせる層が1つもありませんでした(Geminiが書いた層: ${(raw.layers || []).map((l) => `${l.name || '?'}=${l.generator || '(空)'}`).join(' / ') || '層が空'})`);
+    }
+    const melodyLayer = design.layers.find((l) => l.generator === 'line' && l.role === 'melody' && (l.notes || []).length >= 4);
+    if (preset.ruminate && melodyLayer) design.rumination = await ruminate(design, melodyLayer, raw.concept || raw.description, null);
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const out = renderResponse(design, seed);
+    if (!out.notes.length) throw new Error('展開の音が1つも出てきませんでした');
+    return {
+      id: newId(),
+      model: preset.id,
+      label: preset.short,
+      name: fileName(raw, `next_${preset.id}.mid`),
+      concept: String(raw.concept || '').slice(0, 100),
+      commentary: String(raw.commentary || '').slice(0, 400),
+      against: '全体',
+      analysis: analysis.text.slice(0, 600),
+      design,
+      seed,
+      ...out,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   /** 応答の設計図 → 音(Geminiなし。振り直しにも使う)。聴くだけの層の音は入らない */
   function renderResponse(design, seed) {
     const out = E.render(design, { seed });
@@ -1085,7 +1144,7 @@ ${models}
 
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
-    analyzeMidi, createResponse, renderResponse,
+    analyzeMidi, createResponse, createExpansion, renderResponse,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries },
   });
 })();

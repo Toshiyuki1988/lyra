@@ -382,7 +382,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
-      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
+      if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('expand', '展開') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
       if (card.type === 'image') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('replace', '入替') + hexHtml('delete', 'Delete');
@@ -416,6 +416,7 @@
       if (action === 'save') saveMidiOf(card);
       else if (action === 'info') showMidiAbout(card);
       else if (action === 'respond') respondTo(card);
+      else if (action === 'expand') expandFrom(card);
       else if (action === 'vocab') soundToVocab(card);
       else if (action === 'replace') openImageSearch(card);
       else if (action !== 'delete') return;
@@ -3570,8 +3571,8 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
    * 「音色を変えて作り直す」も合わさった音を作り直していたため、ユーザー判断で別のカードにした(スロットは廃止。古いスロットは読み込んだ時に移す) */
   const baseMidiCard = (s) => s.midiInline || findMidiCard(s.midiRef);
 
-  /** 応答のMIDIのカードを、元のカードの右隣に置いてリンクで結ぶ */
-  function placeResponseCard(s, midiCard, voice, offset) {
+  /** 応答・展開のMIDIのカードを、元のカードの右隣に置いて線で結ぶ(mode: 'link'=応答、'chain'=展開。線の向きは 元 → 新しいカード) */
+  function placeResponseCard(s, midiCard, voice, offset, mode) {
     const f = folderOf(s) || ensureArea();
     const resp = placeSound(f, midiCard.name, soundsOf(f.id).length, { midiInline: midiCard, midiVoice: voice || s.midiVoice || DEFAULT_MIDI_VOICE, loop: true });
     const srcEl = cardElById(s.id);
@@ -3596,7 +3597,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       applyCardTransform(el);
       clampIntoFolder(resp, el);
     }
-    data().connections.push({ id: newId(), cardIdA: s.id, cardIdB: resp.id, mode: 'link' });
+    data().connections.push({ id: newId(), cardIdA: s.id, cardIdB: resp.id, mode: mode === 'chain' ? 'chain' : 'link' });
     connCount = data().connections.length;
     soundRt.set(resp.id, {});
     redrawAsterismLines();
@@ -3606,16 +3607,18 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   /** 応答のMIDIカードの中身(元のMIDIのテンポ・拍子で、応答の音だけ) */
-  function responseMidiCard(base, slot, presetId) {
+  function responseMidiCard(base, slot, presetId, kind) {
     const m = base.midi;
     return {
       id: newId(),
       type: 'midi',
       name: slot.name || `${String(base.name || 'midi').replace(/\.mid$/i, '')}_${slot.label}.mid`,
-      description: `「${String(base.name || '').replace(/\.mid$/i, '')}」の${slot.against || ''}への応答(${slot.label})`,
+      description: kind === 'expansion'
+        ? `「${String(base.name || '').replace(/\.mid$/i, '')}」の次の展開(${slot.label})`
+        : `「${String(base.name || '').replace(/\.mid$/i, '')}」の${slot.against || ''}への応答(${slot.label})`,
       concept: slot.concept || '',
       commentary: slot.commentary || '',
-      responseTo: base.id || null,
+      [kind === 'expansion' ? 'expansionOf' : 'responseTo']: base.id || null,
       midi: {
         tempo: m.tempo, tempoChanges: m.tempoChanges, beatsPerBar: m.beatsPerBar, meters: m.meters,
         notes: slot.notes, partNames: slot.partNames || {}, partRoles: slot.partRoles || {},
@@ -3689,6 +3692,48 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       const at = String(err.stack || '').split('\n').map((l) => (l.match(/\/js\/([\w/.-]+\.js)[^:]*:(\d+)/) || [])).find((m) => m[1]);
       if (typeof debugLog === 'function') debugLog(`応答の失敗: ${err.stack || err.message}`);
       setStatus(`応答を作れませんでした: ${err.message}${at ? `(${at[1]} ${at[2]}行目)` : ''}`, { important: true });
+      return null;
+    }
+  }
+
+  /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
+   * MIDIのカードの「展開」: モデルと注文を聞いて Gemini を1回(新しい主旋律を書くモデルは反芻でもう1回)呼び(js/midi/compose.js の createExpansion)、
+   * 元とほぼ同じ小節数の「次の場面」のMIDIを右隣に置き、元 → 展開のチェインの線で結ぶ(▶で元の後に続いて鳴る) */
+  async function expandFrom(s) {
+    const M = window.LyraMidi;
+    const P = window.LyraPresets;
+    const base = baseMidiCard(s);
+    if (!M || !P || !base || !base.midi || !base.midi.notes.length) {
+      setStatus('元のMIDIが見つかりません', { important: true });
+      return null;
+    }
+    const models = P.PRESETS.filter((p) => p.expansion);
+    const values = await showFormDialog({
+      title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」の次を展開する`,
+      message: '元のMIDIを分析して(調・小節ごとの響き・音域)、ほぼ同じ長さの「次の場面」を作り、右隣に別のカードとして置きます。' +
+        '元のカードとはチェインの線(元 → 展開の順に鳴る)でつなぎます。Geminiを1回(新しい主旋律を書くモデルは、旋律の反芻でもう1回)呼びます。\n\n' +
+        models.map((p) => `・${p.label}${p.ruminate ? '(Gemini 2回)' : ''}: ${p.text}`).join('\n'),
+      submitLabel: '作る',
+      fields: [
+        { name: 'model', label: '展開のモデル', type: 'select', value: models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: 後半で一度止めてから盛り上げて/ピアノだけの静かな場面に' },
+      ],
+    });
+    if (!values) return null;
+    const preset = P.byId(values.model);
+    try {
+      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, hint: values.hint });
+      const next = placeResponseCard(s, responseMidiCard(base, slot, preset.id, 'expansion'), s.midiVoice, 0, 'chain');
+      scheduleAutoSave();
+      if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+      setStatus(`次の展開「${preset.short}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''})。` +
+        'チェインの線でつながっているので、▶で元の後に続いて鳴ります。展開のカードからさらに展開すると、続きが伸びていきます');
+      return next;
+    } catch (err) {
+      console.error(err);
+      const at = String(err.stack || '').split('\n').map((l) => (l.match(/\/js\/([\w/.-]+\.js)[^:]*:(\d+)/) || [])).find((x) => x[1]);
+      if (typeof debugLog === 'function') debugLog(`展開の失敗: ${err.stack || err.message}`);
+      setStatus(`展開を作れませんでした: ${err.message}${at ? `(${at[1]} ${at[2]}行目)` : ''}`, { important: true });
       return null;
     }
   }
@@ -3975,5 +4020,5 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   }
 
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, expandFrom, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

@@ -327,6 +327,65 @@
       fields: ['hint'],
     },
 
+    /* ---------------- 展開(2026-10-01、ユーザー要望「現在のMIDIを分析して、複数のモデルで同じ長さくらいの次の展開MIDIをチェインつきで」) ----------------
+     * プレミックスのMIDIのカードの「展開」専用(通常のピッカーには出さない)。応答と違い元と同時には鳴らないので、元の音は「聴くだけの層」に入れず、
+     * 材料としてプロンプトに渡す。拍子・テンポ・小節数は元のMIDIにそろえる。新しい主旋律を書くモデルは今までの決まりどおり反芻する(ruminate) */
+    {
+      id: 'exp_next', group: '展開', label: '自然な続き', short: '続き', hidden: true, expansion: true,
+      text: '元のMIDIの動機・和声の流れを受け継いで、その次の場面を自然につなげる(起→承、承→転のような一歩先)',
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords', 'scale'], hint: 'chords で、元のMIDIの調とコード進行の流れを受け継ぐ(分析の調・響きを参照)。同じ進行の繰り返しではなく、一歩先へ進める(例: 同じ調の中で違う和音から始める、終わりを半終止か終止で締める)' },
+      meter: 'source', arc: false, ruminate: true, bars: 8, voice: 'piano',
+      guide: '層は chords・bass・line(role melody)を1つずつ。主旋律は元のMIDIの動機(最初の2〜4音のリズムと音程の形)を受け継ぎ、移高・リズムの変形で展開する(そのまま繰り返さない)。伴奏の型・音域は元のMIDIの役割に近づける',
+      fields: ['hint'],
+    },
+    {
+      id: 'exp_lift', group: '展開', label: '転調して高揚(サビへ)', short: '高揚', hidden: true, expansion: true, modulate: true,
+      text: '半音・全音・4度などの転調で視界を開き、音域と密度を上げて、サビへ向かって高揚させる',
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords'], hint: 'chords で、元のMIDIの調から半音上・全音上・4度上・平行調などへ転調した進行(最初の小節で転調を感じさせる。ピボットコードかドミナントで入ってもよい)。テンションを増やしてもよい' },
+      meter: 'source', arc: false, ruminate: true, bars: 8, voice: 'piano',
+      guide: '層は chords(comping は pulse か stabs か arpeggio。元より密に)・bass(root-fifth か octave)・line(role melody。元より高い音域で、元の動機を受け継いで大きく歌う)。後半ほど強く',
+      fields: ['hint'],
+    },
+    {
+      id: 'exp_motif', group: '展開', label: '動機変容(ベートーヴェン風)', short: '動機変容', hidden: true, expansion: true,
+      text: '元のMIDIの印象的な動機を取り出し、移高・反行・断片化・拡大などの変換を鎖のようにつないで執拗に発展させる',
+      generators: ['motif', 'chords', 'bass'],
+      pitch: { systems: ['chords', 'scale'], hint: 'chords で元の調を受け継ぐか、同主調・平行調へ。減七の和音やナポリの和音で劇的にしてもよい' },
+      meter: 'source', arc: false, bars: 8, voice: 'piano',
+      guide: 'motif を1つ(cell は元のMIDIから取り出したリズムの特徴が強い3〜5音。音名・長さは元の音のまま。chain は FRAG・DIM・T+n で緊張を高め、最後に AUG か ORIG)。chords は stabs か pulse、bass は octave か root',
+      style: 'ベートーヴェンの技法: 動機労作(短い動機の執拗な展開)、断片化、ゼクエンツ。既存曲の旋律は使わない',
+      fields: ['hint'],
+    },
+    {
+      id: 'exp_contrast', group: '展開', label: '対比のBセクション', short: '対比', hidden: true, expansion: true,
+      text: '調・リズム・音域・質感を元と対比させた、別の顔のセクション(A → B)',
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords', 'scale'], hint: 'chords で、元の調の平行調・同主調・属調・下属調など、はっきり色の変わる調。元と違う和音のリズム(元が長い和音なら細かく、細かいなら長く)' },
+      meter: 'source', arc: false, ruminate: true, bars: 8, voice: 'piano',
+      guide: '層は chords・bass・line(role melody)。元のMIDIと対比させる: 音域(元が高ければ低く)・リズムの密度(元が細かければゆったり)・伴奏の型(元と違う comping)。動機は新しく作るが、元の動機の音程の形をどこか1か所だけ引用して、つながりを残す',
+      fields: ['hint'],
+    },
+    {
+      id: 'exp_break', group: '展開', label: 'ブレイクダウン(静かな間奏)', short: 'ブレイク', hidden: true, expansion: true,
+      text: '音数を大きく減らし、持続音と余白で息をつく間奏。元の動機の断片がかすかに残る',
+      generators: ['chords', 'gesture', 'line'],
+      pitch: { systems: ['chords', 'scale'], hint: 'chords なら元の調の中で長い和音(1〜2小節に1つ)。scale なら元の調・旋法' },
+      meter: 'source', arc: false, bars: 8, voice: 'pad',
+      guide: '層は chords(comping sustain、voicing open)か gesture の地(sustained_open・breath_swell)を1〜2つと、必要なら line(role counter)で元の動機の断片を2〜3回だけ、弱く高い音域に。全体に疎らに',
+      fields: ['hint'],
+    },
+    {
+      id: 'exp_minimal', group: '展開', label: 'ミニマル展開(ライヒ風)', short: 'ミニマル展開', hidden: true, expansion: true,
+      text: '元のMIDIの断片を細胞にして、加算・位相のずれで少しずつ変化させながら続ける',
+      generators: ['process'],
+      pitch: { systems: ['scale'], hint: 'scale で元の調・旋法(分析の調)' },
+      meter: 'source', arc: false, bars: 8, voice: 'vibes',
+      guide: '層は process を1〜2つ。cell は元のMIDIから取り出した3〜8音の断片(音名・長さは元の音のまま)。rule は additive か phase。2つ目を足すなら rule drone の地か、別の断片',
+      fields: ['hint'],
+    },
+
     /* ---------------- リズム(「ビート」の入口専用。ピッカーには出さない) ---------------- */
     {
       id: 'beat', group: 'リズム', label: 'ビート', short: 'ビート', hidden: true,
