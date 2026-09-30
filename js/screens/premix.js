@@ -229,6 +229,36 @@
   }
 
   const volumeGain = (v) => (Math.max(0, Math.min(100, v)) / 100) ** 2;
+
+  /* ミュートとソロ(2026-10-01、ユーザー要望「MIDIカードにミュート、ソロ機能」。オーディオカード全部に付けた)。s.mute / s.solo。
+   * ソロはエリアごと: そのエリアに1枚でもソロのカードがあれば、ソロのカードだけが鳴る。ミュートはソロより強い。
+   * カードの音量のゲインに掛ける(残響への送りはその後ろなので、残響も一緒に消える)。鳴っている途中でもすぐ効く */
+  function audibleOf(s) {
+    if (s.mute) return 0;
+    if (!s.folderId) return 1;
+    const soloing = data().cards.some((c) => c.type === 'sound' && c.folderId === s.folderId && c.solo);
+    return soloing && !s.solo ? 0 : 1;
+  }
+  const cardGain = (s) => volumeGain(s.volume) * audibleOf(s);
+
+  /** ミュート・ソロが変わった時: 鳴っている音の音量を合わせ、カードの見た目を直す(全エリア。ソロはエリアごとに効く) */
+  function applyMuteSolo() {
+    const t = ctx ? ctx.currentTime : 0;
+    data().cards.filter((c) => c.type === 'sound').forEach((x) => {
+      const rt = soundRt.get(x.id);
+      if (ctx) [...(rt && rt.node ? [rt.node] : []), ...voicesOf(x.id)].forEach((n) => n.gain.gain.setTargetAtTime(cardGain(x), t, 0.02));
+      refreshSound(x);
+    });
+  }
+
+  function toggleMuteSolo(s, key) {
+    if (s[key]) delete s[key];
+    else s[key] = true;
+    applyMuteSolo();
+    scheduleAutoSave();
+    const name = s.fileName.replace(/\.[^.]+$/, '');
+    setStatus(key === 'mute' ? `「${name}」を${s.mute ? 'ミュートしました' : 'ミュートを外しました'}` : s.solo ? `「${name}」をソロにしました(このエリアでは、ソロのカードだけが鳴ります)` : `「${name}」のソロを外しました`);
+  }
   const reverbSend = (r) => (Math.max(0, Math.min(100, r)) / 100) * 0.8;
 
   /* ---------------- 画面 ---------------- */
@@ -428,7 +458,10 @@
     },
 
     onCardMoved(card, el) {
-      if (card.type === 'sound') dropSound(card, el);
+      if (card.type === 'sound') {
+        dropSound(card, el);
+        applyMuteSolo();
+      }
       scheduleAutoSave();
     },
   };
@@ -796,6 +829,8 @@
         `<div class="snd-row">` +
         `<button type="button" class="snd-play" data-s="play" aria-label="再生">▶</button>` +
         `<button type="button" class="snd-loop" data-s="loop">ループ</button>` +
+        `<button type="button" class="snd-ms snd-mute" data-s="mute" title="ミュート(このカードを鳴らさない)">M</button>` +
+        `<button type="button" class="snd-ms snd-solo" data-s="solo" title="ソロ(このエリアでは、ソロのカードだけを鳴らす)">S</button>` +
         `<span class="snd-time"></span>` +
         `<button type="button" class="snd-unclip" data-s="unclip" title="切り取った範囲を外して、音の全体に戻す" hidden>✕</button></div>` +
         `<div class="snd-fx" aria-label="かかっているネビュラのエフェクト"></div>` +
@@ -822,6 +857,10 @@
   }
 
   function bindCardControls(s, el) {
+    ['mute', 'solo'].forEach((key) => el.querySelector(`[data-s="${key}"]`).addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleMuteSolo(s, key);
+    }));
     el.querySelector('[data-s="loop"]').addEventListener('click', (event) => {
       event.stopPropagation();
       s.loop = !s.loop;
@@ -869,7 +908,7 @@
         const t = audio().currentTime;
         // フリーの再生中の音と、タイムラインで鳴っている音の両方に効かせる
         [...(rt && rt.node ? [rt.node] : []), ...voicesOf(s.id)].forEach((n) => {
-          if (key === 'volume') n.gain.gain.setTargetAtTime(volumeGain(s.volume), t, 0.02);
+          if (key === 'volume') n.gain.gain.setTargetAtTime(cardGain(s), t, 0.02);
           else n.send.gain.setTargetAtTime(reverbSend(s.reverb), t, 0.02);
         });
       });
@@ -919,6 +958,14 @@
       play.setAttribute('aria-label', on ? (isChain(f) ? 'このベルトを止める' : '停止') : isChain(f) ? 'このカードからベルトを鳴らす' : '再生');
       play.disabled = Boolean(rt.missing) || !f;
     }
+    // ミュート・ソロ: ボタンの点灯と、鳴らないカードを暗くする(スフィアでも)
+    const silent = audibleOf(s) === 0;
+    el.classList.toggle('star-card--silent', silent);
+    el.classList.toggle('star-card--soloed', Boolean(s.solo));
+    const mb = el.querySelector('.snd-mute');
+    if (mb) mb.classList.toggle('on', Boolean(s.mute));
+    const sb = el.querySelector('.snd-solo');
+    if (sb) sb.classList.toggle('on', Boolean(s.solo));
     const loop = el.querySelector('.snd-loop');
     if (loop) loop.classList.toggle('snd-loop--on', Boolean(s.loop));
     const from = el.querySelector('.snd-from');
@@ -1483,7 +1530,7 @@
     source.loopStart = clip.start;
     source.loopEnd = clip.end;
     const gain = c.createGain();
-    gain.gain.value = volumeGain(s.volume);
+    gain.gain.value = cardGain(s);
     const send = c.createGain();
     send.gain.value = reverbSend(s.reverb);
     source.connect(gain);
@@ -1561,6 +1608,7 @@
   function removeSound(s) {
     stop(s);
     stopVoicesOf(s.id);
+    if (s.solo) setTimeout(applyMuteSolo, 0); // ソロのカードを外したら、ほかのカードがまた鳴る
     const st = stripRt.get(s.id);
     if (st) {
       setTimeout(() => [st.out, st.revSend, st.echoSend].forEach((n) => n.disconnect()), 300);
@@ -1987,7 +2035,7 @@
     const source = ctx.createBufferSource();
     source.buffer = rt.buffer;
     const gain = ctx.createGain();
-    gain.gain.value = volumeGain(s.volume);
+    gain.gain.value = cardGain(s);
     const send = ctx.createGain();
     send.gain.value = reverbSend(s.reverb);
     source.connect(gain);
@@ -1997,7 +2045,7 @@
     source.start(Math.max(when, now), clip.start, clip.len);
     if (end < when + clip.len) {
       // ループの終わりで切る(プチッと鳴らないよう短く消す)
-      gain.gain.setValueAtTime(volumeGain(s.volume), Math.max(when, end - 0.02));
+      gain.gain.setValueAtTime(cardGain(s), Math.max(when, end - 0.02));
       gain.gain.linearRampToValueAtTime(0, end);
       source.stop(end + 0.01);
     }
