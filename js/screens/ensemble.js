@@ -1161,7 +1161,7 @@ ${soulBlocks}
           `${g.moduleName ? `<span class="recipe-sep">›</span><span>${escapeHtml(g.moduleName)}</span>` : ''}</div>` +
           g.items.map(({ r, index }) => {
             const inner = `<div class="recipe-row-main"><span class="recipe-param">${done[index] ? '✓ ' : ''}${escapeHtml(r.param)}</span>` +
-              `<span class="recipe-value">${escapeHtml(r.value)}</span></div>` +
+              `<span class="recipe-value">${escapeHtml(r.value)}${r.fromHost ? '<span class="recipe-host" title="LYRA Host で直した・詰めた値">VST</span>' : ''}</span></div>` +
               (r.intent ? `<div class="recipe-intent">${escapeHtml(r.intent)}</div>` : '') +
               (r.paramId ? '' : `<div class="recipe-miss">手持ちのパラメータ名と一致しませんでした(資料での表記と違う名前の可能性があります)</div>`);
             const p = r.paramId && g.soul ? g.soul.params.find((x) => x.id === r.paramId) : null;
@@ -1179,6 +1179,11 @@ ${soulBlocks}
       `<button type="button" class="panel-close" aria-label="閉じる">×</button></div>` +
       body +
       `<div class="panel-actions">` +
+      // LYRA Host へ送る・今の値を読む(ソウルに VST との対応表がある行だけ。js/hostmap.js、2026-10-01)
+      (window.LyraHostMap && window.LyraHostMap.recipeUsable(items)
+        ? `<button type="button" class="btn-primary" data-action="host-send">LYRA Host へ送る</button>` +
+          `<button type="button" class="btn-secondary" data-action="host-read">ホストの今の値を読む</button>`
+        : '') +
       (items.length ? `<button type="button" class="btn-primary" data-action="pip">小窓で出す(Cubaseの上に浮かべる)</button>` : '') +
       `<button type="button" class="btn-secondary" data-action="full">${card.recipeFull ? '詳しいレシピを作り直す' : '初期状態から作る詳しいレシピにする'}</button>` +
       (items.length ? `<button type="button" class="btn-secondary" data-action="copy">テキストでコピー</button>` : '') +
@@ -1187,6 +1192,23 @@ ${soulBlocks}
     panel.querySelector('.panel-close').addEventListener('click', closeSidePanel);
     const pipBtn = panel.querySelector('[data-action="pip"]');
     if (pipBtn) pipBtn.addEventListener('click', () => popOutRecipe(card));
+    // レシピの行の値を書き換える(ホストで直した・詰めた値)。items は表示用の写しなので、カードの本体に書く
+    const onChange = (index, value) => {
+      if (!card.recipe || !card.recipe[index]) return;
+      card.recipe[index].value = value;
+      card.recipe[index].fromHost = true;
+      scheduleAutoSave();
+    };
+    const sendBtn = panel.querySelector('[data-action="host-send"]');
+    if (sendBtn) sendBtn.addEventListener('click', async () => {
+      await window.LyraHostMap.sendRecipe(items, onChange);
+      showRecipe(card);
+    });
+    const readBtn = panel.querySelector('[data-action="host-read"]');
+    if (readBtn) readBtn.addEventListener('click', async () => {
+      await window.LyraHostMap.readRecipe(items, onChange);
+      showRecipe(card);
+    });
     panel.querySelector('[data-action="full"]').addEventListener('click', () => buildFullRecipe(card));
     const copyBtn = panel.querySelector('[data-action="copy"]');
     if (copyBtn) {

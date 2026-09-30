@@ -237,5 +237,166 @@ ${vstLines.join('\n')}
     }));
   }
 
-  window.LyraHostMap = { run, panelHtml, bindPanel, vstOf, _test: { tokens, autoMatch, geminiMatch } };
+  /* ---------------- レシピを LYRA Host へ送る・ホストの今の値を読む(2026-10-01) ----------------
+   * 発言のパラメータレシピ(アンサンブル。行は { soulId, paramId, moduleName, param, value, intent })を、対応表で VST のパラメータに読み替えて
+   * setParams に表示の文字列のまま送る(ホストが "800 Hz" などを値に直す)。ホストが受け付けなかった行(「やや高め」のようなあいまいな値など)は、
+   * VST の実際の範囲と選択肢を見せて Gemini に1回で具体的な値へ直してもらい、送り直す(選択肢は実在するものとだけ照合)。
+   * 「ホストの今の値を読む」は、ホストで耳で詰めた値でレシピの値を書き換える(詰めた結果が発言のカードに残る) */
+
+  function recipeTargets(items) {
+    return items.map((r, index) => {
+      const soul = r.soulId ? getSoul(r.soulId) : null;
+      const p = soul && r.paramId ? soul.params.find((x) => x.id === r.paramId) : null;
+      const hit = p ? vstOf(soul, p) : null;
+      return { r, index, soul, p, hit };
+    });
+  }
+
+  /** そのレシピに、VST と結んだ行があるか(ボタンを出すかどうか) */
+  const recipeUsable = (items) => recipeTargets(items).some((x) => x.hit);
+
+  /** ホストの音源が、レシピのソウルの対応表と同じ音源か(結んだ ID の名前がそろっているか) */
+  async function checkPlugin(targets) {
+    const res = await window.LyraHost.request({ type: 'getParams', params: targets.map((x) => ({ id: x.hit.id })) });
+    const byId = new Map((res.params || []).map((q) => [String(q.id), q]));
+    const bad = targets.filter((x) => !byId.has(x.hit.id) || byId.get(x.hit.id).name !== x.hit.vst.name);
+    if (bad.length > targets.length / 2) {
+      const plugin = targets[0].soul.hostMap.plugin.name || targets[0].soul.name;
+      throw new Error(`LYRA Host に読み込まれている音源が「${plugin}」ではないようです。ホストで「${plugin}」を読み込んでから、もう一度押してください`);
+    }
+    return byId;
+  }
+
+  /** クリックの中で呼ぶこと。onChange(index, value) で、レシピの index 番目の行の値を書き換えてもらう(items は表示用の写しのことがあるため) */
+  async function sendRecipe(items, onChange) {
+    const H = window.LyraHost;
+    if (!H) return;
+    const connecting = H.launchAndConnect();
+    const all = recipeTargets(items);
+    const targets = all.filter((x) => x.hit);
+    const skipped = all.filter((x) => !x.hit);
+    if (!targets.length) {
+      setStatus('このレシピには、VSTと結んだパラメータがありません(ソウル画面の「VST」で対応表を作ってください)', { important: true });
+      return;
+    }
+    try {
+      await connecting;
+      await checkPlugin(targets);
+      setStatus(`レシピの${targets.length}項目を LYRA Host へ送っています…`, { busy: true });
+      const res = await H.request({ type: 'setParams', params: targets.map((x) => ({ id: x.hit.id, text: String(x.r.value || '') })) });
+      const results = (res.results || []).map((q, i) => ({ ...targets[i], q }));
+      let failed = results.filter((x) => !x.q || !x.q.ok);
+      let fixed = [];
+      if (failed.length) {
+        const again = await showChoiceDialog({
+          title: `${results.length - failed.length}項目を送りました。${failed.length}項目は送れませんでした`,
+          message: `${failed.map((x) => `・${x.r.param}「${x.r.value}」: ${(x.q && x.q.reason) || '理由不明'}`).join('\n')}\n\n` +
+            '値があいまいな時(「やや高め」など)は、VSTの実際の範囲と選択肢を見せて、Geminiに具体的な値へ直してもらえます(Geminiを1回)。',
+          options: [{ label: 'このままにする', value: false, secondary: true }, { label: 'Geminiに直してもらって送り直す', value: true }],
+        });
+        if (again) {
+          fixed = await fixAndResend(failed, onChange);
+          const fixedIds = new Set(fixed.filter((x) => x.q && x.q.ok).map((x) => x.hit.id));
+          failed = failed.filter((x) => !fixedIds.has(x.hit.id));
+        }
+      }
+      const okList = [...results.filter((x) => x.q && x.q.ok), ...fixed.filter((x) => x.q && x.q.ok)];
+      showSendSummary(okList, failed, skipped);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
+  /** 送れなかった行を Gemini に具体的な値へ直してもらい、送り直す。直した値はレシピにも書き戻す */
+  async function fixAndResend(failed, onChange) {
+    const H = window.LyraHost;
+    // 段階のあるもの(フィルターの型など)の選択肢は、ホストの一覧から取る(Drive には持たない)
+    let strings = new Map();
+    if (failed.some((x) => x.hit.vst.steps)) {
+      const list = await H.request({ type: 'listParams', includeValueStrings: true, includeMidiCC: false }, 60000);
+      strings = new Map((list.params || []).filter((q) => q.valueStrings).map((q) => [String(q.id), q.valueStrings]));
+    }
+    const lines = failed.map((x, i) => {
+      const v = x.hit.vst;
+      const vs = strings.get(v.id);
+      return `f${i}: ${v.name}(${vs ? `選択肢: ${vs.slice(0, 128).join(' / ')}` : `範囲: ${v.min} 〜 ${v.max}`})— レシピの値「${x.r.value}」${x.r.intent ? `、狙い: ${x.r.intent}` : ''}`;
+    });
+    const prompt = `シンセサイザー「${failed[0].soul.name}」の音色レシピの値を、プラグインが受け付ける具体的な値に直してください。
+各行は「ID: パラメータ名(選択肢か範囲)— レシピの値、狙い」です。
+
+${lines.join('\n')}
+
+決まり:
+- 選択肢があるものは、選択肢の中の文字列を一字一句そのまま1つ選ぶ
+- 範囲があるものは、範囲の表示と同じ単位・書き方で、範囲の中の値を1つ書く(例: 範囲が「20 Hz 〜 20.00 kHz」なら「1.2 kHz」、「0 % 〜 100 %」なら「35 %」)
+- レシピの値と狙いをできるだけ生かす。直せないものは text を空にする`;
+    const schema = { type: 'OBJECT', properties: { values: { type: 'ARRAY', items: { type: 'OBJECT', properties: { id: { type: 'STRING' }, text: { type: 'STRING' } }, required: ['id', 'text'] } } }, required: ['values'] };
+    setStatus('Geminiにレシピの値を直してもらっています…', { busy: true });
+    const raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 4096, timeoutMs: 120000, label: 'レシピの値の直し' });
+    const items = [];
+    (raw.values || []).forEach((v) => {
+      const x = failed[Number(String(v.id || '').replace(/\D/g, ''))];
+      const text = String(v.text || '').trim();
+      if (!x || !text) return;
+      const vs = strings.get(x.hit.vst.id);
+      if (vs && !vs.includes(text)) return; // 選択肢に無いもの(でっち上げ)は捨てる
+      items.push({ ...x, text });
+    });
+    if (!items.length) return [];
+    const res = await H.request({ type: 'setParams', params: items.map((x) => ({ id: x.hit.id, text: x.text })) });
+    return (res.results || []).map((q, i) => {
+      const x = items[i];
+      if (q && q.ok && onChange) onChange(x.index, q.text || x.text); // 直した値をレシピにも残す
+      return { ...x, q };
+    });
+  }
+
+  function showSendSummary(okList, failed, skipped) {
+    const lines = [
+      ...okList.map((x) => `✓ ${x.r.param} → ${x.hit.vst.name}: ${x.q.text || x.r.value}${x.q.approximate ? '(近い値)' : ''}`),
+      ...failed.map((x) => `✗ ${x.r.param}「${x.r.value}」: ${(x.q && x.q.reason) || '送れませんでした'}`),
+      ...skipped.map((x) => `ー ${x.r.param}: ${x.p ? 'VSTのパラメータと結んでいません' : 'ソウルのパラメータと一致していません'}`),
+    ];
+    showChoiceDialog({
+      title: `LYRA Host へ ${okList.length}項目を送りました`,
+      message: `${lines.join('\n')}\n\nホストで耳で詰めたら、レシピのパネルの「ホストの今の値を読む」で、詰めた値をこのレシピに残せます。`,
+      options: [{ label: '閉じる', value: true }],
+    });
+    setStatus(`LYRA Host へレシピを送りました(${okList.length}項目${failed.length ? `、送れなかったもの${failed.length}` : ''})`);
+  }
+
+  /** ホストで詰めた今の値で、レシピの値を書き換える。クリックの中で呼ぶこと */
+  async function readRecipe(items, onChange) {
+    const H = window.LyraHost;
+    if (!H) return;
+    const connecting = H.launchAndConnect();
+    const targets = recipeTargets(items).filter((x) => x.hit);
+    if (!targets.length) {
+      setStatus('このレシピには、VSTと結んだパラメータがありません', { important: true });
+      return;
+    }
+    try {
+      await connecting;
+      const byId = await checkPlugin(targets);
+      const changes = targets.map((x) => ({ x, now: byId.get(x.hit.id) })).filter((c) => c.now && String(c.now.text) !== String(c.x.r.value));
+      if (!changes.length) {
+        setStatus('レシピの値は、ホストの今の値と同じでした');
+        return;
+      }
+      const ok = await showChoiceDialog({
+        title: `${changes.length}項目の値を、ホストの今の値で書き換えますか?`,
+        message: changes.map((c) => `・${c.x.r.param}: ${c.x.r.value} → ${c.now.text}`).join('\n'),
+        options: [{ label: 'やめる', value: false, secondary: true }, { label: '書き換える', value: true }],
+      });
+      if (!ok) return;
+      changes.forEach((c) => { if (onChange) onChange(c.x.index, String(c.now.text)); });
+      setStatus(`レシピの${changes.length}項目を、LYRA Host で詰めた値に書き換えました`);
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
+  window.LyraHostMap = { run, panelHtml, bindPanel, vstOf, recipeUsable, sendRecipe, readRecipe, _test: { tokens, autoMatch, geminiMatch, recipeTargets } };
 })();

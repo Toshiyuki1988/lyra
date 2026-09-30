@@ -2446,3 +2446,4 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .hostmap-row--ok { border-style: solid; border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .hostmap-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .hostmap-actions button { font-size: 12px; }
+.recipe-host { margin-left: 5px; padding: 0 4px; border-radius: 4px; font-size: 9px; letter-spacing: 0.06em; background: #3d6e4f; color: #fff; vertical-align: 1px; }
