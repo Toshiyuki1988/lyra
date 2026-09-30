@@ -332,6 +332,7 @@
      * 材料としてプロンプトに渡す。拍子・テンポ・小節数は元のMIDIにそろえる。新しい主旋律を書くモデルは今までの決まりどおり反芻する(ruminate) */
     {
       id: 'exp_next', group: '展開', label: '自然な続き', short: '続き', hidden: true, expansion: true,
+      direction: '元の動機・和声の流れ・音域を受け継ぎ、同じことを繰り返さずに一歩先へ進める。つなぎ目は自然に、終わりは半終止か終止で締める',
       text: '元のMIDIの動機・和声の流れを受け継いで、その次の場面を自然につなげる(起→承、承→転のような一歩先)',
       generators: ['chords', 'bass', 'line'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords で、元のMIDIの調とコード進行の流れを受け継ぐ(分析の調・響きを参照)。同じ進行の繰り返しではなく、一歩先へ進める(例: 同じ調の中で違う和音から始める、終わりを半終止か終止で締める)' },
@@ -341,6 +342,7 @@
     },
     {
       id: 'exp_lift', group: '展開', label: '転調して高揚(サビへ)', short: '高揚', hidden: true, expansion: true, modulate: true,
+      direction: '元の調から半音上・全音上・4度上・平行調などへ転調した感触で視界を開き、音域と音の密度を上げて、後半ほど強く高揚させる(サビへ向かう)',
       text: '半音・全音・4度などの転調で視界を開き、音域と密度を上げて、サビへ向かって高揚させる',
       generators: ['chords', 'bass', 'line'],
       pitch: { systems: ['chords'], hint: 'chords で、元のMIDIの調から半音上・全音上・4度上・平行調などへ転調した進行(最初の小節で転調を感じさせる。ピボットコードかドミナントで入ってもよい)。テンションを増やしてもよい' },
@@ -350,6 +352,7 @@
     },
     {
       id: 'exp_motif', group: '展開', label: '動機変容(ベートーヴェン風)', short: '動機変容', hidden: true, expansion: true,
+      direction: '元の印象的な動機を取り出し、移高・反行・断片化・拡大縮小などの変形を重ねて、執拗に発展させる。緊張を高め、最後に元の形へ戻す',
       text: '元のMIDIの印象的な動機を取り出し、移高・反行・断片化・拡大などの変換を鎖のようにつないで執拗に発展させる',
       generators: ['motif', 'chords', 'bass'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords で元の調を受け継ぐか、同主調・平行調へ。減七の和音やナポリの和音で劇的にしてもよい' },
@@ -360,6 +363,7 @@
     },
     {
       id: 'exp_contrast', group: '展開', label: '対比のBセクション', short: '対比', hidden: true, expansion: true,
+      direction: '調・リズムの密度・音域・質感を元とはっきり対比させた、別の顔のセクションにする(A → B)。元の動機の音程の形をどこか1か所だけ引用して、つながりを残す',
       text: '調・リズム・音域・質感を元と対比させた、別の顔のセクション(A → B)',
       generators: ['chords', 'bass', 'line'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords で、元の調の平行調・同主調・属調・下属調など、はっきり色の変わる調。元と違う和音のリズム(元が長い和音なら細かく、細かいなら長く)' },
@@ -369,6 +373,7 @@
     },
     {
       id: 'exp_break', group: '展開', label: 'ブレイクダウン(静かな間奏)', short: 'ブレイク', hidden: true, expansion: true,
+      direction: '音数を大きく減らし、持続音と余白で息をつく間奏にする。元の動機の断片が、かすかに2〜3回だけ残る',
       text: '音数を大きく減らし、持続音と余白で息をつく間奏。元の動機の断片がかすかに残る',
       generators: ['chords', 'gesture', 'line'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords なら元の調の中で長い和音(1〜2小節に1つ)。scale なら元の調・旋法' },
@@ -378,6 +383,7 @@
     },
     {
       id: 'exp_minimal', group: '展開', label: 'ミニマル展開(ライヒ風)', short: 'ミニマル展開', hidden: true, expansion: true,
+      direction: '元の断片を細胞にして、反復・加算・位相のずれで少しずつ変化させながら続ける',
       text: '元のMIDIの断片を細胞にして、加算・位相のずれで少しずつ変化させながら続ける',
       generators: ['process'],
       pitch: { systems: ['scale'], hint: 'scale で元の調・旋法(分析の調)' },

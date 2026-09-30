@@ -3744,25 +3744,45 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
       return null;
     }
     const models = P.PRESETS.filter((p) => p.expansion);
+    // 二段構え: 展開のモデル(何をするか)× 生成モデル(どう作るか。いつものモデル)。前回の組み合わせを覚える
+    const gens = P.PRESETS.filter((p) => !p.hidden);
+    let lastExp = null;
+    let lastGen = '';
+    try {
+      lastExp = localStorage.getItem('lyra.expandDir');
+      lastGen = localStorage.getItem('lyra.expandGen') || '';
+    } catch (err) {
+      /* 使えない時は無視 */
+    }
     const values = await showFormDialog({
       title: `「${String(base.name || s.fileName).replace(/\.mid$/i, '')}」の次を展開する`,
       message: '元のMIDIを分析して(調・小節ごとの響き・音域)、ほぼ同じ長さの「次の場面」を作り、右隣に別のカードとして置きます。' +
-        '元のカードとはチェインの線(元 → 展開の順に鳴る)でつなぎます。Geminiを1回(新しい主旋律を書くモデルは、旋律の反芻でもう1回)呼びます。\n\n' +
-        models.map((p) => `・${p.label}${p.ruminate ? '(Gemini 2回)' : ''}: ${p.text}`).join('\n'),
+        '元のカードとはチェインの線(元 → 展開の順に鳴る)でつなぎます。\n' +
+        '「展開のモデル」で何をするか(方向)を、「生成モデル」でどう作るか(いつものモデルの層の組み方・様式)を選びます。' +
+        'Geminiを1回(新しい主旋律を書く時は、旋律の反芻でもう1回)呼びます。\n\n' +
+        models.map((p) => `・${p.label}: ${p.direction || p.text}`).join('\n'),
       submitLabel: '作る',
       fields: [
-        { name: 'model', label: '展開のモデル', type: 'select', value: models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'model', label: '展開のモデル(何をするか)', type: 'select', value: models.some((p) => p.id === lastExp) ? lastExp : models[0].id, options: models.map((p) => ({ value: p.id, label: p.label })) },
+        { name: 'gen', label: '生成モデル(どう作るか)', type: 'select', value: gens.some((p) => p.id === lastGen) ? lastGen : '',
+          options: [{ value: '', label: 'おまかせ(展開のモデルの組み方。コード・ベース・旋律など)' }, ...gens.map((p) => ({ value: p.id, label: `${p.group} · ${p.label}` }))] },
         { name: 'hint', label: '注文(任意)', type: 'textarea', placeholder: '例: 後半で一度止めてから盛り上げて/ピアノだけの静かな場面に' },
       ],
     });
     if (!values) return null;
     const preset = P.byId(values.model);
     try {
-      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, hint: values.hint });
-      const next = placeResponseCard(s, responseMidiCard(base, slot, preset.id, 'expansion'), s.midiVoice, 0, 'chain');
+      localStorage.setItem('lyra.expandDir', values.model);
+      localStorage.setItem('lyra.expandGen', values.gen || '');
+    } catch (err) {
+      /* 使えない時は無視 */
+    }
+    try {
+      const slot = await M.createExpansion({ source: { midi: base.midi, notes: base.midi.notes, name: base.name || s.fileName }, presetId: preset.id, genId: values.gen || null, hint: values.hint });
+      const next = placeResponseCard(s, responseMidiCard(base, slot, slot.model, 'expansion'), s.midiVoice, 0, 'chain');
       scheduleAutoSave();
       if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
-      setStatus(`次の展開「${preset.short}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''})。` +
+      setStatus(`次の展開「${slot.label}」を右隣に置きました(${slot.notes.length}音${slot.design.rumination ? '、主旋律は反芻済み' : ''})。` +
         'チェインの線でつながっているので、▶で元の後に続いて鳴ります。展開のカードからさらに展開すると、続きが伸びていきます');
       return next;
     } catch (err) {

@@ -1086,9 +1086,18 @@ ${models}
 - 元のMIDIの音をそのまま写さない(動機は変形して使う)
 - 拍子・テンポ・小節数は元のMIDIにそろえる(アプリが決める)`;
 
-  async function createExpansion({ source, presetId, hint }) {
-    const preset = P.byId(presetId);
-    if (!preset || !preset.expansion) throw new Error('展開のモデルが見つかりません');
+  /**
+   * 二段構え(2026-10-01、ユーザー要望「展開モデル→生成モデルの二段構えにしたい」。展開のモデルだけだと単純なコード進行になった):
+   *   presetId = 展開のモデル(何をするか=方向。direction の文だけを使い、作り方には口を出さない)
+   *   genId = 生成モデル(どう作るか。いつものモデル。層の組み方・生成器・様式はそのモデルのもの)。無ければ展開のモデルの組み方(おまかせ)
+   */
+  async function createExpansion({ source, presetId, genId, hint }) {
+    const dir = P.byId(presetId);
+    if (!dir || !dir.expansion) throw new Error('展開のモデルが見つかりません');
+    const gen = genId ? P.byId(genId) : null;
+    if (genId && (!gen || gen.hidden)) throw new Error('生成モデルが見つかりません');
+    const preset = gen ? { ...gen, meter: 'source' } : dir; // 拍子は元のMIDIにそろえる
+    const tag = gen ? `${dir.short}×${gen.short}` : dir.short;
     const m = source.midi;
     const notes = source.notes.map((n) => ({ ...n }));
     if (!notes.length) throw new Error('元のMIDIに音がありません');
@@ -1101,15 +1110,17 @@ ${models}
         `最後の小節の響き(推定): ${analysis.chords[analysis.chords.length - 1].symbol}`,
       hint: hint || '',
     };
-    const prompt = buildPrompt(preset, input, EXPANSION_RULE);
+    const prompt = buildPrompt(preset, input, `${EXPANSION_RULE}
+- 展開の方向「${dir.label}」: ${dir.direction || dir.text}${gen ? `
+- 作り方は「${gen.label}」の層の組み方・生成器・様式で(方向はこの展開に従い、音のつくりはこのモデルらしく)` : ''}`);
     const schema = D.buildSchema(preset, {});
-    setStatus(`${preset.short}の展開を書いています…`, { busy: true });
+    setStatus(`${tag}の展開を書いています…`, { busy: true });
     let raw;
     try {
-      raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${preset.short}` });
+      raw = await askGeminiJson({ prompt, responseSchema: schema, maxOutputTokens: 8192, timeoutMs: 180000, label: `展開・${tag}` });
     } catch (err) {
       // 切れた時は、原因を見分ける事実(元の長さ・モデル・出力の量・末尾)を添える
-      if (err.truncated) err.message += `[元のMIDI ${analysis.bars}小節・${m.notes.length}音、モデル ${preset.short}、出力${err.outTokens || '?'}トークン、末尾「…${err.tail || ''}」]`;
+      if (err.truncated) err.message += `[元のMIDI ${analysis.bars}小節・${m.notes.length}音、モデル ${tag}、出力${err.outTokens || '?'}トークン、末尾「…${err.tail || ''}」]`;
       throw err;
     }
     const design = D.sanitizeDesign(raw, preset, { bars });
@@ -1130,7 +1141,8 @@ ${models}
     return {
       id: newId(),
       model: preset.id,
-      label: preset.short,
+      direction: dir.id,
+      label: tag,
       name: fileName(raw, `next_${preset.id}.mid`),
       concept: String(raw.concept || '').slice(0, 100),
       commentary: String(raw.commentary || '').slice(0, 400),
