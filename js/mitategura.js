@@ -51,7 +51,14 @@
    *
    * 部品(一瞬)は、この三層の「状態の変わり方」で書く。層ごとに次の値を持ち、morph のキーフレームで時間とともに変えられる:
    *   spread(Bの開き。1=+1・+2半音、0=Aに重なって消える)、b(Bの音量の倍率)、c(Cの音量の倍率)、cdet(Cのずれの倍率。1=+5セント)
-   * 例: 霧が晴れる = BとCがAへ吸い込まれて、ただのサイン波に澄む(判断できない状態が、ある瞬間に識別へほどける) */
+   * 例: 霧が晴れる = BとCがAへ吸い込まれて、ただのサイン波に澄む(判断できない状態が、ある瞬間に識別へほどける)
+   *
+   * 「あえて神秘的でない音」(鳥・虫・波打ち際。響き tone: '日常')は、三層から引き算・足し算をする(2026-10-02、ユーザー「このデチューン三層から
+   * また何か引き算足し算しなければいけないはず」):
+   *   引く … 神秘さの正体は B のぶつかりと C のゆっくりしたうなり。B は抜く(b: 0)か、ごく細く開いて(spread 0.1〜0.6)速いうなり=粗さ・しわがれにする。
+   *          C は自然なばらつき程度に弱める
+   *   足す … bend(音の滑り。さえずりは音の段でなく滑り)[[音の長さの割合, セント]]/ am(速い断続。虫の翅・蛙の喉){ rate(Hz), depth, shape }/
+   *          noise(音の高さを持たない息・砂・水。帯域を freq → freqEnd へ動かす){ level, freq, freqEnd, q }/ tones: false(三層を鳴らさずノイズだけ) */
   const MU = { cluster: [1, 2], cCents: 5, micro: 3, moveMin: 3, moveMax: 8, moveSec: 1.8, levelA: 0.34, levelB: 0.14, levelC: 0.2, master: 0.55 };
 
   /* ---------------- 最初の語彙(2026-10-02に「一瞬」の部品として作り直した) ----------------
@@ -133,12 +140,73 @@
         { name: '玉', notes: N('A3 2.6 1.6 70'), env: { a: 0.01, r: 0.9 }, morph: [[2.6, { spread: 1, b: 1, c: 1 }], [3.4, { spread: 0, b: 0, c: 0 }]] },
       ],
     },
+
+    /* ---- あえて神秘的でない音(響き: 日常)。三層から B を抜く/細くして粗さに、C を弱め、滑り・断続・ノイズを足す ---- */
+    {
+      id: 'suzume', name: '軒先の雀', turn: 'さえずる', season: '無季', senses: ['聴'], tone: '日常',
+      moment: '朝、軒先で雀がいつものように鳴いている',
+      device: 'Bを抜き、Cをわずかに残した短い音を、上下に素早く滑らせる(さえずりは音の段でなく滑り)。2〜4声のかたまりを不規則な間で',
+      parts: [
+        { name: 'チュン', notes: N('D7 0 .09 118, E7 .14 .08 110, C#7 .26 .1 116, D7 1.7 .09 114, E7 1.8 .08 106, D7 1.92 .09 112, C#7 2.05 .1 102'), env: { a: 0.005, r: 0.03 }, mu: { b: 0, c: 0.3 }, bend: [[0, 0], [0.3, 250], [1, -500]] },
+        { name: 'チチ', notes: N('F#7 1 .06 100, F#7 1.12 .06 94, E7 3 .07 104, F#7 3.15 .06 92'), env: { a: 0.004, r: 0.03 }, mu: { b: 0, c: 0.3 }, bend: [[0, -300], [1, 200]] },
+      ],
+    },
+    {
+      id: 'karasu', name: '夕方の鴉', turn: '鳴く', season: '無季', senses: ['聴'], tone: '日常',
+      moment: '夕方、電線の鴉が二度鳴いた',
+      device: 'Bの開きを細くして速いうなり(しわがれ)にし、息のノイズと40Hzの断続を足した音を、少し下へ滑らせて二度。三度目は無い',
+      parts: [{ name: 'カァ', notes: N('D5 0 .45 104, D5 .75 .55 96'), env: { a: 0.02, r: 0.08 }, mu: { spread: 0.6, b: 1.4, c: 0.5 }, bend: [[0, 0], [0.2, 80], [1, -250]], am: { rate: 40, depth: 0.5 }, noise: { level: 0.25, freq: 1500, q: 1 } }],
+    },
+    {
+      id: 'korogi', name: '庭の蟋蟀', turn: '鳴く', season: '秋', senses: ['聴'], tone: '日常',
+      moment: '夜の庭の隅で、こおろぎが鳴き続けている',
+      device: 'BもCも抜いたAだけの高いサイン波を、30Hzで刻む(翅をこする断続)。「リッ、リッ」の短い塊を一定の間隔で。揺らぎを足さない機械的な正確さ',
+      parts: [{ name: 'リッ', notes: Array.from({ length: 11 }, (_, i) => ['B7', i * 0.36, 0.13, 110 + (i % 3) * 5]), env: { a: 0.004, r: 0.02 }, mu: { b: 0, c: 0 }, am: { rate: 30, depth: 1, shape: 'square' } }],
+    },
+    {
+      id: 'aburazemi', name: '真昼の油蝉', turn: '鳴く', season: '夏', senses: ['聴', '触'], tone: '日常',
+      moment: '真昼の幹で、油蝉がジリジリ鳴いている',
+      device: '高い帯域のノイズを主に、Bを細く開いた高音を少し混ぜて、速い断続(ジリジリ)で長く。終わりは弱まって止む',
+      parts: [{ name: 'ジリジリ', notes: N('A6 0 3.6 84'), env: { a: 0.3, r: 0.4 }, mu: { spread: 0.3, b: 0.6, c: 0.5 }, am: { rate: 45, depth: 0.8 }, noise: { level: 0.9, freq: 5000, q: 2 } }],
+    },
+    {
+      id: 'tanokaeru', name: '田の蛙', turn: '鳴く', season: '春', senses: ['聴'], tone: '日常',
+      moment: '夜の田んぼで、蛙がぐわっぐわっと鳴いている',
+      device: '低めの音を、Bを細く開いた粗さと20Hzの断続で「ぐわっ」と短く。2匹がそれぞれ違う間隔で、少し高さを変えて',
+      parts: [
+        { name: '一匹目', notes: [0, 0.55, 1.1, 1.65, 2.2, 2.75].map((t, i) => ['G3', t, 0.22, 90 - (i % 2) * 8]), env: { a: 0.01, r: 0.05 }, mu: { spread: 0.4, b: 1, c: 0.4 }, bend: [[0, -80], [0.3, 60], [1, -120]], am: { rate: 20, depth: 0.9, shape: 'square' } },
+        { name: '二匹目', notes: [0.3, 1.0, 1.7, 2.4, 3.1].map((t) => ['C4', t, 0.18, 74]), env: { a: 0.01, r: 0.05 }, mu: { spread: 0.4, b: 1, c: 0.4 }, bend: [[0, -60], [0.4, 40], [1, -100]], am: { rate: 24, depth: 0.9, shape: 'square' } },
+      ],
+    },
+    {
+      id: 'namiuchigiwa', name: '波打ち際', turn: '寄せる', season: '無季', senses: ['聴', '視'], tone: '日常',
+      moment: '浜で、波が寄せては砂を引いていく',
+      device: '音の高さを持たないノイズだけで、寄せる時は帯域が上がりながら膨らみ、砕けて、引く時は高いさらさらが細く消える。2つの波の長さは違う。三層は砕けの低い一打だけ',
+      parts: [
+        { name: 'うねり', tones: false, notes: N('C3 0 1.6 100, C3 4.3 1.2 80'), env: { a: 1.2, r: 0.35 }, noise: { level: 1, freq: 300, freqEnd: 1400, q: 0.8 } },
+        { name: '砕け', notes: N('D2 1.5 .3 70, D2 5.4 .25 56'), env: { a: 0.01, r: 0.4 }, mu: { b: 0, c: 0.3 } },
+        { name: '引き波', tones: false, notes: N('C3 1.8 2.2 60, C3 5.6 1.6 46'), env: { a: 0.05, r: 1 }, noise: { level: 0.7, freq: 3500, freqEnd: 7000, q: 1.5 } },
+      ],
+    },
   ];
 
   /* ---------------- デチューン三層で鳴らす ---------------- */
 
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
   const hashSeed = (s) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+  const noiseBuffers = new WeakMap();
+  function noiseBuffer(ctx) {
+    let buf = noiseBuffers.get(ctx);
+    if (!buf) {
+      buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      const r = rng(99);
+      for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1;
+      noiseBuffers.set(ctx, buf);
+    }
+    return buf;
+  }
 
   /** 部品を ctx に予約する。{ stop, duration, startAt, ctx } */
   function scheduleMu(ctx, entry, startAt) {
@@ -164,6 +232,15 @@
         }
         return keys[keys.length - 1][1][k];
       };
+      const bend = part.bend || null; // [[音の長さの割合, セント]]
+      const bendAt = (rel) => {
+        if (!bend) return 0;
+        if (rel <= bend[0][0]) return bend[0][1];
+        for (let i = 1; i < bend.length; i++) {
+          if (rel <= bend[i][0]) return bend[i - 1][1] + (bend[i][1] - bend[i - 1][1]) * ((rel - bend[i - 1][0]) / Math.max(1e-6, bend[i][0] - bend[i - 1][0]));
+        }
+        return bend[bend.length - 1][1];
+      };
       part.notes.forEach(([name, start, dur, vel]) => {
         const pitch = T().noteToMidi(name);
         if (pitch == null) return;
@@ -180,8 +257,50 @@
         noteGain.gain.setValueAtTime(amp, Math.max(t0 + env.a, t1));
         noteGain.gain.setTargetAtTime(0, Math.max(t0 + env.a, t1), env.r / 3);
         noteGain.connect(out);
-        // morph のキーフレームの時刻(この音の間にあるもの)
-        const times = [start, ...keys.map(([t]) => t).filter((t) => t > start && t < start + dur + env.r)];
+        // 断続(am): 音全体の音量を速く刻む
+        let dest = noteGain;
+        if (part.am) {
+          const amNode = ctx.createGain();
+          const depth = Math.min(1, part.am.depth != null ? part.am.depth : 1);
+          amNode.gain.value = 1 - depth / 2;
+          const lfo = ctx.createOscillator();
+          lfo.type = part.am.shape === 'square' ? 'square' : 'sine';
+          lfo.frequency.value = part.am.rate || 30;
+          const lfoAmt = ctx.createGain();
+          lfoAmt.gain.value = depth / 2;
+          lfo.connect(lfoAmt);
+          lfoAmt.connect(amNode.gain);
+          amNode.connect(noteGain);
+          lfo.start(t0);
+          lfo.stop(tEnd + 0.1);
+          nodes.push(lfo);
+          dest = amNode;
+        }
+        // ノイズ(音の高さを持たない息・砂・水)
+        if (part.noise) {
+          const nz = part.noise;
+          const src = ctx.createBufferSource();
+          src.buffer = noiseBuffer(ctx);
+          src.loop = true;
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.Q.value = nz.q || 1;
+          bp.frequency.setValueAtTime(nz.freq || 1000, t0);
+          if (nz.freqEnd) bp.frequency.exponentialRampToValueAtTime(nz.freqEnd, t1);
+          const ng = ctx.createGain();
+          ng.gain.value = (nz.level != null ? nz.level : 0.5) * 0.8;
+          src.connect(bp);
+          bp.connect(ng);
+          ng.connect(dest);
+          src.start(t0, rand() * 1.5);
+          src.stop(tEnd + 0.1);
+          nodes.push(src);
+        }
+        if (part.tones === false) return;
+        // morph のキーフレームと滑りの点の時刻(この音の間にあるもの)
+        const times = [...new Set([start, ...keys.map(([t]) => t).filter((t) => t > start && t < start + dur + env.r),
+          ...(bend || []).map(([rel]) => start + rel * dur).filter((t) => t > start)])].sort((a, b) => a - b);
+        const bendF = (t) => Math.pow(2, bendAt((t - start) / Math.max(1e-6, dur)) / 1200);
         const layer = (level, freqAt, wobble) => {
           const osc = ctx.createOscillator();
           osc.type = 'sine';
@@ -210,17 +329,17 @@
             }
           }
           osc.connect(g);
-          g.connect(noteGain);
+          g.connect(dest);
           osc.start(t0);
           osc.stop(tEnd + 0.1);
           nodes.push(osc);
         };
         // A: 不動
-        layer(() => MU.levelA, () => f, false);
+        layer(() => MU.levelA, (t) => f * bendF(t), false);
         // B: +1・+2半音(spread で開き具合)
-        MU.cluster.forEach((semi) => layer((t) => MU.levelB * valueAt(t, 'b'), (t) => f * Math.pow(2, (semi * valueAt(t, 'spread')) / 12), true));
+        MU.cluster.forEach((semi) => layer((t) => MU.levelB * valueAt(t, 'b'), (t) => f * bendF(t) * Math.pow(2, (semi * valueAt(t, 'spread')) / 12), true));
         // C: +5セント
-        layer((t) => MU.levelC * valueAt(t, 'c'), (t) => f * Math.pow(2, (MU.cCents * valueAt(t, 'cdet')) / 1200), true);
+        layer((t) => MU.levelC * valueAt(t, 'c'), (t) => f * bendF(t) * Math.pow(2, (MU.cCents * valueAt(t, 'cdet')) / 1200), true);
       });
     });
     return {
@@ -276,7 +395,7 @@
 
   let overlay = null;
   let player = null; // { id, handle, raf, rects, request }
-  const filter = { season: '', sense: '' };
+  const filter = { season: '', sense: '', tone: '' };
 
   function stopPlayer() {
     if (!player) return;
@@ -349,10 +468,11 @@
       `<button type="button" class="mitate-play" data-play aria-label="鳴らす">▶</button></header>` +
       `<div class="mitate-tags"><span class="t-season t-${escapeHtml(entry.season)}">${escapeHtml(entry.season)}</span>` +
       entry.senses.map((s) => `<span class="t-sense" title="${escapeHtml(SENSES[s])}">${escapeHtml(s)}</span>`).join('') +
+      `<span class="t-tone t-tone-${entry.tone === '日常' ? 'daily' : 'myst'}">${escapeHtml(entry.tone || '神秘')}</span>` +
       `</div>` +
       `<div class="mitate-roll">${M.pianoRollSvg(midi, 320, 90)}<div class="mitate-head" hidden></div></div>` +
       `<p class="mitate-device"><b>仕掛け</b>${escapeHtml(entry.device)}</p>` +
-      `<div class="mitate-meta">${(T().endBeat(midi.notes)).toFixed(1)}秒 · デチューン三層(サイン波)</div>` +
+      `<div class="mitate-meta">${(T().endBeat(midi.notes)).toFixed(1)}秒 · ${entry.tone === '日常' ? 'デチューン三層から引き算・足し算' : 'デチューン三層(サイン波)'}</div>` +
       `<footer><span class="mitate-stars">${starsHtml(entry.id)}</span>` +
       `<button type="button" class="mitate-confirm" data-confirm>${r.confirmed ? '確認済み' : '未確認'}</button></footer>` +
       `</article>`;
@@ -360,7 +480,7 @@
 
   function visible() {
     return SEED.filter((e) => (!filter.season || e.season === filter.season) &&
-      (!filter.sense || e.senses.includes(filter.sense)));
+      (!filter.sense || e.senses.includes(filter.sense)) && (!filter.tone || (e.tone || '神秘') === filter.tone));
   }
 
   function chips(name, list, labels) {
@@ -372,7 +492,7 @@
     stopPlayer();
     const list = visible();
     const confirmed = SEED.filter((e) => ratingOf(e.id).confirmed).length;
-    overlay.querySelector('.mitate-filters').innerHTML = chips('season', SEASONS) + chips('sense', Object.keys(SENSES), SENSES);
+    overlay.querySelector('.mitate-filters').innerHTML = chips('season', SEASONS) + chips('sense', Object.keys(SENSES), SENSES) + chips('tone', ['神秘', '日常'], { 神秘: '三層の判断のつかなさをそのまま', 日常: '三層から引き算・足し算した、あえて神秘的でない音' });
     overlay.querySelector('.mitate-count').textContent = `${list.length} / ${SEED.length}語 · 確認済み ${confirmed}`;
     const grid = overlay.querySelector('.mitate-grid');
     grid.innerHTML = list.map(cardHtml).join('') || '<p class="mitate-empty">この組み合わせの語彙はまだありません</p>';
