@@ -35,6 +35,7 @@
     phrases: ARR(S('STRING')), order: S('INTEGER'),
     against: S('STRING'), species: S('INTEGER'), transform: S('STRING'), entries: S('INTEGER'),
     source: S('STRING'), series: ARR(S('NUMBER')), mapping: S('STRING'),
+    noise: S('STRING'), rests: S('NUMBER'),
     temperaments: ARR(S('STRING')),
     chain: ARR(S('STRING')), gap: S('NUMBER'),
     row: ARR(S('STRING')), forms: ARR(S('STRING')), rhythm: ARR(S('NUMBER')), texture: S('STRING'), group: S('INTEGER'),
@@ -248,6 +249,9 @@
     // 模倣(応答のモデル、2026-10-01): 変形と、追いかける声の数
     if (has('transform')) L.transform = pickWord(raw.transform, ['inversion', 'retrograde', 'augmentation', 'diminution'], 'none');
     if (has('entries')) L.entries = int(raw.entries, 1, 3, 1);
+    // 1/fゆらぎ(2026-10-02)
+    if (has('noise')) L.noise = pickWord(raw.noise, ['white', 'pink', 'brown'], 'pink');
+    if (has('rests')) L.rests = num(raw.rests, 0, 0.9, 0.2);
     if (has('source')) L.source = ['image-brightness', 'image-hue', 'image-edges', 'series'].includes(raw.source) ? raw.source : 'series';
     if (has('series')) L.series = nums(raw.series, -1e6, 1e6, 96);
     if (has('mapping')) L.mapping = ['pitch', 'density', 'velocity'].includes(raw.mapping) ? raw.mapping : 'pitch';

@@ -112,6 +112,16 @@
       fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain', 'emotion'],
     },
     {
+      id: 'fluct', group: '生成モデル', label: '1/fゆらぎモデル(Voss型)', short: '1/fゆらぎ',
+      text: 'せせらぎ・風・心拍・木目のような自然のゆらぎ(1/fノイズ)で、音の高さ・強さ・息継ぎを決める。でたらめ(白)でも単調(茶)でもない「ほどよい予測できなさ」。電子的な反復の上で有機的に揺れる',
+      kids: { title: 'せせらぎのリズム', text: '川の水の音や、風のそよぎ、木の年輪の模様には、「ぜんぜんバラバラ」でも「ずっと同じ」でもない、ちょうどいいゆらぎがある。そのゆらぎ方をサイコロのかわりに使って音を選ぶと、機械が作ったのに、どこか自然の中にいるような気持ちいいメロディーになる。' },
+      generators: ['fluct', 'process', 'gesture'],
+      pitch: { systems: ['scale'], hint: 'scale で入力の気分に合う音階(ペンタトニック・旋法・日本の音階など)。値は音階の段に対応する' },
+      meter: 'four', arc: true, bars: 16, tempo: 96, voice: 'vibes',
+      guide: '主役は fluct を1〜2つ(noise は pink が基本。音域・step を変えて、速い粒の層とゆっくり歌う層に分けてもよい。比べたい区間だけ white や brown にしてもよい)。地が要れば process の drone か gesture の地(sustained_open・drone_pulse)を1つ。arc の tension の起伏は強弱に効く',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain', 'emotion'],
+    },
+    {
       id: 'tension', group: '生成モデル', label: '緊張曲線モデル(出力目標駆動)', short: '緊張曲線',
       text: '入力からではなく、先に曲全体の緊張・密度の時間曲線を決め、各時点の音数・音域・強弱をそれに合わせて逆算して埋める',
       kids: { title: '山登りの道のり', text: '曲を山登りのコースだと考えて、「ここはゆるやかに登る」「ここで一気に盛り上がる」「ここでゆっくり下る」という道のりを先に決めておく。その道のりに合わせて、あとから音の数や高さをはめこんでいく。' },

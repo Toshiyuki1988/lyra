@@ -880,6 +880,81 @@
     },
   });
 
+  /* ================= 1/fゆらぎ(2026-10-02) ================= */
+
+  /**
+   * 0〜1 の値の列を作る。white=毎回でたらめ / pink=1/fゆらぎ(Voss-McCartney: 2倍ずつ遅く更新する行を足し合わせる) /
+   * brown=1/f²(でたらめな歩みの積み重ね。端で跳ね返る)
+   */
+  function noiseSeries(kind, n, rand) {
+    const out = [];
+    if (kind === 'white') {
+      for (let i = 0; i < n; i++) out.push(rand());
+    } else if (kind === 'brown') {
+      let v = 0.5;
+      for (let i = 0; i < n; i++) {
+        v += (rand() - 0.5) * 0.1;
+        if (v < 0) v = -v;
+        if (v > 1) v = 2 - v;
+        out.push(v);
+      }
+    } else {
+      const rows = 6;
+      const vals = Array.from({ length: rows }, () => rand());
+      for (let i = 0; i < n; i++) {
+        // i の末尾の0の数の行だけを引き直す(行 j は 2^j 回に1回変わる)
+        let j = 0;
+        while (j < rows - 1 && i > 0 && ((i >> j) & 1) === 0) j += 1;
+        vals[j] = rand();
+        out.push(vals.reduce((a, b) => a + b, 0) / rows);
+      }
+      // 足し合わせると真ん中に寄るので、0〜1 へ広げ直す
+      const lo = Math.min(...out);
+      const hi = Math.max(...out);
+      return out.map((v) => (hi - lo > 1e-6 ? (v - lo) / (hi - lo) : 0.5));
+    }
+    return out;
+  }
+
+  register('fluct', {
+    label: '1/fゆらぎ',
+    roles: ['melody'],
+    text: 'せせらぎ・風・心拍のような自然のゆらぎ(1/fノイズ)で、音の高さ・強さ・息継ぎを決める。noise を white(でたらめ)・pink(1/f。ほどよい)・brown(のろのろさまよう)で選べる',
+    params: ['noise', 'step', 'spread', 'rests'],
+    paramText: 'noise: pink(1/fゆらぎ。予測できるようでできない、ほどよい動き。既定)/ white(毎回でたらめ)/ brown(近い音へのろのろ歩く)。step(1音の拍 0.25〜2)。spread(音域の広さ 0〜1)。rests(休みの多さ 0〜1。休みもゆらぎで決まるので、息継ぎがかたまって来る)',
+    render(ctx, L) {
+      const kind = ['white', 'pink', 'brown'].includes(L.noise) ? L.noise : 'pink';
+      const step = Math.max(0.125, Math.round(((L.step || 0.5) * ctx.grainScale) / 0.125) * 0.125);
+      const n = Math.min(512, Math.ceil(ctx.total / step));
+      const rand = () => ctx.rng.next();
+      const pitchV = noiseSeries(kind, n, rand);
+      const velV = noiseSeries(kind, n, rand);
+      const restV = noiseSeries(kind === 'white' ? 'white' : 'pink', n, rand);
+      const widen = Math.round(((L.spread != null ? L.spread : 0.5) - 0.5) * 12);
+      const range = [Math.max(21, ctx.range[0] - widen), Math.min(108, ctx.range[1] + widen)];
+      const rests = L.rests != null ? L.rests : 0.2;
+      const out = [];
+      let last = null;
+      for (let i = 0; i < n; i++) {
+        const t = i * step;
+        if (t >= ctx.total - EPS) break;
+        if (restV[i] < rests) {
+          last = null;
+          continue;
+        }
+        const ladder = ctx.src.ladder(t, range);
+        const pitch = ladder[Math.max(0, Math.min(ladder.length - 1, Math.round(pitchV[i] * (ladder.length - 1))))];
+        if (last && last.pitch === pitch && last.start + last.duration >= t - EPS) {
+          last.duration += step; // 同じ高さが続けば伸ばす
+          continue;
+        }
+        last = note(pitch, t, step, 50 + velV[i] * 60);
+        out.push(last);
+      }
+      return out;
+    },
+  });
+
   /* ================= 生成文法・セルオートマトン ================= */
 
   /** L-system を展開する(長さは 512 記号まで) */

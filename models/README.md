@@ -47,6 +47,7 @@ MIDI生成モデルの補充、またMIDIエディター含めてMIDI生成周�
 | `gesture` | 身振り | 見立て蔵 | 10種の身振り × 4つの現れ方 |
 | `process` | 規則 | 漸進プロセス | フェイズ(Reich型フェイズシフト)・加算減算・イソリズム・カノン・ティンティナブリ・転調鳴鐘・ドローン |
 | `stochastic` | 確率過程 | Xenakis型 | ポアソン過程の出現 × ブラウン運動の音高。密度と音域の広がりが緊張曲線に追従 |
+| `fluct` | 1/fゆらぎ | Voss型(2026-10-02) | 1/fノイズ(Voss-McCartney)の列で音の高さ・強さ・休みを決める。noise で white / pink / brown を選ぶ。同じ高さが続けば伸ばす |
 | `automaton` | セルオートマトン/L-system | 生成文法 | Wolframの1次元CA(生き続けるセルは音を伸ばす)か、L-systemの亀の歩み |
 | `markov` | マルコフ連鎖 | コーパス | Geminiが書いた語法らしいお手本の句から、音程の動きとリズムの遷移確率を学んで歩く |
 | `counterpoint` | 対位法 | 制約充足 | 強拍の協和・連続/並達の5度8度の禁止・交差なし・跳躍後の反行などを満たす声部をビームサーチで探す。相手が無ければ定旋律を作る |
@@ -72,6 +73,7 @@ MIDI生成モデルの補充、またMIDIエディター含めてMIDI生成周�
 | 生成モデル | `markov` | コーパスモデル(マルコフ連鎖) | markov・chords・bass・gesture | 語法の音階 |
 | 生成モデル | `counterpoint` | 制約充足モデル(対位法) | line・counterpoint・bass | 音階、反芻 |
 | 生成モデル | `sonify` | 直接ソニフィケーションモデル | sonify・gesture | 音階 |
+| 生成モデル | `fluct` | 1/fゆらぎモデル(Voss型) | fluct・process・gesture | 音階、時間の設計図 |
 | 生成モデル | `tension` | 緊張曲線モデル(出力目標駆動) | stochastic・gesture・chords・process | 時間の設計図が主役 |
 | 生成モデル | `dialogue` | マルチエージェント対話モデル | dialogue・gesture | 時間の設計図 |
 | 生成モデル | `motif` | 動機変容モデル | motif・chords・bass | 時間の設計図 |
