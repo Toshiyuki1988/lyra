@@ -194,6 +194,112 @@
     });
   }
 
+  /* お手本の演奏(2026-10-01、ユーザー要望「各MIDI生成モデルの、イメージを掴みやすい実例MIDI演奏みたいな画面を子どもの解説の横あたりからポップアップ」)。
+   * 設計図は js/midi/demos.js に手で書いたもの(Geminiは呼ばない)。ピッカーの上に重ねた窓で、ピアノロールの上を再生位置が流れ、
+   * 鳴っている音が光る。音色はそのモデルの既定の音色(選び直せる) */
+  const DEMO_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 8.2v7.6l6-3.8z" fill="currentColor"/></svg>';
+  const hasDemo = (id) => Boolean(window.LyraDemos && window.LyraDemos.has(id));
+
+  function openDemo(presetId) {
+    const preset = P.byId(presetId);
+    const midi = window.LyraDemos.render(presetId);
+    if (!preset || !midi || !midi.notes.length) {
+      setStatus('このモデルのお手本を鳴らせませんでした', { important: true });
+      return;
+    }
+    if (M.stopAll) M.stopAll();
+    const card = { voice: preset.voice || M.DEFAULT_VOICE, midi };
+    const beats = Math.max(T.endBeat(midi.notes), midi.beatsPerBar || 4);
+    const secs = M.beatToSeconds(midi)(beats);
+    const parts = M.partsOf(midi);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible demo-overlay';
+    overlay.innerHTML = `<div class="modal demo-modal" role="dialog" aria-label="お手本の演奏">` +
+      `<button type="button" class="demo-close" data-close aria-label="閉じる">✕</button>` +
+      `<div class="demo-model">お手本の演奏</div>` +
+      `<h2>${escapeHtml(preset.label)}</h2>` +
+      (preset.kids ? `<div class="demo-kids">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` : '') +
+      `<p class="demo-listen"><b>聴きどころ</b>${escapeHtml(window.LyraDemos.listen(presetId))}</p>` +
+      `<div class="demo-roll">${M.pianoRollSvg(midi, 720, 240)}<div class="demo-head" hidden></div></div>` +
+      `<div class="roll-legend demo-legend">${parts.map((p) => `<span><i style="background:${M.partColor(midi, p)}"></i>${escapeHtml(M.partLabel(midi, p))}</span>`).join('')}</div>` +
+      `<div class="demo-controls">` +
+      `<button type="button" class="demo-play" data-play>▶ 再生</button>` +
+      `<span class="demo-time" data-time>0:00 / ${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}</span>` +
+      `<label class="demo-voice">音色 <select data-voice>${M.VOICES.map((v) => `<option value="${escapeHtml(v.id)}"${v.id === card.voice ? ' selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}</select></label>` +
+      `</div>` +
+      `<p class="demo-note">テンポ${Math.round(midi.tempo)}・${Math.round(beats / (midi.beatsPerBar || 4))}小節ほど。アプリが手で書いた設計図から作ったお手本で、実際の生成では入力(画像・言葉)に合わせて設計図が変わります。</p>` +
+      `</div>`;
+    const rects = [...overlay.querySelectorAll('.demo-roll svg > g:last-of-type rect')];
+    const head = overlay.querySelector('.demo-head');
+    const playBtn = overlay.querySelector('[data-play]');
+    const timeEl = overlay.querySelector('[data-time]');
+    const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    let handle = null;
+    let raf = 0;
+    let request = 0;
+    const lit = new Set();
+    const clearLit = () => {
+      lit.forEach((i) => rects[i] && rects[i].classList.remove('on'));
+      lit.clear();
+    };
+    const stop = () => {
+      request++;
+      cancelAnimationFrame(raf);
+      if (handle) handle.stop();
+      handle = null;
+      clearLit();
+      head.hidden = true;
+      playBtn.textContent = '▶ 再生';
+      timeEl.textContent = `0:00 / ${fmt(secs)}`;
+    };
+    const frame = () => {
+      if (!handle) return;
+      const elapsed = handle.ctx.currentTime - handle.startAt;
+      const beat = elapsed < 0 ? 0 : handle.toBeat(elapsed);
+      if (beat >= beats) {
+        stop();
+        return;
+      }
+      head.hidden = false;
+      head.style.left = `${(beat / beats) * 100}%`;
+      timeEl.textContent = `${fmt(Math.max(0, elapsed))} / ${fmt(secs)}`;
+      midi.notes.forEach((n, i) => {
+        const on = beat >= n.start && beat < n.start + n.duration;
+        if (on && !lit.has(i)) { lit.add(i); rects[i].classList.add('on'); }
+        else if (!on && lit.has(i)) { lit.delete(i); rects[i].classList.remove('on'); }
+      });
+      raf = requestAnimationFrame(frame);
+    };
+    const play = async () => {
+      stop();
+      if (M.stopAll) M.stopAll();
+      const req = request;
+      playBtn.textContent = '■ 停止';
+      timeEl.textContent = '音色を読み込んでいます…';
+      const h = await M.scheduleVoiced(soundAudioCtx, card, (ctx) => ctx.currentTime + 0.12);
+      if (req !== request || !overlay.isConnected) {
+        h.stop();
+        return;
+      }
+      handle = h;
+      timeEl.textContent = `0:00 / ${fmt(secs)}`;
+      raf = requestAnimationFrame(frame);
+    };
+    const close = () => {
+      stop();
+      overlay.remove();
+    };
+    playBtn.addEventListener('click', () => (handle || playBtn.textContent.startsWith('■') ? stop() : play()));
+    overlay.querySelector('[data-voice]').addEventListener('change', (event) => {
+      card.voice = event.target.value;
+      play();
+    });
+    overlay.querySelector('[data-close]').addEventListener('click', close);
+    attachBackgroundTapToClose(overlay, close);
+    document.body.appendChild(overlay);
+    play(); // 押した操作の中なので、そのまま鳴らし始める
+  }
+
   /** モデルのピッカー(見出しごとに並べ、説明つき)。やめたら null */
   function pickModel(title, recommended) {
     return new Promise((resolve) => {
@@ -213,7 +319,10 @@
           g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}" data-model="${p.id}">` +
             `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
             `<span class="model-item-text">${escapeHtml(p.text)}</span>` +
-            (p.kids ? `<span class="model-kids" data-kids="${p.id}" role="img" aria-label="小学生向けの解説">${KIDS_ICON}</span>` : '') +
+            (p.kids || hasDemo(p.id) ? `<span class="model-side">` +
+              (hasDemo(p.id) ? `<span class="model-demo" data-demo="${p.id}" role="button" tabindex="0" title="お手本の演奏を聴く" aria-label="お手本の演奏を聴く">${DEMO_ICON}</span>` : '') +
+              (p.kids ? `<span class="model-kids" data-kids="${p.id}" role="img" aria-label="小学生向けの解説">${KIDS_ICON}</span>` : '') +
+              `</span>` : '') +
             `</button>`).join('') + `</div>`).join('') +
         `<div class="modal-actions"><button type="button" class="secondary" data-cancel>やめる</button></div></div>`;
       const finish = (id) => {
@@ -225,6 +334,12 @@
       };
       overlay.querySelectorAll('[data-model]').forEach((b) => b.addEventListener('click', () => finish(b.dataset.model)));
       bindKidsPopups(overlay);
+      overlay.querySelectorAll('[data-demo]').forEach((icon) => icon.addEventListener('click', (event) => {
+        // アイコンを押してもモデルは選ばない
+        event.stopPropagation();
+        event.preventDefault();
+        openDemo(icon.dataset.demo);
+      }));
       overlay.querySelector('[data-cancel]').addEventListener('click', () => finish(null));
       attachBackgroundTapToClose(overlay, () => finish(null));
       document.body.appendChild(overlay);

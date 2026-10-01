@@ -1800,14 +1800,41 @@ a.btn-secondary { display: block; }
 
 /* ---------- モデルのピッカー: 小学生向けの解説(子どものアイコン+吹き出し、js/midi/compose.js、2026-09-27) ---------- */
 .modal .model-item { position: relative; }
-.modal .model-item:has(.model-kids) { padding-right: 44px; }
-.model-kids {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+.modal .model-item:has(.model-side) { padding-right: 44px; }
+.modal .model-item:has(.model-demo):has(.model-kids) { padding-right: 82px; }
+.model-side { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: flex; gap: 6px; align-items: center; }
+.model-kids, .model-demo {
   width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
   border-radius: 50%; background: #fff8ec; border: 1px solid var(--accent-line); cursor: help;
   transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
-.model-kids:hover { transform: translateY(-50%) scale(1.12); box-shadow: 0 2px 8px rgba(184, 134, 59, 0.35); }
+.model-demo { cursor: pointer; color: var(--accent-deep); background: #fff; }
+.model-kids:hover, .model-demo:hover { transform: scale(1.12); box-shadow: 0 2px 8px rgba(184, 134, 59, 0.35); }
+.model-demo:hover { background: var(--accent); color: #fff; }
+
+/* お手本の演奏(js/midi/compose.js の openDemo、お手本は js/midi/demos.js、2026-10-01)。ピッカーの上に重ねる */
+.demo-overlay { z-index: 240; }
+.modal.demo-modal { position: relative; width: min(760px, calc(100vw - 24px)); max-width: none; }
+.demo-modal h2 { margin: 0 32px 4px 0; }
+.demo-model { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+.demo-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line, #ddd); background: #fff; cursor: pointer; font-size: 14px; line-height: 1; }
+.demo-kids { display: flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 13px; font-weight: 700; color: var(--accent-deep); margin-bottom: 6px; }
+.demo-listen { font-size: 13px; line-height: 1.8; margin: 4px 0 10px; }
+.demo-listen b { display: inline-block; font-size: 11px; padding: 1px 7px; margin-right: 6px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 600; }
+.demo-roll { position: relative; border-radius: 8px; overflow: hidden; background: #1d1a16; padding: 6px 0; }
+.demo-roll .piano-roll { display: block; height: 240px; margin: 0; background: transparent; border-radius: 0; }
+.demo-roll .roll-bars line { stroke: rgba(255, 255, 255, 0.08); }
+.demo-roll .roll-marker { stroke: rgba(255, 220, 160, 0.25); stroke-dasharray: 3 3; }
+.demo-roll rect { opacity: 0.55; transition: opacity 0.12s; }
+.demo-roll rect.on { opacity: 1; filter: brightness(1.6) drop-shadow(0 0 3px rgba(255, 240, 200, 0.9)); }
+.demo-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ffe2a8; box-shadow: 0 0 8px rgba(255, 226, 168, 0.9); pointer-events: none; }
+.demo-legend { margin-top: 6px; }
+.demo-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.demo-play { min-width: 92px; }
+.demo-time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+.modal .demo-controls .demo-voice { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 0 0 0 auto; }
+.modal .demo-controls .demo-voice select { width: auto; margin: 0; padding: 4px 8px; font-size: 12px; }
+.demo-note { font-size: 11px; color: var(--muted); line-height: 1.7; margin: 10px 0 0; }
 .kids-pop {
   position: fixed; z-index: 1; width: min(320px, calc(100vw - 20px));
   padding: 12px 14px; border-radius: 12px; background: #fffaf0; border: 1.5px solid var(--accent-line);
