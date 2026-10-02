@@ -244,6 +244,10 @@
     return blob ? blob.arrayBuffer() : null;
   };
   const deleteAudio = (key) => tx('readwrite', (s) => s.delete(key));
+  // 「LYRA へ送る」の result.sound の全部(音源・FX の全パラメータ。数百KB になり得るので Drive ではなくここ)。キーは「sound:カードのID」
+  const putSound = (key, sound) => tx('readwrite', (s) => s.put(sound, `sound:${key}`));
+  const getSound = (key) => tx('readonly', (s) => s.get(`sound:${key}`));
+  const deleteSound = (key) => tx('readwrite', (s) => s.delete(`sound:${key}`));
 
   window.LyraHost = {
     launchAndConnect,
@@ -255,6 +259,9 @@
     putAudio,
     getAudio,
     deleteAudio,
+    putSound,
+    getSound,
+    deleteSound,
     _test: { session, onMessage: (data) => onMessage({ data }) },
   };
 })();

@@ -1394,7 +1394,10 @@
   }
 
   function midiVoiceLabel(s) {
-    if (s.hostAudio) return `VST: ${s.hostAudio.plugin || 'LYRA Host'}`;
+    if (s.hostAudio) {
+      const inst = s.hostAudio.sound && s.hostAudio.sound.chain.find((x) => x.role === 'instrument');
+      return `VST: ${(inst && inst.name) || s.hostAudio.plugin || 'LYRA Host'}${inst && inst.preset ? `(${inst.preset.name})` : ''}`;
+    }
     const M = window.LyraMidi;
     const v = M && M.VOICES.find((x) => x.id === s.midiVoice);
     return v ? v.label.replace(/\(.*\)$/, '') : '合成アンサンブル';
@@ -1584,7 +1587,7 @@
     overlay.className = 'modal-overlay visible';
     overlay.innerHTML = `<div class="modal midi-about-modal"><h2>${escapeHtml(card.name || 'MIDI')}</h2>` +
       `<p class="modal-desc">${s.midiRef ? 'アンサンブルから持ち込んだMIDI' : 'プレミックスで作ったMIDI'} · 鳴らしている音: ${escapeHtml(midiVoiceLabel(s))}</p>` +
-      `${patchAboutHtml(s)}${M.aboutHtml(card)}<div class="modal-actions">` +
+      `${hostSoundHtml(s)}${patchAboutHtml(s)}${M.aboutHtml(card)}<div class="modal-actions">` +
       ((card.history || []).length ? `<button type="button" class="secondary" data-unextend>伸ばす前に戻す(${card.history.length})</button>` : '') +
       (s.patch ? `<button type="button" class="secondary" data-patchread>ホストの今の値を読む</button><button type="button" class="secondary" data-patchsave>ソウルの音色の記録に残す</button>` : '') +
       ((state.souls || []).some((x) => (x.patches || []).length) ? `<button type="button" class="secondary" data-withpatch>記録した音色で開く</button>` : '') +
@@ -1905,7 +1908,10 @@
   function removeSound(s) {
     stop(s);
     stopVoicesOf(s.id);
-    if (s.hostAudio && window.LyraHost) window.LyraHost.deleteAudio(s.id).catch(() => {}); // 端末内の一時置き場(Drive ではない)
+    if (s.hostAudio && window.LyraHost) { // 端末内の一時置き場(Drive ではない)
+      window.LyraHost.deleteAudio(s.id).catch(() => {});
+      window.LyraHost.deleteSound(s.id).catch(() => {});
+    }
     if (s.solo) setTimeout(applyMuteSolo, 0); // ソロのカードを外したら、ほかのカードがまた鳴る
     const st = stripRt.get(s.id);
     if (st) {
@@ -4556,9 +4562,92 @@ ${choiceLines.join('\n')}
     }
   }
 
+  /* ---- LYRA Host の「音の情報」(result.sound。2026-10-02、ホストの capabilities に "soundInfo" があるビルドから) ----
+   * 形は lyra-host の PROTOCOL.md 8 節、LYRA 側の扱いは lyra-host の docs/LYRA_SIDE_5_SOUND_INFO.md・LYRA_SIDE_PRESET_NAME.md。
+   * - 全部(Serum2 だけで 80KB 前後、FX を挿すと数百KB)はこの端末の IndexedDB(LyraHost.putSound、キーはカードの ID)。
+   *   Drive のカード(s.hostAudio.sound)には要約だけ: スロットごとの名前・会社・版・uid・プリセット名・効いているか と、
+   *   既定値から動いた(changed)・オートメーションで動く(automated)パラメータ(1スロット SOUND_PARAM_CAP まで)
+   * - プリセット名とメモはユーザーが手で書いた文(null はよくある)。推測で埋めない。比べる時は presetKey() で大文字小文字・全角半角・空白をそろえる。
+   *   名前は「元にしたプリセット」なので、同じ名前でも changed が違えば別の音
+   * - 語彙: state.prefs.hostLexicon[uid] に、そのプラグインで使ったプリセット名(名前ごとの回数)と、よく動かすパラメータ(uid + id ごとの回数・最近の表示値)を貯める。
+   *   audible: false(切っている・見つからない)のスロットは数えない。パラメータは name ではなく id で同じものとみなす
+   * - 古いホスト(sound なし)は今までどおり。知らない項目は無視する */
+  const SOUND_PARAM_CAP = 160;
+  const presetKey = (x) => String(x || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+  function soundSummary(sound) {
+    if (!sound || !Array.isArray(sound.chain)) return null;
+    const chain = sound.chain.filter(Boolean).map((x) => {
+      const moved = (Array.isArray(x.params) ? x.params : []).filter((p) => p && (p.changed || p.automated));
+      return {
+        role: x.role === 'fx' ? 'fx' : 'instrument', slot: Number(x.slot) || 0, fxId: x.fxId || '',
+        name: String(x.name || ''), vendor: String(x.vendor || ''), version: String(x.version || ''), uid: String(x.uid || ''),
+        bypassed: Boolean(x.bypassed), missing: Boolean(x.missing), audible: x.audible !== false && !x.missing,
+        preset: x.preset && String(x.preset.name || '').trim() ? { name: String(x.preset.name).trim(), source: x.preset.source || 'user' } : null,
+        paramCount: Number(x.paramCount) || (Array.isArray(x.params) ? x.params.length : 0),
+        changedCount: moved.length,
+        changed: moved.slice(0, SOUND_PARAM_CAP).map((p) => ({ id: String(p.id), name: String(p.name || ''), text: String(p.text == null ? '' : p.text), defaultText: String(p.defaultText == null ? '' : p.defaultText), automated: Boolean(p.automated) })),
+      };
+    });
+    const note = typeof sound.note === 'string' ? sound.note.trim() : '';
+    return { chain, fxAllBypassed: Boolean(sound.fxAllBypassed), ...(note ? { note } : {}) };
+  }
+  function rememberLexicon(sum) {
+    if (!sum) return;
+    state.prefs.hostLexicon = state.prefs.hostLexicon || {};
+    const lex = state.prefs.hostLexicon, at = new Date().toISOString();
+    sum.chain.filter((x) => x.audible && x.uid).forEach((x) => {
+      const e = (lex[x.uid] = lex[x.uid] || { name: x.name, vendor: x.vendor, role: x.role, sounds: 0, presets: {}, params: {} });
+      Object.assign(e, { name: x.name, vendor: x.vendor, version: x.version, lastAt: at });
+      e.sounds += 1;
+      if (x.preset) {
+        const k = presetKey(x.preset.name), p = (e.presets[k] = e.presets[k] || { name: x.preset.name, count: 0 });
+        p.count += 1; p.lastAt = at;
+      }
+      x.changed.forEach((q) => {
+        const p = (e.params[q.id] = e.params[q.id] || { name: q.name, count: 0, texts: [] });
+        p.name = q.name; p.count += 1; if (q.automated) p.automated = (p.automated || 0) + 1;
+        p.texts = [q.text, ...p.texts.filter((t) => t !== q.text)].slice(0, 5);
+      });
+    });
+  }
+  /** 全部を端末に、要約を返す(語彙にも足す) */
+  async function keepHostSound(cardId, sound) {
+    const sum = soundSummary(sound);
+    if (!sum) return null;
+    try {
+      await window.LyraHost.putSound(cardId, sound);
+    } catch (err) {
+      if (typeof debugLog === 'function') debugLog(`LYRA Host の音の情報を端末に残せませんでした: ${err.message}`);
+    }
+    rememberLexicon(sum);
+    return sum;
+  }
+  /** 「音源: Serum 2(BA Reese Classic)→ FX1: Portal(Shimmer Wash)→ FX2: ValhallaRoom(切)」 */
+  function soundChainText(sum) {
+    return sum.chain.map((x) => `${x.role === 'fx' ? `FX${x.slot}` : '音源'}: ${x.name}${x.preset ? `(${x.preset.name})` : ''}${x.missing ? '(見つからない)' : !x.audible ? '(切)' : ''}`).join(' → ') +
+      (sum.fxAllBypassed ? '(FX 全部 切)' : '');
+  }
+  /** 「このMIDIについて」に出す: 音の通り道・メモ・スロットごとの動かしたパラメータ(ソウルの対応表があれば、ソウル側の名前も) */
+  function hostSoundHtml(s) {
+    const sum = s.hostAudio && s.hostAudio.sound;
+    if (!sum) return '';
+    const blocks = sum.chain.filter((x) => x.audible && x.changed.length).map((x) => {
+      const soul = (state.souls || []).find((so) => so.hostMap && so.hostMap.plugin && x.uid && so.hostMap.plugin.uid === x.uid);
+      const back = {};
+      if (soul) Object.entries(soul.hostMap.map || {}).forEach(([pid, m]) => { if (m && m.id != null) back[String(m.id)] = (soul.params || []).find((p) => p.id === pid); });
+      const rows = x.changed.map((q) => `<li>${escapeHtml(q.name)}: ${escapeHtml(q.defaultText)} → <b>${escapeHtml(q.text)}</b>` +
+        `${q.automated ? ' <span class="hs-tag">動く</span>' : ''}${back[q.id] ? ` <span class="hs-tag hs-soul">ソウル「${escapeHtml(back[q.id].name)}」</span>` : ''}</li>`).join('');
+      return `<details class="hs-slot"><summary>${escapeHtml(x.role === 'fx' ? `FX${x.slot}` : '音源')}: ${escapeHtml(x.name)} — 既定から動かしたもの ${x.changedCount}` +
+        `${x.changedCount > x.changed.length ? `(先頭の${x.changed.length}を表示)` : ''} / ${x.paramCount}</summary><ul>${rows}</ul></details>`;
+    }).join('');
+    return `<div class="host-sound"><div class="hs-label">LYRA Host の音</div><p class="hs-chain">${escapeHtml(soundChainText(sum))}</p>` +
+      `${sum.note ? `<p class="hs-note">メモ: ${escapeHtml(sum.note)}</p>` : ''}${blocks}</div>`;
+  }
+
   async function adoptFromHost(result, wav) {
     await window.LyraHost.putAudio(result.cardId, wav);
-    const slim = { cardId: result.cardId, title: result.title, part: result.part, midi: result.midi, plugin: result.plugin, wav: result.wav };
+    const sound = await keepHostSound(result.cardId, result.sound);
+    const slim = { cardId: result.cardId, title: result.title, part: result.part, midi: result.midi, plugin: result.plugin, wav: result.wav, ...(sound ? { sound } : {}) };
     const onScreen = currentRoute && currentRoute.screen === 'premix' && state.premix;
     if (!onScreen) {
       setHostPending([...hostPending().filter((x) => x.cardId !== slim.cardId), slim]);
@@ -4589,7 +4678,7 @@ ${choiceLines.join('\n')}
     const f = ensureArea();
     const s = placeSound(f, midiCard.name, soundsOf(f.id).length, {
       id: r.cardId, midiInline: midiCard, midiVoice: DEFAULT_MIDI_VOICE, loop: true,
-      hostAudio: { plugin, fileName: (r.wav && r.wav.fileName) || '', startBar: r.wav && r.wav.startBar, endBar: r.wav && r.wav.endBar, at: new Date().toISOString() },
+      hostAudio: { plugin, fileName: (r.wav && r.wav.fileName) || '', startBar: r.wav && r.wav.startBar, endBar: r.wav && r.wav.endBar, at: new Date().toISOString(), ...(r.sound ? { sound: r.sound } : {}) },
     });
     s.hostMidiKey = midiCard.midi.notes.length ? hostMidiKey(midiCard.midi) : undefined;
     if (typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
@@ -4626,23 +4715,29 @@ ${choiceLines.join('\n')}
       return;
     }
     await window.LyraHost.putAudio(s.id, wav);
+    const sound = await keepHostSound(s.id, result.sound);
+    if (!sound) window.LyraHost.deleteSound(s.id).catch(() => {}); // 古いホストから届いた: 前の音の情報は、もうこの音のものではない
     s.hostAudio = {
       plugin: (result.plugin && result.plugin.name) || '',
       fileName: (result.wav && result.wav.fileName) || '',
       startBar: result.wav && result.wav.startBar, endBar: result.wav && result.wav.endBar,
       at: new Date().toISOString(),
+      ...(sound ? { sound } : {}),
     };
     scheduleAutoSave();
     const onScreen = state.premix && (state.premix.cards || []).includes(s);
     if (onScreen) await resoundCard(s);
-    setStatus(`LYRA Host の音(${s.hostAudio.plugin || 'VST'})で「${s.fileName.replace(/\.mid$/i, '')}」の音を差し替えました。` +
+    setStatus(`LYRA Host の音(${sound ? soundChainText(sound) : s.hostAudio.plugin || 'VST'})で「${s.fileName.replace(/\.mid$/i, '')}」の音を差し替えました。` +
       '「ⓘ」の「内部音源の音に戻す」で元に戻せます');
   }
 
   /** LYRA Host の音を外して、内部音源の音に戻す */
   async function dropHostAudio(s, rerender) {
     delete s.hostAudio;
-    if (window.LyraHost) window.LyraHost.deleteAudio(s.id).catch(() => {});
+    if (window.LyraHost) {
+      window.LyraHost.deleteAudio(s.id).catch(() => {});
+      window.LyraHost.deleteSound(s.id).catch(() => {});
+    }
     scheduleAutoSave();
     if (rerender) {
       await resoundCard(s);
@@ -4917,7 +5012,10 @@ ${choiceLines.join('\n')}
     const f = folderOf(s);
     const rt = soundRt.get(s.id) || {};
     const copy = { ...s, id: newId(), createdAt: new Date().toISOString() };
-    if (s.hostAudio && window.LyraHost) window.LyraHost.getAudio(s.id).then((ab) => ab && window.LyraHost.putAudio(copy.id, ab)).catch(() => {}); // VST の音も写す
+    if (s.hostAudio && window.LyraHost) { // VST の音と音の情報も写す
+      window.LyraHost.getAudio(s.id).then((ab) => ab && window.LyraHost.putAudio(copy.id, ab)).catch(() => {});
+      window.LyraHost.getSound(s.id).then((x) => x && window.LyraHost.putSound(copy.id, x)).catch(() => {});
+    }
     delete copy.height;
     if (f && isTimeline(f) && rt.buffer) {
       // 元の音が鳴り終わった所(ループの外に出る時は最後に置く)
