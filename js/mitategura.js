@@ -671,7 +671,7 @@
       `<h2>見立て蔵<span class="mitate-sub">日本の自然・風土の「一瞬」の部品</span></h2>` +
       `<p class="mitate-lead">集めるのは物の絵ではなく、<b>知覚が切り替わる一瞬</b>の音(夜道でふと見上げた月光、割った石の中の瑪瑙)。音は和音階ではなく<b>デチューン三層</b>(不動のA・ぶつかるB・ほぼ同じC)の判断のつかなさで鳴らし、一瞬はその状態の変わり方(BとCがAへ吸い込まれて澄む、など)で描きます。数秒の部品で、` +
       `物語や起承転結は見立て蔵モデルで組み立てます。<b>文様と鳥</b>は D リディアンの三層を土台に、羽や文様の<b>配色</b>をそのまま音色の重なり方にしたもの(藍 = 三層そのもの、朱 = 弦、緑 = 尺八、白 = 澄んだ点、金 = 金属…)。聴いて良いものに★と「確認済み」を付けると、見立て蔵モデルの生成で優先して使う部品になります(★1〜2は使いません)。</p>` +
-      `<div class="mitate-gen-row"><button type="button" class="secondary" data-gen>＋ Geminiで足す</button><span class="mitate-gen-note"></span></div>` +
+      `<div class="mitate-gen-row"><button type="button" class="secondary" data-gen>＋ Geminiで足す</button><button type="button" class="secondary" data-daily hidden>デイリーの結果を取り込む</button><span class="mitate-gen-note"></span></div>` +
       `<div class="mitate-filters"></div><div class="mitate-count"></div><div class="mitate-grid"></div></div>`;
     overlay.addEventListener('click', (event) => {
       const t = event.target;
@@ -683,6 +683,7 @@
         return;
       }
       if (t.closest('[data-gen]')) return openGenerate();
+      if (t.closest('[data-daily]')) return window.LyraDaily && window.LyraDaily.checkResults().then(updateGenNote);
       const card = t.closest('[data-entry]');
       if (!card) return;
       const entry = ALL().find((e) => e.id === card.dataset.entry);
@@ -708,6 +709,8 @@
     updateGenNote();
     // 帳(Gemini で足した語彙)がまだなら読んでから並べ直す
     if (!store.loaded && typeof dataLoaded !== 'undefined' && dataLoaded) loadVocab().then(() => { if (overlay) render(); updateGenNote(); }).catch(() => {});
+    // デイリーの結果を読み直して、取り込んでいない回があればボタンを出す
+    if (window.LyraDaily && typeof dataLoaded !== 'undefined' && dataLoaded) window.LyraDaily.checkResults({ ask: false }).then(updateGenNote).catch(() => {});
   }
 
   /* ---------------- Gemini で足す(js/mitategen.js) ---------------- */
@@ -718,9 +721,16 @@
     const el = overlay && overlay.querySelector('.mitate-gen-note');
     if (!el) return;
     const used = typeof geminiUsageToday === 'function' ? geminiUsageToday() : 0;
-    el.textContent = `${running ? '作っています… ' : ''}Geminiで足した語彙 ${store.items.length}件 · 今日この端末で ${used} 回使用(目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回)`;
+    el.textContent = `${running ? '作っています… ' : ''}Geminiで足した語彙 ${store.items.length}件 · 今日 ${used} 回使用(この端末とデイリーの分。目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回)`;
     const btn = overlay.querySelector('[data-gen]');
     if (btn) btn.textContent = running ? '■ 止める' : '＋ Geminiで足す';
+    // Gmail 経由のデイリーで作って、まだ取り込んでいない語彙
+    const daily = overlay.querySelector('[data-daily]');
+    const pending = window.LyraDaily ? window.LyraDaily.pendingCount() : 0;
+    if (daily) {
+      daily.hidden = !pending;
+      daily.textContent = `デイリーの結果を取り込む(${pending}回分)`;
+    }
   }
 
   async function openGenerate() {
@@ -746,7 +756,7 @@
     const values = await showFormDialog({
       title: '見立て蔵に Gemini で語彙を足す',
       message: '型をランダムに選んで2件ずつ書かせ、もう1回で反芻させます(その一瞬らしいか・ものまねや効果音になっていないか・帳と似ていないか)。落ちたものは入れません。入った語彙は「未確認」です。\n' +
-        `Gemini の回数: 1件あたり約1回(10件で約10回)。今日この端末で ${used} 回使用、目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回(別の端末の分は入っていません)。`,
+        `Gemini の回数: 1件あたり約1回(10件で約10回)。今日 ${used} 回使用(この端末と Gmail 経由のデイリーの分)、目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回(別の端末の分は入っていません)。`,
       submitLabel: '作る',
       fields: [
         { name: 'count', label: '件数', type: 'select', value: String(prev.count || 10), options: [2, 4, 6, 10, 20].map((n) => ({ value: String(n), label: `${n}件` })) },
@@ -841,6 +851,13 @@
   }
   if (window.LyraEngine) window.LyraEngine.vocab = { catalog, get: vocabOf };
 
-  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu, loadVocab, saveVocabFile, catalog, vocabOf, store };
+  /** 窓が開いていれば並べ直す(デイリーの結果を取り込んだ時) */
+  function refresh() {
+    if (!overlay) return;
+    render();
+    updateGenNote();
+  }
+
+  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu, loadVocab, saveVocabFile, catalog, vocabOf, store, addRecord, refresh };
 
 })();

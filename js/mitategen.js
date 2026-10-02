@@ -293,7 +293,7 @@
 
   /* ---------------- 帳の一覧(似たものを避けるため) ---------------- */
   function bookLines() {
-    return MIT().ALL().map((e) => `- ${e.name}(${e.tone || '神秘'}・${e.turn}・${e.season}): ${e.moment}`).join('\n');
+    return MIT().ALL().map((e) => bookLineOf(e.name, e.tone, e.turn, e.season, e.moment)).join('\n');
   }
 
   function themeLine(theme) {
@@ -301,16 +301,19 @@
     return `お題: ${theme}(このお題から連想される一瞬を。お題そのものの説明にしない)`;
   }
 
-  /** 1回の生成の依頼(プロンプトとスキーマ)。Apps Script にもこの形で渡す予定 */
-  function batchRequest(typeId, count, theme) {
+  /**
+   * 1回の生成の依頼(プロンプトとスキーマ)。opts.themeText・opts.book で、お題の行と帳の一覧をそのまま差し込める
+   * (Apps Script に渡すひな形 templates() が {{THEME_LINE}}・{{BOOK}} を入れるのに使う)
+   */
+  function batchRequest(typeId, count, theme, opts = {}) {
     const t = TYPES[typeId];
     const rules = typeof t.rules === 'function' ? t.rules() : t.rules;
     const prompt = [
       INTRO,
       `今回は「${t.label}」(${t.text})で ${count} 件作ります。\n${rules}`,
       AVOID,
-      themeLine(theme),
-      `すでに帳にある語彙(これと似た一瞬・似た仕掛けは作らない):\n${bookLines()}`,
+      opts.themeText != null ? opts.themeText : themeLine(theme),
+      `すでに帳にある語彙(これと似た一瞬・似た仕掛けは作らない):\n${opts.book != null ? opts.book : bookLines()}`,
       `お手本(帳にある語彙をこの型の形で書いたもの。形の参考で、内容はまねない):\n${JSON.stringify(t.example())}`,
       WRITE,
       `items に ${count} 件を書いてください。`,
@@ -320,11 +323,12 @@
 
   const VERDICT_SCHEMA = OBJ({ verdicts: ARR(OBJ({ index: S('INTEGER'), keep: S('BOOLEAN'), reason: S('STRING') }, ['index', 'keep', 'reason'])) }, ['verdicts']);
 
-  /** 反芻の依頼。items は Gemini が書いたままの形 */
-  function ruminateRequest(typeId, items) {
+  /** 反芻の依頼。items は Gemini が書いたままの形(opts.itemsText・opts.book・opts.count はひな形用) */
+  function ruminateRequest(typeId, items, opts = {}) {
     const t = TYPES[typeId];
+    const n = opts.count != null ? opts.count : items.length;
     const prompt = [
-      `あなたは作曲支援アプリLYRAの「見立て蔵」の点検役です。語彙係が「${t.label}」(${t.text})の語彙を ${items.length} 件書きました。帳に入れてよいかを1件ずつ決めてください。`,
+      `あなたは作曲支援アプリLYRAの「見立て蔵」の点検役です。語彙係が「${t.label}」(${t.text})の語彙を ${n} 件書きました。帳に入れてよいかを1件ずつ決めてください。`,
       INTRO,
       AVOID,
       `点検の基準:
@@ -332,8 +336,8 @@
 2. 上の「避けること」に当たっていないか(特に、ものまね・劇伴のような旋律・効果音)
 3. 帳にある語彙と、一瞬も仕掛けも似すぎていないか
 迷う時は入れる(keep true)。明らかに当たる時だけ外す。reason は40字以内`,
-      `帳にある語彙:\n${bookLines()}`,
-      `点検する語彙(index は0から):\n${JSON.stringify(items.map((x, index) => ({ index, ...x })))}`,
+      `帳にある語彙:\n${opts.book != null ? opts.book : bookLines()}`,
+      `点検する語彙(index は0から):\n${opts.itemsText != null ? opts.itemsText : JSON.stringify(items.map((x, index) => ({ index, ...x })))}`,
     ].join('\n\n');
     return { prompt, schema: VERDICT_SCHEMA };
   }
@@ -447,5 +451,28 @@
     return { added, dropped, calls, stopped };
   }
 
-  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey };
+  /**
+   * Gmail 経由のデイリー(Apps Script、gas/Code.gs)に渡すひな形。差し込む所:
+   *   {{COUNT}} 件数 / {{THEME_LINE}} お題の行(themeLines.none か themeLines.theme の {{THEME}} を置き換えたもの)/ {{BOOK}} 帳の一覧(book + その回に足した分)/
+   *   反芻: {{N}} 件数 / {{ITEMS}} 点検する語彙の JSON / {{BOOK}}
+   * 形を整える(sanitize)のは LYRA が取り込む時(toRecord)。Apps Script は Gemini を呼んで、そのままの出力と反芻の結果を置くだけ
+   */
+  function templates() {
+    const types = {};
+    typeIds().forEach((id) => {
+      const b = batchRequest(id, '{{COUNT}}', '', { themeText: '{{THEME_LINE}}', book: '{{BOOK}}' });
+      const r = ruminateRequest(id, [], { count: '{{N}}', itemsText: '{{ITEMS}}', book: '{{BOOK}}' });
+      types[id] = { label: TYPES[id].label, tone: TYPES[id].tone, batch: b.prompt, batchSchema: b.schema, ruminate: r.prompt, ruminateSchema: r.schema };
+    });
+    return {
+      types,
+      themeLines: { none: themeLine(''), theme: themeLine('{{THEME}}') },
+      book: bookLines().split('\n'),
+      ko: KO,
+    };
+  }
+  /** 帳の一覧の1行(Apps Script が、その回に足した分を {{BOOK}} に足す時と同じ形) */
+  const bookLineOf = (name, tone, turn, season, moment) => `- ${name}(${tone || '神秘'}・${turn}・${season}): ${moment}`;
+
+  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf };
 })();

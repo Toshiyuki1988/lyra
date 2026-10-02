@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root { --ink: #2b2620; --muted: #7a6f60; --accent: #b8863b; --line: #e3d6bf; --bg: #fbf7ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif; color: var(--ink); background: var(--bg); }
+    main { max-width: 560px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 4px 0 4px; }
+    .sub { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+    .box { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+    .big { font-size: 28px; font-weight: 700; }
+    label { display: block; font-size: 13px; margin: 10px 0 4px; }
+    select, input { width: 100%; font-size: 15px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .row { display: flex; gap: 10px; margin-top: 16px; }
+    button { flex: 1; font-size: 15px; padding: 12px; border-radius: 10px; border: none; cursor: pointer; background: var(--accent); color: #fff; font-weight: 600; }
+    button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    .muted { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .err { color: #b3261e; font-size: 13px; }
+    ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>LYRA デイリー</h1>
+  <p class="sub">Gemini の今日の残りを、見立て蔵の語彙集めに使います。「開始する」を押した時だけ動きます(1日1回まで)。</p>
+
+  <div class="box">
+    <div class="muted">今日の残り(目安)</div>
+    <div class="big" id="remaining">…</div>
+    <div class="muted">日本時間の16時(冬は17時)に戻ります。LYRA の端末とここで数えた分からの目安です。</div>
+  </div>
+
+  <div class="box" id="form">
+    <div><b id="job-label">見立て蔵の語彙集め</b></div>
+    <div class="muted" id="job-text"></div>
+    <label>件数<select id="count"><option>4</option><option>6</option><option selected>10</option><option>20</option></select></label>
+    <label>型<select id="type"><option value="">ランダム</option></select></label>
+    <label>お題<select id="theme-mode"><option value="">おまかせ(四季・暮らし・風土から)</option><option value="ko" id="ko-opt">今日の候</option><option value="text">下の欄に書いたお題</option></select></label>
+    <input id="theme" placeholder="例: 冬の朝の台所、雨上がりの石段">
+    <label>残す回数(今日の残りがこの回数になったら止める)<select id="reserve"><option value="0">残さない</option><option value="20">20回は残す</option><option value="50" selected>50回は残す</option><option value="100">100回は残す</option></select></label>
+    <div class="row">
+      <button id="start">開始する</button>
+      <button id="stop" class="secondary" disabled>止める</button>
+    </div>
+    <p class="err" id="err"></p>
+  </div>
+
+  <div class="box">
+    <div><b>いまの様子</b></div>
+    <div class="muted" id="state">読み込み中…</div>
+    <div id="last"></div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let polling = null;
+  const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function show(s) {
+    if (s.error) { $('err').textContent = s.error; $('state').textContent = ''; $('start').disabled = true; return; }
+    $('remaining').textContent = `約 ${s.remaining} 回 / ${s.limit} 回`;
+    $('job-label').textContent = s.jobLabel;
+    $('job-text').textContent = s.jobText;
+    $('ko-opt').textContent = `今日の候: ${s.ko.ko}(${s.ko.sekki})`;
+    if ($('type').options.length === 1) s.types.forEach((t) => $('type').add(new Option(`${t.label}だけ`, t.id)));
+    $('start').disabled = s.running || s.ranToday;
+    $('stop').disabled = !s.running;
+    $('state').textContent = s.running ? '作っています…(このページを閉じても続きます)' : s.ranToday ? '今日はもう動かしました。結果は LYRA を開くと取り込めます。' : 'まだ動かしていません。';
+    if (s.pending) $('state').textContent += ` LYRA でまだ取り込んでいない語彙: ${s.pending}件。`;
+    const l = s.last;
+    $('last').innerHTML = l ? `<div class="muted">${esc(String(l.startedAt).slice(0, 16).replace('T', ' '))} · ${esc(l.theme || 'おまかせ')} · ${l.attempted}/${l.count}件を試し、Gemini ${l.calls}回${l.stopped ? ` · ${esc(l.stopped)}` : ''}</div>` +
+      (l.items.length ? `<ul>${l.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '') +
+      (l.dropped.length ? `<div class="muted" style="margin-top:6px">入れなかったもの</div><ul>${l.dropped.map((d) => `<li>${esc(d.name)}: ${esc(d.reason)}</li>`).join('')}</ul>` : '') : '';
+    if (s.running && !polling) polling = setInterval(refresh, 6000);
+    if (!s.running && polling) { clearInterval(polling); polling = null; }
+  }
+  function fail(err) { $('err').textContent = err && err.message ? err.message : String(err); refresh(); }
+  function refresh() { google.script.run.withSuccessHandler(show).withFailureHandler(fail).getStatus(); }
+
+  $('start').addEventListener('click', () => {
+    $('err').textContent = '';
+    $('start').disabled = true;
+    $('state').textContent = '作っています…(このページを閉じても続きます)';
+    if (!polling) polling = setInterval(refresh, 6000);
+    google.script.run.withSuccessHandler(show).withFailureHandler(fail).startRun({
+      count: $('count').value, reserve: $('reserve').value, typeId: $('type').value, themeMode: $('theme-mode').value, theme: $('theme').value,
+    });
+  });
+  $('stop').addEventListener('click', () => {
+    $('stop').disabled = true;
+    google.script.run.withSuccessHandler(show).withFailureHandler(fail).stopRun();
+  });
+  refresh();
+</script>
+</body>
+</html>

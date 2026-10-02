@@ -18,13 +18,18 @@ const GEMINI_USAGE_KEY = 'lyra.geminiUsage';
 function geminiPacificDay(date) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(date || new Date());
 }
-function geminiUsageToday() {
+// Gmail 経由のデイリー(Apps Script)が数えた今日の回数は window.geminiRemoteUsage({ day, n })。js/dailyjobs.js が結果ファイルから入れる
+function geminiUsageToday(opts) {
+  let n = 0;
   try {
     const u = JSON.parse(localStorage.getItem(GEMINI_USAGE_KEY) || 'null');
-    return u && u.day === geminiPacificDay() ? u.n : 0;
+    n = u && u.day === geminiPacificDay() ? u.n : 0;
   } catch (err) {
-    return 0;
+    n = 0;
   }
+  const r = window.geminiRemoteUsage;
+  if (!(opts && opts.localOnly) && r && r.day === geminiPacificDay()) n += r.n;
+  return n;
 }
 function countGeminiCall() {
   try {

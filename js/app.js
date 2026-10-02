@@ -49,6 +49,9 @@ const state = {
   premix: null,
   // 見立て蔵の帳(Gemini で足した語彙。js/mitategura.js)= LYRA フォルダの lyra_mitategura.json。本体には fileId だけ(2026-10-02)
   mitateFileId: null,
+  // Gmail 経由のデイリー(js/dailyjobs.js、gas/Code.gs)の依頼と結果のファイル(2026-10-02)
+  dailyRequestFileId: null,
+  dailyResultFileId: null,
 };
 
 // 今の画面のキャンバスに載っているカードと線。canvas.jsの共通処理はここだけを見る。
@@ -246,7 +249,13 @@ async function onSignedIn() {
     if (migrated) scheduleAutoSave();
     if (typeof runDailyTask === 'function') runDailyTask();
     // 見立て蔵の帳は、見立て蔵モデルの生成でも使うので先に読んでおく(失敗しても起動は続ける)
-    if (window.LyraMitate) window.LyraMitate.loadVocab().catch(() => {});
+    // その後、Gmail 経由のデイリーの結果に取り込んでいない語彙があれば聞き、依頼のファイルを新しくする
+    if (window.LyraMitate) {
+      window.LyraMitate.loadVocab().then(async () => {
+        if (window.LyraDaily) await window.LyraDaily.checkResults();
+        scheduleAutoSave();
+      }).catch(() => {});
+    }
   } catch (err) {
     console.error(err);
     setStatus(`読み込みに失敗しました: ${err.message}`, { important: true });
@@ -345,6 +354,8 @@ function applyLoadedData(data) {
     state.daily = { lastDate: null, ...(data.daily || {}) };
     state.trash = Array.isArray(data.trash) ? data.trash : [];
     state.mitateFileId = data.mitateFileId || null;
+    state.dailyRequestFileId = data.dailyRequestFileId || null;
+    state.dailyResultFileId = data.dailyResultFileId || null;
   } else {
     state.souls = [];
     state.ensembles = {};
@@ -850,6 +861,13 @@ async function runScheduledSave() {
       console.error(err);
       setStatus(`見立て蔵の帳の保存に失敗しました: ${err.message}`, { important: true });
     }
+    // Gmail 経由のデイリーへの依頼(変わった時だけ)
+    try {
+      if (window.LyraDaily) await window.LyraDaily.saveRequestFile();
+    } catch (err) {
+      console.error(err);
+      setStatus(`デイリーへの依頼の保存に失敗しました: ${err.message}`, { important: true });
+    }
     state.fileId = await saveData(state.folderId, state.fileId, collectSaveData());
     setStatus('保存しました');
   } catch (err) {
@@ -876,6 +894,8 @@ function collectSaveData() {
     premixIndex: state.premixIndex,
     lastPremixId: state.lastPremixId,
     mitateFileId: state.mitateFileId,
+    dailyRequestFileId: state.dailyRequestFileId,
+    dailyResultFileId: state.dailyResultFileId,
     // 移し替える前の形(本体の中の premix)は、新しいファイルに保存できるまで残す(保存に失敗しても失わないように)
     ...(premixStore.legacy ? { premix: premixStore.legacy } : {}),
   };
