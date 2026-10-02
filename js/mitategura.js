@@ -6,9 +6,10 @@
 // - 集めるのは「部品」: 知覚が切り替わる一瞬(夜道でふと見上げた月光、割った石の中の瑪瑙)を、1〜4秒の音の身振りにしたもの。
 //   ストーリーや起承転結は見立て蔵モデルの生成物の側で作る。最初の7件(SEED)は Claude が手で書いた(Geminiなし)。
 //   切り替わり方の動詞(開く・割れる・砕ける…)・季節・どの感覚から来たか(聴・視・嗅・触)を持つ
-// - 評価(★)と確認済み(実線)は state.prefs.mitate.ratings に残す(Drive)。語彙そのものは今はコードの中だけ。デイリータスクで集める時に
-//   Drive に置く形へ広げる(未実装)
-// - まだ見立て蔵モデルの生成には使っていない(感触を確かめる段階)
+// - 評価(★)と確認済み(実線)は state.prefs.mitate.ratings に残す(Drive)
+// - 2026-10-02: Gemini で語彙を足せるようにした(js/mitategen.js。窓の「Geminiで足す」)。足した語彙は Drive の lyra_mitategura.json
+//   (本体のデータには fileId だけ。state.mitateFileId)。手書きの語彙(SEED と js/mitatecolor.js の文様・鳥)はコードの中のまま
+// - 2026-10-02: 見立て蔵モデルの生成で語彙を使う(生成器 mitate、js/midi/generators.js)。ここの LyraEngine.vocab が目録と音を渡す
 
 (function () {
   /* ---------------- 音を書く道具 ---------------- */
@@ -147,9 +148,77 @@
     },
   ];
 
-  /** 窓に並べる全件: 一瞬の部品(SEED)+配色の音の文様・鳥(js/mitatecolor.js) */
+  /** 窓に並べる全件: 一瞬の部品(SEED)+配色の音の文様・鳥(js/mitatecolor.js)+ Gemini で足した語彙(帳のファイル) */
   const COLOR = () => window.LyraMitateColor;
-  const ALL = () => [...SEED, ...((COLOR() && COLOR().ITEMS) || [])];
+  const ALL = () => [...SEED, ...((COLOR() && COLOR().ITEMS) || []), ...generated()];
+
+  /* ---------------- 帳のファイル(Gemini で足した語彙。2026-10-02) ----------------
+   * LYRA フォルダの lyra_mitategura.json = { version: 1, items: [記録] }。記録 = { id, type(myst / wamon / bird …), createdAt, via, theme, review, data }。
+   * 自動保存(js/app.js の runScheduledSave)が、変わった時だけ本体より先に書く。読み込みは Drive を読んだ後に1回 */
+  const VOCAB_FILE = 'lyra_mitategura.json';
+  const store = { items: [], loaded: false, loading: null, savedJson: null };
+  const hydrated = new Map(); // id → 鳴らせる形
+
+  /** 記録 → 窓・音・MIDI で使う形(型ごと。新しい型で鳴らし方が違えば、ここに足す) */
+  function hydrate(rec) {
+    if (hydrated.has(rec.id)) return hydrated.get(rec.id);
+    let entry;
+    if (rec.type === 'wamon' || rec.type === 'bird') entry = COLOR().fromData(rec.type, { ...rec.data, id: rec.id });
+    else entry = { ...rec.data, id: rec.id, tone: rec.data.tone || '神秘' };
+    Object.assign(entry, { generated: true, genType: rec.type, review: rec.review || '' });
+    hydrated.set(rec.id, entry);
+    return entry;
+  }
+  function generated() {
+    return store.items.map((rec) => {
+      try {
+        return hydrate(rec);
+      } catch (err) {
+        console.warn('見立て蔵の語彙を組み立てられませんでした', rec, err);
+        return null;
+      }
+    }).filter(Boolean);
+  }
+
+  async function loadVocab() {
+    if (store.loaded) return;
+    if (store.loading) return store.loading;
+    store.loading = (async () => {
+      try {
+        const data = state.mitateFileId ? await loadJsonFile(state.mitateFileId) : null;
+        store.items = data && Array.isArray(data.items) ? data.items : [];
+        store.savedJson = JSON.stringify(store.items);
+        store.loaded = true;
+      } catch (err) {
+        console.error(err);
+        setStatus(`見立て蔵の帳を読み込めませんでした: ${err.message}`, { important: true });
+        throw err;
+      } finally {
+        store.loading = null;
+      }
+    })();
+    return store.loading;
+  }
+
+  /** 自動保存から呼ぶ(変わった時だけ書く)。読み込む前は書かない(空の帳で上書きしないように) */
+  async function saveVocabFile() {
+    if (!store.loaded) return;
+    const json = JSON.stringify(store.items);
+    if (json === store.savedJson) return;
+    state.mitateFileId = await saveNamedData(state.folderId, state.mitateFileId, { version: 1, updatedAt: new Date().toISOString(), items: store.items }, VOCAB_FILE);
+    store.savedJson = json;
+  }
+
+  function addRecord(rec) {
+    store.items.push(rec);
+    if (typeof scheduleAutoSave === 'function') scheduleAutoSave();
+  }
+  function removeRecord(id) {
+    store.items = store.items.filter((r) => r.id !== id);
+    hydrated.delete(id);
+    delete midiCache[id];
+    if (typeof scheduleAutoSave === 'function') scheduleAutoSave();
+  }
   const isColor = (e) => e.kind === 'color';
   const TONES = { 神秘: 'myst', 日常: 'daily', 文様: 'wamon', 鳥: 'bird' };
 
@@ -551,6 +620,7 @@
       `<div class="mitate-tags"><span class="t-season t-${escapeHtml(entry.season)}">${escapeHtml(entry.season)}</span>` +
       entry.senses.map((s) => `<span class="t-sense" title="${escapeHtml(SENSES[s])}">${escapeHtml(s)}</span>`).join('') +
       `<span class="t-tone t-tone-${TONES[toneName] || 'myst'}">${escapeHtml(toneName)}</span>` +
+      (entry.generated ? `<span class="t-gen" title="${escapeHtml(entry.review ? `Geminiで足した語彙。反芻: ${entry.review}` : 'Geminiで足した語彙')}">生成</span>` : '') +
       `</div>` +
       sound +
       `<p class="mitate-device"><b>仕掛け</b>${escapeHtml(entry.device)}</p>` +
@@ -558,6 +628,7 @@
       `<footer><span class="mitate-stars">${starsHtml(entry.id)}</span>` +
       `<button type="button" class="mitate-midi" data-midi title="この部品を .mid で書き出し先フォルダへ(1トラック。三層のずれ・うなりは MIDI では表せないので音の高さと長さだけ)">⇩ MIDI</button>` +
       `<button type="button" class="mitate-midi" data-host title="LYRA Host で別の音源に鳴らす(三層のうち A と B をノートで。C のうなりは入りません)">Host</button>` +
+      (entry.generated ? `<button type="button" class="mitate-midi" data-remove title="この語彙を帳から外す(Gemini で足した語彙だけ)">外す</button>` : '') +
       `<button type="button" class="mitate-confirm" data-confirm>${r.confirmed ? '確認済み' : '未確認'}</button></footer>` +
       `</article>`;
   }
@@ -599,7 +670,8 @@
       `<button type="button" class="demo-close" data-close aria-label="閉じる">✕</button>` +
       `<h2>見立て蔵<span class="mitate-sub">日本の自然・風土の「一瞬」の部品</span></h2>` +
       `<p class="mitate-lead">集めるのは物の絵ではなく、<b>知覚が切り替わる一瞬</b>の音(夜道でふと見上げた月光、割った石の中の瑪瑙)。音は和音階ではなく<b>デチューン三層</b>(不動のA・ぶつかるB・ほぼ同じC)の判断のつかなさで鳴らし、一瞬はその状態の変わり方(BとCがAへ吸い込まれて澄む、など)で描きます。数秒の部品で、` +
-      `物語や起承転結は見立て蔵モデルで組み立てます。<b>文様と鳥</b>は D リディアンの三層を土台に、羽や文様の<b>配色</b>をそのまま音色の重なり方にしたもの(藍 = 三層そのもの、朱 = 弦、緑 = 尺八、白 = 澄んだ点、金 = 金属…)。聴いて良いものに★と「確認済み」を付けると、優先して使う部品になります(生成への組み込みはこれから)。</p>` +
+      `物語や起承転結は見立て蔵モデルで組み立てます。<b>文様と鳥</b>は D リディアンの三層を土台に、羽や文様の<b>配色</b>をそのまま音色の重なり方にしたもの(藍 = 三層そのもの、朱 = 弦、緑 = 尺八、白 = 澄んだ点、金 = 金属…)。聴いて良いものに★と「確認済み」を付けると、見立て蔵モデルの生成で優先して使う部品になります(★1〜2は使いません)。</p>` +
+      `<div class="mitate-gen-row"><button type="button" class="secondary" data-gen>＋ Geminiで足す</button><span class="mitate-gen-note"></span></div>` +
       `<div class="mitate-filters"></div><div class="mitate-count"></div><div class="mitate-grid"></div></div>`;
     overlay.addEventListener('click', (event) => {
       const t = event.target;
@@ -610,12 +682,14 @@
         render();
         return;
       }
+      if (t.closest('[data-gen]')) return openGenerate();
       const card = t.closest('[data-entry]');
       if (!card) return;
       const entry = ALL().find((e) => e.id === card.dataset.entry);
       if (t.closest('[data-play]')) play(entry, card);
       else if (t.closest('[data-midi]')) saveMidi(entry);
       else if (t.closest('[data-host]')) openInHost(entry);
+      else if (t.closest('[data-remove]')) confirmRemove(entry);
       else if (t.closest('[data-star]')) {
         const k = Number(t.closest('[data-star]').dataset.star);
         setRating(entry.id, { stars: ratingOf(entry.id).stars === k ? 0 : k });
@@ -631,7 +705,105 @@
     attachBackgroundTapToClose(overlay, close);
     document.body.appendChild(overlay);
     render();
+    updateGenNote();
+    // 帳(Gemini で足した語彙)がまだなら読んでから並べ直す
+    if (!store.loaded && typeof dataLoaded !== 'undefined' && dataLoaded) loadVocab().then(() => { if (overlay) render(); updateGenNote(); }).catch(() => {});
   }
+
+  /* ---------------- Gemini で足す(js/mitategen.js) ---------------- */
+
+  let running = null; // { abort: AbortController }
+
+  function updateGenNote() {
+    const el = overlay && overlay.querySelector('.mitate-gen-note');
+    if (!el) return;
+    const used = typeof geminiUsageToday === 'function' ? geminiUsageToday() : 0;
+    el.textContent = `${running ? '作っています… ' : ''}Geminiで足した語彙 ${store.items.length}件 · 今日この端末で ${used} 回使用(目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回)`;
+    const btn = overlay.querySelector('[data-gen]');
+    if (btn) btn.textContent = running ? '■ 止める' : '＋ Geminiで足す';
+  }
+
+  async function openGenerate() {
+    if (running) {
+      running.abort.abort();
+      return;
+    }
+    const G = window.LyraMitateGen;
+    if (!G) return;
+    if (typeof dataLoaded !== 'undefined' && !dataLoaded) {
+      setStatus('サインインして Drive を読み込んでから使えます', { important: true });
+      return;
+    }
+    try {
+      await loadVocab();
+    } catch (err) {
+      return;
+    }
+    const ko = G.koOf();
+    const used = geminiUsageToday();
+    let prev = {};
+    try { prev = JSON.parse(localStorage.getItem('lyra.mitateGen') || '{}'); } catch (err) { /* 初回 */ }
+    const values = await showFormDialog({
+      title: '見立て蔵に Gemini で語彙を足す',
+      message: '型をランダムに選んで2件ずつ書かせ、もう1回で反芻させます(その一瞬らしいか・ものまねや効果音になっていないか・帳と似ていないか)。落ちたものは入れません。入った語彙は「未確認」です。\n' +
+        `Gemini の回数: 1件あたり約1回(10件で約10回)。今日この端末で ${used} 回使用、目安の残り ${Math.max(0, GEMINI_DAILY_LIMIT - used)} 回(別の端末の分は入っていません)。`,
+      submitLabel: '作る',
+      fields: [
+        { name: 'count', label: '件数', type: 'select', value: String(prev.count || 10), options: [2, 4, 6, 10, 20].map((n) => ({ value: String(n), label: `${n}件` })) },
+        { name: 'type', label: '型', type: 'select', value: prev.type || '', options: [{ value: '', label: `ランダム(${G.typeIds().map((id) => G.TYPES[id].label).join('・')})` }, ...G.typeIds().map((id) => ({ value: id, label: `${G.TYPES[id].label}だけ` }))] },
+        { name: 'themeMode', label: 'お題', type: 'select', value: prev.themeMode || '', options: [
+          { value: '', label: 'おまかせ(四季・暮らし・風土から、帳に無いものを)' },
+          { value: 'ko', label: `今日の候: ${ko.ko}(${ko.sekki})` },
+          { value: 'text', label: '下の欄に書いたお題' },
+        ] },
+        { name: 'theme', label: 'お題(「下の欄に書いたお題」の時)', value: '', placeholder: '例: 冬の朝の台所、雨上がりの石段' },
+        { name: 'reserve', label: '残す回数(今日の残りがこの回数になったら止める)', type: 'select', value: String(prev.reserve != null ? prev.reserve : 50), options: [0, 20, 50, 100].map((n) => ({ value: String(n), label: n ? `${n}回は残す` : '残さない' })) },
+      ],
+    });
+    if (!values) return;
+    try { localStorage.setItem('lyra.mitateGen', JSON.stringify({ count: Number(values.count), type: values.type, themeMode: values.themeMode, reserve: Number(values.reserve) })); } catch (err) { /* 覚えられなくてもよい */ }
+    const theme = values.themeMode === 'ko' ? `七十二候「${ko.ko}」(${ko.sekki}のころ)` : values.themeMode === 'text' ? values.theme : '';
+    running = { abort: new AbortController() };
+    updateGenNote();
+    let res;
+    try {
+      res = await G.run({
+        count: Number(values.count), typeId: values.type, theme, reserve: Number(values.reserve), via: 'manual', signal: running.abort.signal,
+        onProgress: (text) => setStatus(text, { busy: true }),
+        onRecord: (rec) => {
+          addRecord(rec);
+          if (overlay) render();
+          updateGenNote();
+        },
+      });
+    } finally {
+      running = null;
+      updateGenNote();
+    }
+    const lines = [
+      `入れた: ${res.added.length}件${res.added.length ? `(${res.added.map((r) => r.data.name).join('、')})` : ''}`,
+      res.dropped.length ? `入れなかった: ${res.dropped.length}件\n${res.dropped.map((d) => `・${d.name}: ${d.reason}`).join('\n')}` : '',
+      `Gemini の呼び出し: ${res.calls}回`,
+      res.stopped ? `途中で止まりました: ${res.stopped}` : '',
+    ].filter(Boolean);
+    setStatus(`見立て蔵に${res.added.length}件を足しました(Gemini ${res.calls}回)${res.stopped ? `。${res.stopped}` : ''}`, res.stopped ? { important: true } : undefined);
+    if (res.added.length && typeof playMidiCreatedSound === 'function') playMidiCreatedSound();
+    await showChoiceDialog({ title: '見立て蔵に足しました', message: lines.join('\n\n'), options: [{ label: '閉じる', value: 'ok' }] });
+  }
+
+  async function confirmRemove(entry) {
+    const choice = await showChoiceDialog({
+      title: `「${entry.name}」を帳から外しますか`,
+      message: '外した語彙は元に戻せません(この語彙を使って作ったMIDIは、そのまま鳴ります)。',
+      options: [{ label: 'そのまま残す', value: 'keep' }, { label: '帳から外す', value: 'remove', danger: true }],
+    });
+    if (choice !== 'remove') return;
+    if (player && player.id === entry.id) stopPlayer();
+    removeRecord(entry.id);
+    render();
+    updateGenNote();
+  }
+
 
   function close() {
     stopPlayer();
@@ -644,5 +816,31 @@
     if (btn) btn.addEventListener('click', open);
   });
 
-  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu };
+  /* ---------------- 見立て蔵モデルへ(js/midi/generators.js の生成器 mitate、js/midi/design.js) ----------------
+   * 目録: Gemini に見せる語彙の一覧(★1〜2は外す)。音: その語彙の MIDI の音(秒。⇩ MIDI と同じ = 一瞬の部品は A の音、文様・鳥は配色どおりの音)。
+   * 設計図にはこの音の写しを入れるので、語彙を後で外しても、作ったMIDIは鳴り続ける */
+  function catalog() {
+    return ALL().filter((e) => {
+      const st = ratingOf(e.id).stars || 0;
+      return st === 0 || st >= 3;
+    }).map((e) => {
+      const r = ratingOf(e.id);
+      return { id: e.id, name: e.name, tone: e.tone || '神秘', turn: e.turn, moment: e.moment, season: e.season, stars: r.stars || 0, confirmed: Boolean(r.confirmed) };
+    });
+  }
+  function vocabOf(idOrName) {
+    const key = String(idOrName || '').trim();
+    if (!key) return null;
+    const all = ALL();
+    const e = all.find((x) => x.id === key) || all.find((x) => x.name === key) || all.find((x) => key.length >= 2 && (key.includes(x.name) || x.name.includes(key)));
+    if (!e) return null;
+    const midi = midiOf(e);
+    const notes = midi.notes.slice(0, 96).map((n) => [n.pitch, n.start, n.duration, n.velocity]);
+    const len = Math.max(isColor(e) ? e.len : 0, ...notes.map((n) => n[1] + n[2]));
+    return { id: e.id, name: e.name, tone: e.tone || '神秘', lydian: isColor(e), notes, len: Math.round(len * 1000) / 1000 };
+  }
+  if (window.LyraEngine) window.LyraEngine.vocab = { catalog, get: vocabOf };
+
+  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu, loadVocab, saveVocabFile, catalog, vocabOf, store };
+
 })();

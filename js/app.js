@@ -47,6 +47,8 @@ const state = {
   premixIndex: [], // [{ id, name, preset('cosmic' など), fileId(まだ保存していなければ null), createdAt, updatedAt }]
   lastPremixId: null,
   premix: null,
+  // 見立て蔵の帳(Gemini で足した語彙。js/mitategura.js)= LYRA フォルダの lyra_mitategura.json。本体には fileId だけ(2026-10-02)
+  mitateFileId: null,
 };
 
 // 今の画面のキャンバスに載っているカードと線。canvas.jsの共通処理はここだけを見る。
@@ -243,6 +245,8 @@ async function onSignedIn() {
     setStatus('読み込みました');
     if (migrated) scheduleAutoSave();
     if (typeof runDailyTask === 'function') runDailyTask();
+    // 見立て蔵の帳は、見立て蔵モデルの生成でも使うので先に読んでおく(失敗しても起動は続ける)
+    if (window.LyraMitate) window.LyraMitate.loadVocab().catch(() => {});
   } catch (err) {
     console.error(err);
     setStatus(`読み込みに失敗しました: ${err.message}`, { important: true });
@@ -340,6 +344,7 @@ function applyLoadedData(data) {
     state.prefs = { dailyTask: true, ...(data.prefs || {}) };
     state.daily = { lastDate: null, ...(data.daily || {}) };
     state.trash = Array.isArray(data.trash) ? data.trash : [];
+    state.mitateFileId = data.mitateFileId || null;
   } else {
     state.souls = [];
     state.ensembles = {};
@@ -838,6 +843,13 @@ async function runScheduledSave() {
       console.error(err);
       setStatus(`プレミックスの保存に失敗しました: ${err.message}`, { important: true });
     }
+    // 見立て蔵の帳も先に(新しいファイルのIDを本体に入れるため)
+    try {
+      if (window.LyraMitate) await window.LyraMitate.saveVocabFile();
+    } catch (err) {
+      console.error(err);
+      setStatus(`見立て蔵の帳の保存に失敗しました: ${err.message}`, { important: true });
+    }
     state.fileId = await saveData(state.folderId, state.fileId, collectSaveData());
     setStatus('保存しました');
   } catch (err) {
@@ -863,6 +875,7 @@ function collectSaveData() {
     trash: state.trash,
     premixIndex: state.premixIndex,
     lastPremixId: state.lastPremixId,
+    mitateFileId: state.mitateFileId,
     // 移し替える前の形(本体の中の premix)は、新しいファイルに保存できるまで残す(保存に失敗しても失わないように)
     ...(premixStore.legacy ? { premix: premixStore.legacy } : {}),
   };

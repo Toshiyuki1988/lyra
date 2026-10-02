@@ -44,13 +44,13 @@
       ],
     },
     mitategura: {
-      listen: '「お寺の鐘・風・蛍・霧」のモチーフが、それぞれ別の身振りの層になる。コード進行は無く、陰音階の上で地(鐘・霧)と図(風・蛍)が重なる',
+      listen: '「お寺の鐘・霧・月・蛍」のモチーフが、それぞれ別の層になる。霧と月は見立て蔵の帳の語彙(「霧が晴れる」「夜道の月光」)をそのまま置き、鐘と蛍は身振り。コード進行は無く、D リディアンの上で地と図が重なる',
       bars: 8, tempo: 72,
-      pitch: { system: 'scale', root: 'E', scale: 'miyako-bushi' },
+      pitch: { system: 'scale', root: 'D', scale: 'lydian' },
       layers: [
         { name: 'お寺の鐘', generator: 'gesture', gesture: 'bell', occurrence: 'continuous', role: 'ground', register: 'low' },
-        { name: '霧', generator: 'gesture', gesture: 'breath_swell', occurrence: 'continuous', role: 'ground', register: 'mid' },
-        { name: '風', generator: 'gesture', gesture: 'tremolo', occurrence: 'periodic', role: 'figure', register: 'mid' },
+        { name: '霧', generator: 'mitate', vocab: 'kirihare', occurrence: 'once', role: 'ground' },
+        { name: '月', generator: 'mitate', vocab: 'gekko', occurrence: 'sparse', role: 'figure' },
         { name: '蛍', generator: 'gesture', gesture: 'grace_ornament', occurrence: 'sparse', role: 'figure', register: 'high' },
       ],
     },

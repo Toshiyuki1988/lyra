@@ -26,6 +26,7 @@
     { id: 'lyra_bell', label: '合成ベル', gm: null, synth: 'bell' },
     { id: 'lyra_pad', label: '合成パッド', gm: null, synth: 'pad' },
     { id: 'lyra_drone', label: '合成ドローン', gm: null, synth: 'drone' },
+    { id: 'lyra_mu', label: '見立て三層(不動のA・ぶつかるB・ほぼ同じC)', gm: null, synth: 'mu' },
     { id: 'synth', label: '簡易シンセ(読み込みなし)', gm: null },
   ];
   // 合成アンサンブルの振り分け(役割 → 音色)
@@ -336,6 +337,29 @@
       env.gain.setValueAtTime(peak, Math.max(t0 + attack, t1));
       env.gain.linearRampToValueAtTime(0, Math.max(t0 + attack, t1) + 0.6);
       stopAt = Math.max(t0 + attack, t1) + 0.65;
+    } else if (kind === 'mu') {
+      // 見立て蔵のデチューン三層(js/mitategura.js の MU と同じ比): A 不動 .34 / B +1・+2半音 .14×2 / C +5セント .20。B・C だけゆっくり揺れる(±3セント)。
+      // 短い音ほど B を薄くする(短い音でぶつかりを鳴らすと効果音のようになりやすい、2026-10-02 のユーザー指摘から)。部品ごとの状態の変わり方(morph)は MIDI の音符には無いので入らない
+      const attack = Math.min(0.25, len * 0.3) + 0.01;
+      const peak = level * 1.1;
+      const bAmt = Math.min(1, len / 1.2);
+      const wobble = (o) => {
+        let cur = (Math.random() * 2 - 1) * 3;
+        o.detune.setValueAtTime(cur, t0);
+        for (let t = t0 + 0.5 + Math.random() * 2; t < t1 + 0.8; t += 3 + Math.random() * 5) {
+          const next = (Math.random() * 2 - 1) * 3;
+          o.detune.setValueAtTime(cur, t);
+          o.detune.linearRampToValueAtTime(next, t + 1.8);
+          cur = next;
+        }
+      };
+      osc('sine', f, 0.34);
+      if (bAmt > 0.05) [1, 2].forEach((semi) => wobble(osc('sine', f * Math.pow(2, semi / 12), 0.14 * bAmt)));
+      wobble(osc('sine', f * Math.pow(2, 5 / 1200), 0.2));
+      env.gain.linearRampToValueAtTime(peak, t0 + attack);
+      env.gain.setValueAtTime(peak, Math.max(t0 + attack, t1));
+      env.gain.linearRampToValueAtTime(0, Math.max(t0 + attack, t1) + 0.8);
+      stopAt = Math.max(t0 + attack, t1) + 0.85;
     } else {
       const peak = level * 0.75;
       osc('sine', f, 1);

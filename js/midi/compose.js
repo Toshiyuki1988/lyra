@@ -522,7 +522,7 @@ ${images.map((c, i) => `- 画像${i + 1}${c.name ? `「${c.name}」` : ''}${c.im
   function generatorDocs(preset) {
     return preset.generators.map((id) => {
       const g = E.GENERATORS[id];
-      return `- generator "${id}"(${g.label}): ${g.text}\n  パラメータ: ${g.paramText}`;
+      return `- generator "${id}"(${g.label}): ${g.text}\n  パラメータ: ${typeof g.paramText === 'function' ? g.paramText() : g.paramText}`;
     }).join('\n');
   }
 
@@ -729,8 +729,12 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
       if (main && !E.PROCESSES[main.rule]) main.rule = input.rule;
     }
     const pref = (preset.pitch.prefs || []).find((x) => x.value === input.pitch);
-    if (pref) Object.assign(design.pitch, pref.pitch.system === 'scale' ? { system: 'scale', scale: pref.pitch.scale, rotate: Boolean(preset.pitch.rotate) } : { system: pref.pitch.system, rotate: false });
-    else if (input.pitch && input.pitch.startsWith('scale:') && !design.pitch.scale) design.pitch.scale = input.pitch.slice(6);
+    if (pref) {
+      Object.assign(design.pitch, pref.pitch.system === 'scale' ? { system: 'scale', scale: pref.pitch.scale, rotate: Boolean(preset.pitch.rotate) } : { system: pref.pitch.system, rotate: false });
+      // 主音まで決める器(見立て蔵の D リディアン、2026-10-02)。主音が巡ると語彙の高さとずれるので巡回も止める
+      if (pref.pitch.root != null) design.pitch.root = pref.pitch.root;
+      if (pref.pitch.rotate === false) design.pitch.rotate = false;
+    } else if (input.pitch && input.pitch.startsWith('scale:') && !design.pitch.scale) design.pitch.scale = input.pitch.slice(6);
     if (design.pitch.system === 'chords' && !design.pitch.chords.length) design.pitch.system = 'scale';
     // つないだMIDIのテンポ・拍子にそろえる(差し替える音の位置がずれないように)
     if (input.fixed && input.fixed.length) {

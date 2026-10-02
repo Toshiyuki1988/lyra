@@ -33,19 +33,20 @@
     },
     {
       id: 'mitategura', group: '基本', label: '見立て蔵モデル(自然物由来・無階調)', short: '見立て蔵',
-      text: '画像や言葉のモチーフ(名詞)ごとに、鐘打ち・揺らぎ・装飾粒などの身振りを重ねる。コード進行に圧縮しない。要素ごとに別トラック',
-      generators: ['gesture'],
+      text: '画像や言葉のモチーフ(名詞)ごとに、見立て蔵の帳の語彙(一瞬・文様・鳥の部品)か、鐘打ち・揺らぎ・装飾粒などの身振りを重ねる。コード進行に圧縮しない。要素ごとに別トラック',
+      generators: ['mitate', 'gesture'],
       pitch: {
         systems: ['scale', 'chords'], defaultScale: 'miyako-bushi', rotate: true,
-        hint: '和の情景・自然物・静けさなら scale で日本音階(陰音階=miyako-bushi は半音を含み艶っぽく密やか・もの寂しい / 律音階=ritsu は雅楽的で晴れやか)。西洋的な情景なら chords(1小節に1つずつ、長さ4拍)。root は主音の音名',
+        hint: '帳の語彙を多く使うなら scale で D の lydian(帳の文様・鳥と同じ器。語彙が移調されずに鳴る)。和の情景・自然物・静けさなら日本音階(陰音階=miyako-bushi は半音を含み艶っぽく密やか・もの寂しい / 律音階=ritsu は雅楽的で晴れやか)。西洋的な情景なら chords(1小節に1つずつ、長さ4拍)。root は主音の音名。語彙の音は主音へまるごと移される',
         prefs: [
+          { value: 'lydian', label: '見立て蔵の器・D リディアン(帳の文様・鳥と同じ。語彙がそのままの高さで鳴る)', pitch: { system: 'scale', scale: 'lydian', root: 2, rotate: false } },
           { value: 'in', label: '日本音階・陰音階(都節。艶・密やか・もの寂しい)', pitch: { system: 'scale', scale: 'miyako-bushi' } },
           { value: 'ritsu', label: '日本音階・律音階(雅楽的・晴れやか・清澄)', pitch: { system: 'scale', scale: 'ritsu' } },
           { value: 'western', label: 'コード進行(西洋の和音)', pitch: { system: 'chords' } },
         ],
       },
-      meter: 'four', arc: false, bars: 8, tempo: 72, voice: 'vibes',
-      guide: '入力に含まれる具体的なモチーフを、名詞単位で3〜6個取り出し、1モチーフ=1層(generator は gesture)にする。name はモチーフの名前(例: お寺、満月、すすき)。1つにまとめた要約を全要素に配らず、モチーフ固有の質感から身振りを選ぶ。「地」(continuous を1〜2個)と「図」(sparse・once)を必ず混ぜる。本当に伝えたい核の要素は role を figure に、why を詳しく(120字)。脇役は why を簡潔に(30字)。timbre に鳴らしたい楽器・音色(尺八、箏、鈴、チェレスタ など)',
+      meter: 'four', arc: false, bars: 8, tempo: 72, voice: 'lyra_mu',
+      guide: '入力に含まれる具体的なモチーフを、名詞単位で3〜6個取り出し、1モチーフ=1層にする。name はモチーフの名前(例: お寺、満月、すすき)。モチーフ(またはその一瞬・その形・その佇まい)に合う語彙が帳の目録にあれば、その層は generator を mitate にして vocab に id を書く(2〜4層。同じ語彙を2回使わない。★・✓の語彙を優先。語彙は数秒の一瞬なので occurrence は once・sparse が基本、文様の地なら periodic・continuous)。合う語彙が無いモチーフは generator を gesture にして、モチーフ固有の質感から身振りを選ぶ。1つにまとめた要約を全要素に配らない。「地」(continuous を1〜2個)と「図」(sparse・once)を必ず混ぜる。本当に伝えたい核の要素は role を figure に、why を詳しく(120字)。脇役は why を簡潔に(30字)。timbre に鳴らしたい楽器・音色(尺八、箏、鈴、チェレスタ など)',
       fields: COMMON_FIELDS,
     },
     {

@@ -30,6 +30,7 @@
       case 'bass': return `型: ${LABELS[l.pattern] || l.pattern || 'ルート'}`;
       case 'bebop': return `密度 ${l.density || 7}音/小節 · フレーズ${l.phraseLen || 6}拍 · 半音のアプローチ ${Math.round((l.chromatic != null ? l.chromatic : 0.45) * 100)}% · 3連 ${Math.round((l.triplets != null ? l.triplets : 0.15) * 100)}%`;
       case 'line': return `${(l.notes || []).length}音(Geminiが書いた旋律)`;
+      case 'mitate': return `語彙「${l.vocabName || l.vocab || '?'}」 · ${E.OCCURRENCES[l.occurrence] || '一度だけ'}`;
       case 'gesture': return `${(E.GESTURE_TYPES[l.gesture] || { label: `「${l.gesture}」は鳴らない型` }).label} · ${E.OCCURRENCES[l.occurrence] || 'まばら'}`;
       case 'process': {
         const rule = E.PROCESSES[l.rule];
@@ -109,7 +110,7 @@
       signature.length ? `<div class="midi-about-sub">入力らしさの仕掛け</div>${signature.map((x) => `<div class="sketch-sign"><span class="sketch-trait">${escapeHtml(x.trait)}</span><span class="sketch-device">${escapeHtml(x.device)}</span></div>`).join('')}` : '',
       layers.length ? `<div class="midi-about-sub">層ごとの狙い</div>${layers.map((l) => {
         const gen = E.GENERATORS[l.generator];
-        const ges = l.gesture && E.GESTURE_TYPES && E.GESTURE_TYPES[l.gesture] ? `・${E.GESTURE_TYPES[l.gesture].label}` : '';
+        const ges = l.vocabName ? `・「${l.vocabName}」` : l.gesture && E.GESTURE_TYPES && E.GESTURE_TYPES[l.gesture] ? `・${E.GESTURE_TYPES[l.gesture].label}` : '';
         return `<div class="midi-about-layer"><b>${escapeHtml(l.name || (gen ? gen.label : l.generator))}</b><span>${escapeHtml(`${gen ? gen.label : ''}${ges}${l.timbre ? ` · 音色: ${l.timbre}` : ''}`)}</span>${l.why ? `<p>${escapeHtml(l.why)}</p>` : ''}</div>`;
       }).join('')}` : '',
       d && d.arc && d.arc.story ? `<div class="midi-about-sub">時間の設計図 · ${escapeHtml(d.arc.form)}</div><div class="midi-about-text">${escapeHtml(d.arc.story)}</div>` : '',

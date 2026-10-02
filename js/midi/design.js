@@ -27,7 +27,7 @@
   const PARAM_SCHEMA = {
     notes: ARR(NOTE_ITEM), cell: ARR(CELL_ITEM),
     comping: S('STRING'), voicing: S('STRING'), hits: S('STRING'), hitSteps: S('INTEGER'), degrees: ARR(S('INTEGER')), chordBars: S('INTEGER'), size: S('INTEGER'), pattern: S('STRING'),
-    gesture: S('STRING'), occurrence: S('STRING'),
+    gesture: S('STRING'), occurrence: S('STRING'), vocab: S('STRING'),
     rule: S('STRING'), step: S('NUMBER'), repeats: S('INTEGER'), shiftEvery: S('INTEGER'), voices: S('INTEGER'), delay: S('NUMBER'),
     transpose: ARR(S('INTEGER')), speeds: ARR(S('NUMBER')), talea: ARR(S('NUMBER')), triad: S('STRING'), position: S('STRING'), hold: S('NUMBER'),
     density: S('NUMBER'), spread: S('NUMBER'), durMin: S('NUMBER'), durMax: S('NUMBER'), cluster: S('INTEGER'), distribution: S('STRING'),
@@ -217,6 +217,20 @@
     // 身振りの層なのに身振りの名前が無い時も、役割に合う型で鳴らす
     if (generator === 'gesture' && !L.gesture) L.gesture = L.role === 'ground' ? 'sustained_open' : 'scatter_stab';
     if (has('occurrence')) L.occurrence = E.OCCURRENCES[raw.occurrence] ? raw.occurrence : 'sparse';
+    // 見立て蔵の語彙(2026-10-02): 帳から音の写しを設計図に入れる。保存済みの設計図(写しあり)はそのまま使う(帳から外した語彙でも鳴るように)。
+    // 帳に無い id・名前の層は、黙って無音にせず身振りの層にする
+    if (Array.isArray(raw.vocabNotes) && raw.vocabNotes.length) {
+      Object.assign(L, { vocab: str(raw.vocab, 40), vocabName: str(raw.vocabName, 20), vocabNotes: raw.vocabNotes.slice(0, 96), vocabLen: num(raw.vocabLen, 0.1, 30, 4) });
+    } else if (has('vocab') || generator === 'mitate') {
+      const V = E.vocab && E.vocab.get(raw.vocab || (generator === 'mitate' ? raw.name : ''));
+      if (V) Object.assign(L, { vocab: V.id, vocabName: V.name, vocabNotes: V.notes, vocabLen: V.len });
+    }
+    if (L.generator === 'mitate' && !L.vocabNotes) {
+      if (typeof debugLog === 'function') debugLog(`見立て蔵の語彙が帳に無かったので身振りにした: ${String(raw.vocab || raw.name || '').slice(0, 40)}`);
+      L.generator = 'gesture';
+      L.gesture = (E.gestureKey && E.gestureKey(raw.gesture)) || (L.role === 'ground' ? 'sustained_open' : 'scatter_stab');
+    }
+    if (L.vocabNotes && !L.occurrence) L.occurrence = 'once';
     if (has('rule')) L.rule = str(raw.rule, 24).trim();
     L.step = num(raw.step, 0.125, 4, 0.5);
     L.repeats = int(raw.repeats, 1, 8, 2);
@@ -364,7 +378,7 @@
       layers: d.layers.map((l) => {
         const out = {};
         Object.entries(l).forEach(([k, v]) => {
-          if (k === 'reroll' || k === 'muted' || v == null || (Array.isArray(v) && !v.length) || v === '') return;
+          if (k === 'reroll' || k === 'muted' || k === 'vocabNotes' || k === 'vocabLen' || v == null || (Array.isArray(v) && !v.length) || v === '') return;
           if (k === 'notes') out.notes = v.map((n) => ({ note: T.midiToNote(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity }));
           else if (k === 'cell') out.cell = cellOut(v);
           else if (k === 'phrases') out.phrases = v.map((ph) => ph.map((n) => `${n.pitch == null ? 'R' : T.midiToNote(n.pitch)}:${n.duration}`).join(' '));

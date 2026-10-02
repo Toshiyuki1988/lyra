@@ -9,6 +9,31 @@ const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta';
 // PDFの解体は画像1枚のOCRより時間がかかるため、CONSTELLATION(30秒)より長めに取っている。
 const GEMINI_TIMEOUT_MS = 90000;
 
+/* ---------------- 1日の使用回数(目安) ----------------
+ * 2026-10-02、見立て蔵の語彙をGeminiで作る機能で追加(「今日の残り」と「n回は残す」のため)。無料枠(1日250回)は太平洋時間の0時に戻るので、
+ * その日付ごとに、Googleに届いた呼び出し(成功・エラーとも。ネットワークで届かなかったものは数えない)をこの端末で数える。
+ * 別の端末・Apps Script の分は入らないので、あくまで目安 */
+const GEMINI_DAILY_LIMIT = 250;
+const GEMINI_USAGE_KEY = 'lyra.geminiUsage';
+function geminiPacificDay(date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(date || new Date());
+}
+function geminiUsageToday() {
+  try {
+    const u = JSON.parse(localStorage.getItem(GEMINI_USAGE_KEY) || 'null');
+    return u && u.day === geminiPacificDay() ? u.n : 0;
+  } catch (err) {
+    return 0;
+  }
+}
+function countGeminiCall() {
+  try {
+    const day = geminiPacificDay();
+    const u = JSON.parse(localStorage.getItem(GEMINI_USAGE_KEY) || 'null');
+    localStorage.setItem(GEMINI_USAGE_KEY, JSON.stringify({ day, n: (u && u.day === day ? u.n : 0) + 1 }));
+  } catch (err) { /* 数えられなくても呼び出しは続ける */ }
+}
+
 /**
  * 外部から渡されたsignal(ユーザーによる明示キャンセル用)と、内部のタイムアウトを
  * 1つのAbortSignalへ合成する。どちらが理由でabortしたかは、fetch失敗時に
@@ -90,6 +115,7 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
   } finally {
     cleanup();
   }
+  countGeminiCall();
   if (!res.ok) {
     const bodyText = await res.text();
     // 解体パイプラインのように短時間に複数回呼ぶと、無料枠の分あたりの上限(RPM)に

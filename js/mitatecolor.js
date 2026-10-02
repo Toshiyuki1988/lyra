@@ -564,6 +564,55 @@
   BIRDS.forEach((b) => Object.assign(b, { kind: 'color', tone: '鳥', senses: ['聴', '視'], device: b.how }, META[b.id]));
   const ITEMS = [...WAMON, ...BIRDS];
 
+  /* ---------- Gemini が作った文様型・鳥型(データ → 鳴らせる形。2026-10-02) ----------
+   * Drive に置けるよう、生成した語彙は関数を持たないデータで持つ(js/mitategen.js が形を整える)。ここで上の WAMON・BIRDS と同じ形
+   * (events() が {c, m, t, dur, v, pan, mu} の並びを返す)に組み立てるので、鳴らし方・配色の譜面・MIDI は手書きの文様・鳥と同じ。
+   *   文様型: figures = [{ color, degrees(リディアンの段。0 = D3), step(1音の秒), start, repeat, every, v, pan }](同じ形を every 秒ごとに repeat 回)、
+   *           holds = [{ color, degree, t, dur, v }](長い音)
+   *   鳥型:   events = [{ color, midi, t, dur, v, pan, level, attack, release, b, spread, c, hz(C のずれ Hz), pulse(パルスの数), accel(パルスの速まり),
+   *           morph: [{ t, b, spread }], repeat, every }]。高さは D リディアンへ寄せる */
+  function fromData(type, d) {
+    const base = { kind: 'color', id: d.id, name: d.name, turn: d.turn, moment: d.moment, device: d.device, how: d.device,
+      season: d.season || '無季', senses: d.senses && d.senses.length ? d.senses : ['視'], beat: d.beat, b: d.b, len: d.len, generated: true };
+    if (type === 'wamon') {
+      return Object.assign(base, {
+        tone: '文様',
+        events() {
+          const out = [];
+          (d.figures || []).forEach((f) => {
+            for (let k = 0; k < f.repeat; k++) {
+              const T0 = f.start + k * f.every;
+              f.degrees.forEach((deg, i) => {
+                const t = T0 + i * f.step;
+                if (t < d.len) out.push(W(t, deg, f.step, i === 0 ? Math.min(1, f.v + 0.15) : f.v, f.pan, f.color));
+              });
+            }
+          });
+          (d.holds || []).forEach((h) => { if (h.t < d.len) out.push(W(h.t, h.degree, h.dur, h.v, 0, h.color, true)); });
+          return out.slice(0, 400);
+        },
+      });
+    }
+    return Object.assign(base, {
+      tone: '鳥',
+      events() {
+        const out = [];
+        (d.events || []).forEach((e) => {
+          for (let k = 0; k < (e.repeat || 1); k++) {
+            const t = e.t + k * (e.every || 0);
+            if (t >= d.len) break;
+            const beats = e.pulse > 1 ? pulse(e.hz || 1, e.pulse) : [{ hz: e.hz || 0.5, level: 1 }];
+            const mu = { a: e.attack, r: e.release, level: e.level, b: e.b, spread: e.spread, c: e.c, beats, pan: e.pan,
+              ...(e.accel > 1 ? { rate: ((acc, dur) => (x) => 1 + (acc - 1) * Math.min(1, x / Math.max(0.1, dur)))(e.accel, e.dur) } : {}),
+              ...(e.morph && e.morph.length ? { morph: e.morph.map((m) => [m.t, { b: m.b, spread: m.spread }]) } : {}) };
+            out.push({ c: e.color, m: snap(e.midi), t, dur: e.dur, v: e.v, pan: e.pan || 0, mu });
+          }
+        });
+        return out.slice(0, 400);
+      },
+    });
+  }
+
   /** item を ctx に予約する。出口は safeOut(残響つき)。{ ctx, startAt, duration, stop } */
   function schedule(ctx, item, startAt, opts) {
     opts = { scatter: SCATTER, hand: true, ...(opts || {}) };
@@ -615,5 +664,5 @@
     return { tempo: 60, beatsPerBar: 4, meters: [{ bar: 1, num: 4, den: 4 }], notes, cc: [], markers: [], partNames, partRoles };
   }
 
-  window.LyraMitateColor = { COLORS, ITEMS, WAMON, BIRDS, SCATTER, schedule, drawScore, paletteOf, paletteHtml, midiOf, finalEvents };
+  window.LyraMitateColor = { COLORS, ITEMS, WAMON, BIRDS, SCATTER, LYD, degMidi, snap, fromData, schedule, drawScore, paletteOf, paletteHtml, midiOf, finalEvents };
 })();

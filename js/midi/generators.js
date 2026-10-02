@@ -6,7 +6,7 @@
 //   ctx = { total, bars, sections, tension(拍→0〜1), src(音高供給), rng, range([低, 高]), gauge(名前→0〜1), grainScale, rendered, series }
 //   render は ノートの配列 か { voices: [[ノート]], names?, markers? } を返す。ノート = { pitch, start, duration, velocity }
 //
-// 由来: gesture = 見立て蔵モデル(models/mitategura.md)、process = 漸進プロセスモデル(models/process.md)、chords/bass/line/drums =
+// 由来: gesture・mitate(語彙) = 見立て蔵モデル(models/mitategura.md)、process = 漸進プロセスモデル(models/process.md)、chords/bass/line/drums =
 // 基本の楽典モデル(models/gakuten.md)。それ以外は2026-09-26に models/README.md の「その他のMIDI生成モデル候補」から実装した。
 
 (function () {
@@ -673,6 +673,79 @@
       if (!fn) return [];
       const range = L.register ? ctx.range : T.registerOf(L.gesture === 'drone_pulse' ? 'low' : 'mid');
       return fn(ctx, range, L.occurrence || 'sparse', Boolean(L.register)).map((n) => ({ ...n, duration: n.duration * 0.92 }));
+    },
+  });
+
+  /* ================= 語彙(見立て蔵の帳。2026-10-02) =================
+   * 見立て蔵の身振り10種だけでは型が少なく貧弱だったので、帳(js/mitategura.js)の語彙=数秒の「一瞬」の部品を、そのまま層の素材にする。
+   * Gemini は目録から id を選ぶだけで、音はその語彙の MIDI の音(秒)をテンポに合わせて拍に直して置く(一瞬の時間の長さを保つ)。
+   * 設計図(layer.vocabNotes)に音の写しが入るので、帳から外した後も、振り直し・伸ばすで鳴り続ける。
+   * 高さ: 帳の文様・鳥は D リディアン。設計図の主音が D でなければ、語彙の音をまるごと主音へ移す(近い方へ±6半音以内)。
+   * register があれば、平均がその音域に入るようオクターブで動かす */
+
+  /** 目録(Gemini に見せる行)。確認済み・★4〜5を先に、多ければ残りから数を絞る */
+  function vocabCatalogText() {
+    const V = E.vocab;
+    const list = V ? V.catalog() : [];
+    if (!list.length) return '(帳が空です。mitate は使わない)';
+    const good = list.filter((x) => x.confirmed || x.stars >= 4);
+    const rest = list.filter((x) => !(x.confirmed || x.stars >= 4));
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    const shown = [...good, ...rest].slice(0, 90);
+    return shown.map((x) => `${x.id} | ${x.tone} | ${x.name} | ${x.turn} | ${x.moment} | ${x.season}${x.stars ? ` | ★${x.stars}` : ''}${x.confirmed ? ' | ✓' : ''}`).join('\n');
+  }
+
+  register('mitate', {
+    label: '語彙(見立て蔵)',
+    roles: ['figure', 'ground'],
+    text: '見立て蔵の帳にある語彙(知覚が切り替わる一瞬・和文様・鳥を、数秒のデチューン三層・配色の音にした部品)を1つ選び、その音をそのまま層に置く。モチーフに合う語彙があれば身振りより優先する',
+    params: ['vocab', 'occurrence'],
+    paramText: () => `vocab: 下の目録の id(左端の文字列。名前でもよい)。occurrence: once(一度だけ。一瞬の部品の基本)/ sparse(2〜3回)/ periodic(間を置いて繰り返す)/ continuous(切れ目なく繰り返す。文様の地に)。register を書くと、その音域へオクターブで動かす(書かなければ語彙の高さのまま)。
+  帳の目録(id | 型 | 名前 | 切り替わり方 | 一言 | 季節 | ★評価 | ✓確認済み。★・✓のある語彙を優先):
+${vocabCatalogText()}`,
+    render(ctx, L) {
+      const src = L.vocabNotes;
+      if (!Array.isArray(src) || !src.length) return [];
+      const bps = clamp(ctx.design && ctx.design.tempo, 30, 260, 72) / 60; // 1秒あたりの拍
+      const lenSec = Math.max(0.5, L.vocabLen || Math.max(...src.map((n) => n[1] + n[2])));
+      const len = lenSec * bps;
+      // 主音へ移す(D 基準)+ 音域
+      let shift = mod12(ctx.src.rootAt(0) - 2);
+      if (shift > 6) shift -= 12;
+      if (L.register) {
+        const range = T.registerOf(L.register);
+        const center = (range[0] + range[1]) / 2;
+        const avg = T.mean(src.map((n) => n[0] + shift));
+        shift += Math.round((center - avg) / 12) * 12;
+      }
+      const { total, rng } = ctx;
+      const occ = L.occurrence || 'once';
+      let starts;
+      if (occ === 'once') starts = [Math.max(0, Math.min(total - len, total * (0.15 + rng.next() * 0.4)))];
+      else if (occ === 'sparse') {
+        const count = rng.int(2, 3);
+        const slot = total / count;
+        starts = Array.from({ length: count }, (_, i) => i * slot + rng.next() * Math.max(0, slot - len));
+      } else {
+        starts = [];
+        const gapBase = occ === 'continuous' ? 0.25 * bps : len * (0.5 + rng.next());
+        for (let t = rng.next() * (occ === 'continuous' ? 0 : 2); t < total - 0.25; ) {
+          starts.push(t);
+          t += len + gapBase * (occ === 'continuous' ? 1 : (0.8 + rng.next() * 0.4) * (1.25 - ctx.tension(t) * 0.5));
+        }
+      }
+      const out = [];
+      starts.forEach((t0, k) => {
+        const lift = occ === 'once' ? 1 : 0.85 + rng.next() * 0.25 - (k === 0 ? 0 : 0.05);
+        src.forEach(([pitch, start, dur, vel]) => {
+          const at = t0 + start * bps;
+          if (at < total - EPS) out.push(note(pitch + shift, at, Math.max(0.05, dur * bps), vel * lift));
+        });
+      });
+      return out;
     },
   });
 
