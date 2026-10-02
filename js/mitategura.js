@@ -90,8 +90,12 @@
     {
       id: 'shimobashira', name: '霜柱を踏む', turn: '砕ける', season: '冬', senses: ['触', '聴'],
       moment: '朝の土を踏んだら、足の下で霜柱が崩れた',
-      device: '高いごく短い三層の粒(一粒ごとにBがぶつかって砕ける)が一瞬にこぼれ、遅れてかけらが2つ。あとは冷たい無音',
-      parts: [{ name: '霜', notes: N('D6 0 .05 90, F6 .03 .05 80, C#6 .06 .05 84, G6 .1 .05 74, E6 .13 .05 68, A6 .18 .05 60, B6 .45 .05 42, D7 .8 .05 30'), env: { a: 0.002, r: 0.08 }, mu: { spread: 1, b: 1.2, c: 1 } }],
+      device: '高い冷たい一音がAだけで澄んでいる(張りつめた朝)。踏んだ瞬間、その音のBが大きく開きCが激しくうなって砕け、すぐに狭い濁りへ潰れて、冷たい無音へ引いていく。土の重さは低い音が一度だけ',
+      parts: [
+        { name: '霜', notes: N('D6 0 2.4 74'), env: { a: 0.5, r: 1.4 },
+          morph: [[0, { spread: 0, b: 0, c: 0.3, cdet: 1 }], [0.8, { spread: 0, b: 0, c: 0.3, cdet: 1 }], [0.86, { spread: 2.5, b: 1.6, c: 1.3, cdet: 4 }], [1.5, { spread: 0.15, b: 0.5, c: 0.6, cdet: 1.2 }], [2.4, { spread: 0, b: 0, c: 0.15, cdet: 0.5 }]] },
+        { name: '土', notes: N('E3 0.82 1.2 70'), env: { a: 0.01, r: 1 }, mu: { spread: 0.6, b: 0.8, c: 0.6 } },
+      ],
     },
     {
       id: 'shizuku', name: '雪解けの雫', turn: '広がる', season: '春', senses: ['視', '聴'],
@@ -125,70 +129,29 @@
     {
       id: 'senkohanabi', name: '線香花火の最後の玉', turn: '落ちる', season: '夏', senses: ['視'],
       moment: 'ぱちぱちが細くなって、赤い玉がぽとりと落ちた',
-      device: '高い三層の火花の粒がだんだん間遠になる。最後に中ほどの音がひとつ、三層のまま落ちて、BとCがAへ消え、Aも消えて無音',
+      device: '火花を粒の音で散らさず、高い一音のうなりの速さで描く: Cのずれを大きくして速くちらつき、Bがぶつかる(ぱちぱち)。ちらつきがだんだん遅く細くなり、最後に中ほどの音がひとつ、三層のまま落ちて、BとCがAへ消え、Aも消えて無音',
       parts: [
-        { name: '火花', env: { a: 0.002, r: 0.06 }, mu: { spread: 1, b: 1.3, c: 1 }, notes: (() => {
-          const r = rng(5);
-          const pool = ['C6', 'D6', 'F6', 'G6', 'A6', 'C7', 'D7'];
-          const out = [];
-          for (let t = 0; t < 2.2;) {
-            out.push([pool[Math.floor(r() * pool.length)], t, 0.05, Math.round(70 - t * 16)]);
-            t += 0.06 + t * t * 0.08 + r() * 0.05;
-          }
-          return out;
-        })() },
+        { name: '火花', notes: N('C6 0 2.6 72, G6 .05 2.4 50'), env: { a: 0.15, r: 0.8 },
+          morph: [[0, { spread: 0.6, b: 1.2, c: 1.3, cdet: 5 }], [1.2, { spread: 0.6, b: 0.8, c: 1.1, cdet: 3 }], [2.2, { spread: 0.4, b: 0.2, c: 0.6, cdet: 1 }], [2.6, { spread: 0.3, b: 0, c: 0.3, cdet: 0.5 }]] },
         { name: '玉', notes: N('A3 2.6 1.6 70'), env: { a: 0.01, r: 0.9 }, morph: [[2.6, { spread: 1, b: 1, c: 1 }], [3.4, { spread: 0, b: 0, c: 0 }]] },
       ],
     },
 
-    /* ---- あえて神秘的でない音(響き: 日常)。鳴き声のものまねでなく、聞いている時の時間の感じ。判断のつく澄んだ音+時間の性格+三層の開閉 ---- */
-    {
-      id: 'suzume', name: '軒先の雀', turn: '区切る', season: '無季', senses: ['聴'], tone: '日常',
-      moment: '朝、軒先で雀がいつものように鳴いている',
-      device: '神秘を引いた澄んだA(Bなし、Cはかすか)の短い点を、高い所に軽く不規則に散らす。朝の時間が小刻みに明るく区切られる',
-      parts: [{ name: '朝の点', notes: N('E6 0 .12 92, G#6 .18 .1 80, B6 .3 .12 86, C#7 1.1 .1 78, G#6 1.6 .12 90, B6 1.75 .1 76, E6 2.5 .12 84, B6 2.62 .1 80, C#7 2.8 .12 74, G#6 3.6 .12 70'), env: { a: 0.005, r: 0.18 }, mu: { b: 0, c: 0.12 } }],
-    },
-    {
-      id: 'karasu', name: '夕方の鴉', turn: '横切る', season: '無季', senses: ['聴'], tone: '日常',
-      moment: '夕方、電線の鴉が二度鳴いた',
-      device: '中音域の一音に、Bが細く一瞬だけ現れて消える(ざらつきの気配)。それを二度。空を一度横切る線',
-      parts: [{ name: '線', notes: N('F#4 0 .6 104, F#4 1.0 .7 96'), env: { a: 0.05, r: 0.5 }, mu: { spread: 0.35, c: 0.3 },
-        morph: [[0, { b: 0 }], [0.15, { b: 1.4 }], [0.5, { b: 0 }], [1.0, { b: 0 }], [1.15, { b: 1.2 }], [1.6, { b: 0 }]] }],
-    },
-    {
-      id: 'korogi', name: '庭の蟋蟀', turn: '刻む', season: '秋', senses: ['聴'], tone: '日常',
-      moment: '夜の庭の隅で、こおろぎが鳴き続けている',
-      device: 'Aだけ(BもCも抜く)の小さな一音を、一定の間隔で淡々と。夜の背景で時計のように続く刻み',
-      parts: [{ name: '刻み', notes: Array.from({ length: 9 }, (_, i) => ['C7', i * 0.5, 0.08, 118]), env: { a: 0.004, r: 0.12 }, mu: { b: 0, c: 0 } }],
-    },
+    /* ---- あえて神秘的でない音(響き: 日常)。2026-10-02、雀・鴉・蟋蟀・蛙・波打ち際はユーザーの判断で消した
+     * (「ミッキーマウシングっぽい」「単純」「ただの電子音」)。残りは油蝉だけ ---- */
     {
       id: 'aburazemi', name: '真昼の油蝉', turn: '満ちる', season: '夏', senses: ['聴', '触'], tone: '日常',
       moment: '真昼の幹で、油蝉がジリジリ鳴いている',
       device: '高音域に三層を密に重ね(Bを半分に開き、BとCを強めに)、前触れなく始まって途切れずに鳴り続ける。空気が飽和する、止まない圧',
       parts: [{ name: '圧', notes: N('A6 0 4 42, B6 .05 3.95 37, D7 .1 3.9 34, E7 .15 3.85 29'), env: { a: 0.06, r: 0.3 }, mu: { spread: 0.5, b: 1.3, c: 1.3, cdet: 2 } }],
     },
-    {
-      id: 'tanokaeru', name: '田の蛙', turn: '交わす', season: '春', senses: ['聴'], tone: '日常',
-      moment: '夜の田んぼで、蛙がぐわっぐわっと鳴いている',
-      device: '低めの短い音が3つ、それぞれ違う周期(0.75・1・1.25秒)で鳴る。闇のあちこちの点が、ずれた周期で会話する。三層はかすかなCだけ',
-      parts: [
-        { name: '一つ目', notes: Array.from({ length: 6 }, (_, i) => ['G3', i * 0.75, 0.12, 96]), env: { a: 0.006, r: 0.12 }, mu: { b: 0, c: 0.3 } },
-        { name: '二つ目', notes: Array.from({ length: 4 }, (_, i) => ['D4', 0.5 + i * 1, 0.12, 84]), env: { a: 0.006, r: 0.12 }, mu: { b: 0, c: 0.3 } },
-        { name: '三つ目', notes: Array.from({ length: 4 }, (_, i) => ['A#3', 0.25 + i * 1.25, 0.12, 78]), env: { a: 0.006, r: 0.12 }, mu: { b: 0, c: 0.3 } },
-      ],
-    },
-    {
-      id: 'namiuchigiwa', name: '波打ち際', turn: '寄せて返す', season: '無季', senses: ['聴', '視'], tone: '日常',
-      moment: '浜で、波が寄せては砂を引いていく',
-      device: '一音がゆっくり膨らみ(寄せる)、砕ける所でBが開き、引いていく時に閉じてCのかすかさだけが残る。2つ目の波は少し小さく短い',
-      parts: [
-        { name: '一つ目の波', notes: N('D3 0 3.2 110'), env: { a: 1.8, r: 1.4 },
-          morph: [[0, { spread: 0.2, b: 0, c: 0.3 }], [1.8, { spread: 1, b: 1.2, c: 1 }], [2.4, { spread: 1, b: 1.2, c: 1 }], [4.2, { spread: 0, b: 0, c: 0.3 }]] },
-        { name: '二つ目の波', notes: N('D3 4.2 2.4 88'), env: { a: 1.3, r: 1.2 },
-          morph: [[4.2, { spread: 0.2, b: 0, c: 0.3 }], [5.5, { spread: 0.8, b: 1, c: 0.8 }], [5.9, { spread: 0.8, b: 1, c: 0.8 }], [7.4, { spread: 0, b: 0, c: 0.3 }]] },
-      ],
-    },
   ];
+
+  /** 窓に並べる全件: 一瞬の部品(SEED)+配色の音の文様・鳥(js/mitatecolor.js) */
+  const COLOR = () => window.LyraMitateColor;
+  const ALL = () => [...SEED, ...((COLOR() && COLOR().ITEMS) || [])];
+  const isColor = (e) => e.kind === 'color';
+  const TONES = { 神秘: 'myst', 日常: 'daily', 文様: 'wamon', 鳥: 'bird' };
 
   /* ---------------- デチューン三層で鳴らす ---------------- */
 
@@ -359,6 +322,7 @@
   const midiCache = {};
   function midiOf(entry) {
     if (midiCache[entry.id]) return midiCache[entry.id];
+    if (isColor(entry)) return (midiCache[entry.id] = COLOR().midiOf(entry));
     const notes = [];
     const partNames = {};
     const partRoles = {};
@@ -408,6 +372,9 @@
       card.classList.remove('is-playing');
       const head = card.querySelector('.mitate-head');
       if (head) head.hidden = true;
+      const score = card.querySelector('.mitate-score');
+      const entry = ALL().find((e) => e.id === player.id);
+      if (score && entry) COLOR().drawScore(score, entry, -1);
       const btn = card.querySelector('[data-play]');
       if (btn) btn.textContent = '▶';
     }
@@ -420,6 +387,7 @@
     stopPlayer();
     if (same) return;
     if (M && M.stopAll) M.stopAll();
+    if (isColor(entry)) return playColor(entry, card);
     const midi = midiOf(entry);
     const beats = Math.max(T().endBeat(midi.notes), 4);
     const rects = [...card.querySelectorAll('.mitate-roll svg > g:last-of-type rect')];
@@ -454,6 +422,37 @@
     me.raf = requestAnimationFrame(frame);
   }
 
+  /** 文様・鳥: 配色の音で鳴らし、配色の譜面に今の時刻を描く */
+  function playColor(entry, card) {
+    const btn = card.querySelector('[data-play]');
+    const score = card.querySelector('.mitate-score');
+    const me = { id: entry.id, handle: null, raf: 0, rects: [], request: 0 };
+    player = me;
+    btn.textContent = '■';
+    card.classList.add('is-playing');
+    const ctx = soundAudioCtx();
+    const h = COLOR().schedule(ctx, entry, ctx.currentTime + 0.1);
+    me.handle = h;
+    const frame = () => {
+      if (player !== me) return;
+      const now = h.ctx.currentTime - h.startAt;
+      if (now >= h.duration) {
+        stopPlayer();
+        return;
+      }
+      COLOR().drawScore(score, entry, now);
+      me.raf = requestAnimationFrame(frame);
+    };
+    me.raf = requestAnimationFrame(frame);
+  }
+
+  /** 部品1つを .mid で書き出し先フォルダへ(1トラック、1拍 = 1秒 = テンポ60)。セントのずれ・うなりは MIDI では表せないので、音の高さと長さ・強さだけ */
+  function saveMidi(entry) {
+    const M = window.LyraMidi;
+    if (!M || !M.saveToFolder) return;
+    M.saveToFolder({ name: `見立て_${entry.name}`, midi: midiOf(entry) }, 'merged');
+  }
+
   function starsHtml(id) {
     const s = ratingOf(id).stars || 0;
     return [1, 2, 3, 4, 5].map((k) => `<button type="button" class="mitate-star${k <= s ? ' on' : ''}" data-star="${k}" aria-label="★${k}">★</button>`).join('');
@@ -462,24 +461,32 @@
   function cardHtml(entry) {
     const M = window.LyraMidi;
     const r = ratingOf(entry.id);
-    const midi = midiOf(entry);
+    const midi = isColor(entry) ? null : midiOf(entry);
+    const toneName = entry.tone || '神秘';
+    const sound = isColor(entry)
+      ? `<div class="mitate-pal">${COLOR().paletteHtml(entry)}</div><canvas class="mitate-score"></canvas>`
+      : `<div class="mitate-roll">${M.pianoRollSvg(midi, 320, 90)}<div class="mitate-head" hidden></div></div>`;
+    const meta = isColor(entry)
+      ? `${entry.len}秒 · D リディアン · デチューン三層+配色の音色`
+      : `${(T().endBeat(midi.notes)).toFixed(1)}秒 · ${toneName === '日常' ? 'デチューン三層から神秘を引いた音' : 'デチューン三層(サイン波)'}`;
     return `<article class="mitate-card${r.confirmed ? ' is-confirmed' : ''}" data-entry="${entry.id}">` +
       `<header><div class="mitate-turn">${escapeHtml(entry.turn)}</div><div class="mitate-name">${escapeHtml(entry.name)}<span class="mitate-moment">${escapeHtml(entry.moment)}</span></div>` +
       `<button type="button" class="mitate-play" data-play aria-label="鳴らす">▶</button></header>` +
       `<div class="mitate-tags"><span class="t-season t-${escapeHtml(entry.season)}">${escapeHtml(entry.season)}</span>` +
       entry.senses.map((s) => `<span class="t-sense" title="${escapeHtml(SENSES[s])}">${escapeHtml(s)}</span>`).join('') +
-      `<span class="t-tone t-tone-${entry.tone === '日常' ? 'daily' : 'myst'}">${escapeHtml(entry.tone || '神秘')}</span>` +
+      `<span class="t-tone t-tone-${TONES[toneName] || 'myst'}">${escapeHtml(toneName)}</span>` +
       `</div>` +
-      `<div class="mitate-roll">${M.pianoRollSvg(midi, 320, 90)}<div class="mitate-head" hidden></div></div>` +
+      sound +
       `<p class="mitate-device"><b>仕掛け</b>${escapeHtml(entry.device)}</p>` +
-      `<div class="mitate-meta">${(T().endBeat(midi.notes)).toFixed(1)}秒 · ${entry.tone === '日常' ? 'デチューン三層から神秘を引いた音' : 'デチューン三層(サイン波)'}</div>` +
+      `<div class="mitate-meta">${meta}</div>` +
       `<footer><span class="mitate-stars">${starsHtml(entry.id)}</span>` +
+      `<button type="button" class="mitate-midi" data-midi title="この部品を .mid で書き出し先フォルダへ(1トラック。三層のずれ・うなりは MIDI では表せないので音の高さと長さだけ)">⇩ MIDI</button>` +
       `<button type="button" class="mitate-confirm" data-confirm>${r.confirmed ? '確認済み' : '未確認'}</button></footer>` +
       `</article>`;
   }
 
   function visible() {
-    return SEED.filter((e) => (!filter.season || e.season === filter.season) &&
+    return ALL().filter((e) => (!filter.season || e.season === filter.season) &&
       (!filter.sense || e.senses.includes(filter.sense)) && (!filter.tone || (e.tone || '神秘') === filter.tone));
   }
 
@@ -491,11 +498,20 @@
   function render() {
     stopPlayer();
     const list = visible();
-    const confirmed = SEED.filter((e) => ratingOf(e.id).confirmed).length;
-    overlay.querySelector('.mitate-filters').innerHTML = chips('season', SEASONS) + chips('sense', Object.keys(SENSES), SENSES) + chips('tone', ['神秘', '日常'], { 神秘: '三層の判断のつかなさをそのまま', 日常: '三層から引き算・足し算した、あえて神秘的でない音' });
-    overlay.querySelector('.mitate-count').textContent = `${list.length} / ${SEED.length}語 · 確認済み ${confirmed}`;
+    overlay.querySelector('.mitate-filters').innerHTML = chips('season', SEASONS) + chips('sense', Object.keys(SENSES), SENSES) +
+      chips('tone', Object.keys(TONES), { 神秘: '三層の判断のつかなさをそのまま', 日常: '三層から引き算・足し算した、あえて神秘的でない音', 文様: '和文様の形と配色を、リディアンの三層と色の音色で', 鳥: '声の特徴・羽の色・佇まいを、三層とうねりと色の音色で' });
+    updateCount();
     const grid = overlay.querySelector('.mitate-grid');
     grid.innerHTML = list.map(cardHtml).join('') || '<p class="mitate-empty">この組み合わせの語彙はまだありません</p>';
+    list.filter(isColor).forEach((e) => {
+      const cv = grid.querySelector(`[data-entry="${e.id}"] .mitate-score`);
+      if (cv) COLOR().drawScore(cv, e, -1);
+    });
+  }
+
+  function updateCount() {
+    const all = ALL();
+    overlay.querySelector('.mitate-count').textContent = `${visible().length} / ${all.length}語 · 確認済み ${all.filter((e) => ratingOf(e.id).confirmed).length}`;
   }
 
   function open() {
@@ -506,7 +522,7 @@
       `<button type="button" class="demo-close" data-close aria-label="閉じる">✕</button>` +
       `<h2>見立て蔵<span class="mitate-sub">日本の自然・風土の「一瞬」の部品</span></h2>` +
       `<p class="mitate-lead">集めるのは物の絵ではなく、<b>知覚が切り替わる一瞬</b>の音(夜道でふと見上げた月光、割った石の中の瑪瑙)。音は和音階ではなく<b>デチューン三層</b>(不動のA・ぶつかるB・ほぼ同じC)の判断のつかなさで鳴らし、一瞬はその状態の変わり方(BとCがAへ吸い込まれて澄む、など)で描きます。数秒の部品で、` +
-      `物語や起承転結は見立て蔵モデルで組み立てます。聴いて良いものに★と「確認済み」を付けると、優先して使う部品になります(生成への組み込みはこれから)。</p>` +
+      `物語や起承転結は見立て蔵モデルで組み立てます。<b>文様と鳥</b>は D リディアンの三層を土台に、羽や文様の<b>配色</b>をそのまま音色の重なり方にしたもの(藍 = 三層そのもの、朱 = 弦、緑 = 尺八、白 = 澄んだ点、金 = 金属…)。聴いて良いものに★と「確認済み」を付けると、優先して使う部品になります(生成への組み込みはこれから)。</p>` +
       `<div class="mitate-filters"></div><div class="mitate-count"></div><div class="mitate-grid"></div></div>`;
     overlay.addEventListener('click', (event) => {
       const t = event.target;
@@ -519,8 +535,9 @@
       }
       const card = t.closest('[data-entry]');
       if (!card) return;
-      const entry = SEED.find((e) => e.id === card.dataset.entry);
+      const entry = ALL().find((e) => e.id === card.dataset.entry);
       if (t.closest('[data-play]')) play(entry, card);
+      else if (t.closest('[data-midi]')) saveMidi(entry);
       else if (t.closest('[data-star]')) {
         const k = Number(t.closest('[data-star]').dataset.star);
         setRating(entry.id, { stars: ratingOf(entry.id).stars === k ? 0 : k });
@@ -530,7 +547,7 @@
         setRating(entry.id, { confirmed: on });
         card.classList.toggle('is-confirmed', on);
         t.closest('[data-confirm]').textContent = on ? '確認済み' : '未確認';
-        overlay.querySelector('.mitate-count').textContent = `${visible().length} / ${SEED.length}語 · 確認済み ${SEED.filter((e) => ratingOf(e.id).confirmed).length}`;
+        updateCount();
       }
     });
     attachBackgroundTapToClose(overlay, close);
@@ -549,5 +566,5 @@
     if (btn) btn.addEventListener('click', open);
   });
 
-  window.LyraMitate = { SEED, MU, open, close, midiOf, scheduleMu };
+  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, scheduleMu };
 })();

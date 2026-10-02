@@ -2624,6 +2624,11 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .mitate-tags .t-春 { background: #f8dde4; } .mitate-tags .t-夏 { background: #d9eedc; } .mitate-tags .t-秋 { background: #f6dfc6; } .mitate-tags .t-冬 { background: #dde6f2; }
 .mitate-tags .t-sense { background: #fff; border: 1px solid var(--accent-line); }
 .mitate-tags .t-tone-myst { background: #2b2620; color: #fff; } .mitate-tags .t-tone-daily { background: #6f8a5a; color: #fff; }
+.mitate-tags .t-tone-wamon { background: #2a4a9a; color: #fff; } .mitate-tags .t-tone-bird { background: #d9412b; color: #fff; }
+/* 文様・鳥(配色の音、js/mitatecolor.js): 配色の帯と、時間×高さに色の粒を置いた譜面 */
+.mitate-pal { display: flex; height: 8px; border-radius: 3px; overflow: hidden; border: 1px solid #d9cfbd; }
+.mitate-pal i { display: block; height: 100%; }
+.mitate-score { display: block; width: 100%; height: 90px; border-radius: 6px; background: #14120f; }
 .mitate-roll { position: relative; border-radius: 6px; overflow: hidden; background: #1d1a16; }
 .mitate-roll .piano-roll { display: block; height: 90px; margin: 0; background: transparent; border-radius: 0; }
 .mitate-roll .roll-bars line { stroke: rgba(255, 255, 255, 0.08); }
@@ -2639,4 +2644,5 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .modal.mitate-modal .mitate-star { border: none; background: none; box-shadow: none; min-width: 0; margin: 0; padding: 0 1px; font-size: 16px; color: #d9cfbd; cursor: pointer; }
 .modal.mitate-modal .mitate-star.on { color: var(--accent); }
 .modal.mitate-modal .mitate-confirm { min-width: 0; margin: 0; font-size: 11px; padding: 3px 10px; border-radius: 10px; border: 1px dashed var(--accent-line); background: #fff; color: var(--muted); cursor: pointer; }
+.modal.mitate-modal .mitate-midi { min-width: 0; margin: 0 6px 0 auto; font-size: 11px; padding: 3px 10px; border-radius: 10px; border: 1px solid var(--accent-line); background: #fff; color: var(--ink); cursor: pointer; }
 .modal.mitate-modal .is-confirmed .mitate-confirm { border-style: solid; border-color: var(--accent); color: var(--accent-deep); font-weight: 600; }
