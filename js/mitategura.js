@@ -171,6 +171,25 @@
     return buf;
   }
 
+  /** 層の三層の状態(spread・b・c・cdet)を、時刻(秒)から引く。morph があればキーフレームの間を直線で結ぶ */
+  function muOf(part) {
+    const base = { spread: 1, b: 1, c: 1, cdet: 1, ...(part.mu || {}) };
+    const keys = (part.morph || []).map(([t, v]) => [t, { ...base, ...v }]);
+    const valueAt = (t, k) => {
+      if (!keys.length) return base[k];
+      if (t <= keys[0][0]) return keys[0][1][k];
+      for (let i = 1; i < keys.length; i++) {
+        if (t <= keys[i][0]) {
+          const [t0, v0] = keys[i - 1];
+          const [t1, v1] = keys[i];
+          return v0[k] + (v1[k] - v0[k]) * ((t - t0) / Math.max(1e-6, t1 - t0));
+        }
+      }
+      return keys[keys.length - 1][1][k];
+    };
+    return { keys, valueAt };
+  }
+
   /** 部品を ctx に予約する。{ stop, duration, startAt, ctx } */
   function scheduleMu(ctx, entry, startAt) {
     const out = ctx.createGain();
@@ -181,20 +200,7 @@
     let end = 0;
     entry.parts.forEach((part) => {
       const env = { a: 0.05, r: 0.6, ...(part.env || {}) };
-      const base = { spread: 1, b: 1, c: 1, cdet: 1, ...(part.mu || {}) };
-      const keys = (part.morph || []).map(([t, v]) => [t, { ...base, ...v }]);
-      const valueAt = (t, k) => {
-        if (!keys.length) return base[k];
-        if (t <= keys[0][0]) return keys[0][1][k];
-        for (let i = 1; i < keys.length; i++) {
-          if (t <= keys[i][0]) {
-            const [t0, v0] = keys[i - 1];
-            const [t1, v1] = keys[i];
-            return v0[k] + (v1[k] - v0[k]) * ((t - t0) / Math.max(1e-6, t1 - t0));
-          }
-        }
-        return keys[keys.length - 1][1][k];
-      };
+      const { keys, valueAt } = muOf(part);
       const bend = part.bend || null; // [[音の長さの割合, セント]]
       const bendAt = (rel) => {
         if (!bend) return 0;
@@ -453,6 +459,76 @@
     M.saveToFolder({ name: `見立て_${entry.name}`, midi: midiOf(entry) }, 'merged');
   }
 
+  /**
+   * LYRA Host(1トラック)で別の音源に鳴らしてもらう MIDI(2026-10-02)。三層のうち、ノートで表せるのは A と B だけ:
+   * - A: 部品の音そのもの(part「A 不動」)
+   * - B: +1・+2半音を、その時の開き(spread)で半音に丸めた高さのノートにする(part「B ぶつかり」)。b(B の音量)が B_ON 未満・
+   *   丸めて 0 半音(A に重なる)の間は鳴らさないので、morph で B が A へ吸い込まれる・開く動きは、ノートの終わり・始まりとして残る。
+   *   強さは A の強さに、B の音量に応じた割合を掛ける(サイン波の比 .14/.34 そのままだと、サンプルの音源ではほとんど聞こえないため少し持ち上げる)
+   * - C(+5セント)と、B・C の±3セントの揺れは、ノートでもこのホストの MIDI の形(ピッチベンドなし)でも表せないので入らない
+   * 文様・鳥は、配色どおりの音(midiOf)をそのまま送る
+   */
+  const B_ON = 0.25;
+  const B_STEP = 0.05;
+  function hostMidiOf(entry) {
+    if (isColor(entry)) return midiOf(entry);
+    const notes = [];
+    entry.parts.forEach((part) => {
+      if (part.tones === false) return;
+      const { valueAt } = muOf(part);
+      part.notes.forEach(([name, start, duration, velocity]) => {
+        const pitch = T().noteToMidi(name);
+        if (pitch == null) return;
+        notes.push({ part: 'A', pitch, start, duration, velocity });
+        MU.cluster.forEach((semi) => {
+          let seg = null;
+          const flush = (end) => {
+            if (!seg) return;
+            // +1 と +2 が丸めで同じ高さになって重なる時は、別のノートにせず前のノートを延ばす(同じ高さのノートを重ねて送らない)
+            const same = notes.find((n) => n.part === 'B' && n.pitch === seg.pitch && n.start <= seg.start + 1e-6 && n.start + n.duration >= seg.start - 1e-6);
+            if (same) same.duration = Math.max(same.duration, end - same.start);
+            else if (end - seg.start >= 0.1) {
+              const v = Math.round(velocity * Math.min(1, 0.45 + 0.3 * seg.b));
+              notes.push({ part: 'B', pitch: seg.pitch, start: seg.start, duration: end - seg.start, velocity: Math.max(1, Math.min(127, v)) });
+            }
+            seg = null;
+          };
+          for (let t = start; t < start + duration - 1e-6; t += B_STEP) {
+            const b = valueAt(t, 'b');
+            const step = Math.round(semi * valueAt(t, 'spread'));
+            const on = b >= B_ON && step >= 1;
+            if (seg && (!on || seg.pitch !== pitch + step)) flush(t);
+            if (on && !seg) seg = { pitch: pitch + step, start: Math.round(t * 1000) / 1000, b };
+            if (seg) seg.b = Math.max(seg.b, b);
+          }
+          flush(start + duration);
+        });
+      });
+    });
+    notes.forEach((n) => { n.duration = Math.round(n.duration * 1000) / 1000; });
+    notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+    return { tempo: 60, meters: [{ bar: 1, num: 4, den: 4 }], notes };
+  }
+
+  /** LYRA Host で開く(音源はホストに任せる。同じ部品をもう一度開くと、ホストに保存した音源・状態を戻す)。クリックの中で呼ぶこと */
+  async function openInHost(entry) {
+    const H = window.LyraHost;
+    if (!H) return;
+    const connecting = H.launchAndConnect(); // await より前(ユーザー操作の中で lyrahost:// を開く)
+    try {
+      await connecting;
+      const midi = hostMidiOf(entry);
+      await H.request({ type: 'open', cardId: `mitate-${entry.id}`, title: `見立て_${entry.name}`, midi, preferSaved: true, restoreSound: true }, 90000);
+      if (H.floatWindow) H.floatWindow();
+      const nB = midi.notes.filter((n) => n.part === 'B').length;
+      setStatus(`「${entry.name}」を LYRA Host で開きました(${isColor(entry) ? '配色どおりの音' : `A ${midi.notes.length - nB}音 + B ${nB}音。C のうなりは入りません`})。` +
+        '好きな音源で鳴らし、Ctrl+L で送るとプレミックスのカードになります');
+    } catch (err) {
+      console.error(err);
+      setStatus(err.message, { important: true });
+    }
+  }
+
   function starsHtml(id) {
     const s = ratingOf(id).stars || 0;
     return [1, 2, 3, 4, 5].map((k) => `<button type="button" class="mitate-star${k <= s ? ' on' : ''}" data-star="${k}" aria-label="★${k}">★</button>`).join('');
@@ -481,6 +557,7 @@
       `<div class="mitate-meta">${meta}</div>` +
       `<footer><span class="mitate-stars">${starsHtml(entry.id)}</span>` +
       `<button type="button" class="mitate-midi" data-midi title="この部品を .mid で書き出し先フォルダへ(1トラック。三層のずれ・うなりは MIDI では表せないので音の高さと長さだけ)">⇩ MIDI</button>` +
+      `<button type="button" class="mitate-midi" data-host title="LYRA Host で別の音源に鳴らす(三層のうち A と B をノートで。C のうなりは入りません)">Host</button>` +
       `<button type="button" class="mitate-confirm" data-confirm>${r.confirmed ? '確認済み' : '未確認'}</button></footer>` +
       `</article>`;
   }
@@ -538,6 +615,7 @@
       const entry = ALL().find((e) => e.id === card.dataset.entry);
       if (t.closest('[data-play]')) play(entry, card);
       else if (t.closest('[data-midi]')) saveMidi(entry);
+      else if (t.closest('[data-host]')) openInHost(entry);
       else if (t.closest('[data-star]')) {
         const k = Number(t.closest('[data-star]').dataset.star);
         setRating(entry.id, { stars: ratingOf(entry.id).stars === k ? 0 : k });
@@ -566,5 +644,5 @@
     if (btn) btn.addEventListener('click', open);
   });
 
-  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, scheduleMu };
+  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu };
 })();
