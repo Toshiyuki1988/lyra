@@ -277,19 +277,19 @@
    * 自然界に調性はないでしょう?」。試聴(mockups/mitate-motion-mockup.html)で下の13種を全部採用(「一気に良くなりました」「全ていいと思う。これでいこう」)。
    * 幅は線(旋律・リズム)ではなく、混沌の質感で出す。motion という名前は前の版のまま(記録の data.motion)。register: その質感で決まる音域 */
   const MOTIONS = [
-    { id: 'chord', label: '和音の移り変わり', w: 1, how: '調性の無い3〜5音の和音を3〜6個、0.6〜1.5秒ずつ移る。毎回1音だけが半音動く、など少しずつ。長調・短調の和音進行にしない' },
-    { id: 'sustain', label: '一音の状態の変化', w: 0.6, how: '1〜2個の音だけで、三層の状態が急に変わる瞬間を聴かせる(澄んだ一音が砕ける、など)。低い持続音の上に高い音を足す形にはしない' },
-    { id: 'cluster', label: '塊が崩れる', w: 1, how: '1オクターブほどの中の5〜8音を、0.01〜0.12秒ずつずらしてほぼ同時に鳴らす密集した塊。音ごとにばらばらの時刻で抜けていき、1〜2音だけが残る' },
-    { id: 'swarm', label: '群れ', w: 1, how: '周期も線も持たない12〜20音の群れ。時刻も高さも不揃いに、0.5〜2.5秒の音を重ねる。密度が膨らんで引く、または積もって途切れる' },
-    { id: 'strata', label: '層がずれて重なる', w: 1, how: '4度・増4度などを積んだ6〜8音が、不揃いな間隔で1音ずつ入り、全部が最後まで鳴り続けて厚みになる' },
-    { id: 'rift', label: '音域の裂け目', w: 0.8, register: 'wide', how: '最も低い所と最も高い所で、2つの密集した塊が同時に鳴る(真ん中が空く)。片方が先に途切れる' },
-    { id: 'point', label: '点描', w: 1, how: '0.05〜0.1秒の点を10〜16個。点と点の間は無音(release 0.1前後)。時刻は不揃いで、高さは跳び回る(隣り合う点を近い高さで並べて線にしない)' },
-    { id: 'stab', label: '短い塊が散る', w: 1, how: '3〜4音の密集した短い塊(0.1〜0.2秒)を、違う音域に不揃いな間で5〜8個。塊ごとに音の組み合わせを変え、間は無音(release 0.15前後)' },
-    { id: 'glint', label: '一瞬の光', w: 0.8, register: 'high', how: '最も高い所で、0.03〜0.05秒の密集した塊が一度だけ光る(Bを最大に開く)。無音のあと、ずっと小さな名残が一度だけ。全体で2秒以内' },
-    { id: 'silence', label: '無音で区切る', w: 1, how: '濁った塊が前触れなく断ち切られ(release 0.03)、1〜2秒の無音のあと、同じ音が別の状態(澄む・小さく・遠く)で戻る。無音の前後で質が変わることが主役' },
-    { id: 'chopped', label: '無音が刻む', w: 0.8, how: '1つの和音が、不揃いな長さの無音で4〜6回刻まれる(鳴る所はだんだん短く、無音はだんだん長く。一定の拍にしない)。最後は途切れずに鳴って質が変わる' },
-    { id: 'spectral', label: '物音の響きの成分', w: 1, how: '物音(金属・ガラス・氷・木など)が持つ響きの成分を一度だけ: 整数倍でない倍音を bend の一定のセント値で正確に置いて同時に打ち、高い成分ほど早く消える。またはすべり落ちる響きの形を bend で。打つのは一度だけ' },
-    { id: 'texture', label: '物音の質', w: 0.8, how: '物音のざらつき・乾き・湿りの質を、帯域を絞った noise の短い一塊で一度だけ。高い密集した塊を一瞬重ね、あとは無音や低い名残。足音・水音のように繰り返さない' },
+    { id: 'chord', knobs: { notes: [1, 2, 3] }, label: '和音の移り変わり', w: 1, how: '調性の無い3〜5音の和音を3〜6個、0.6〜1.5秒ずつ移る。毎回1音だけが半音動く、など少しずつ。長調・短調の和音進行にしない' },
+    { id: 'sustain', knobs: { notes: [0], len: [2.5, 4, 6], silence: [0, 1] }, label: '一音の状態の変化', w: 0.6, how: '1〜2個の音だけで、三層の状態が急に変わる瞬間を聴かせる(澄んだ一音が砕ける、など)。低い持続音の上に高い音を足す形にはしない' },
+    { id: 'cluster', knobs: { notes: [1, 2] }, label: '塊が崩れる', w: 1, how: '1オクターブほどの中の5〜8音を、0.01〜0.12秒ずつずらしてほぼ同時に鳴らす密集した塊。音ごとにばらばらの時刻で抜けていき、1〜2音だけが残る' },
+    { id: 'swarm', knobs: { notes: [2, 3] }, label: '群れ', w: 1, how: '周期も線も持たない12〜20音の群れ。時刻も高さも不揃いに、0.5〜2.5秒の音を重ねる。密度が膨らんで引く、または積もって途切れる' },
+    { id: 'strata', knobs: { notes: [1, 2] }, label: '層がずれて重なる', w: 1, how: '4度・増4度などを積んだ6〜8音が、不揃いな間隔で1音ずつ入り、全部が最後まで鳴り続けて厚みになる' },
+    { id: 'rift', knobs: { notes: [1, 2] }, label: '音域の裂け目', w: 0.8, register: 'wide', how: '最も低い所と最も高い所で、2つの密集した塊が同時に鳴る(真ん中が空く)。片方が先に途切れる' },
+    { id: 'point', knobs: { notes: [1, 2], silence: [1, 2, 3] }, label: '点描', w: 1, how: '0.05〜0.1秒の点を10〜16個。点と点の間は無音(release 0.1前後)。時刻は不揃いで、高さは跳び回る(隣り合う点を近い高さで並べて線にしない)' },
+    { id: 'stab', knobs: { notes: [2, 3], silence: [1, 2, 3] }, label: '短い塊が散る', w: 1, how: '3〜4音の密集した短い塊(0.1〜0.2秒)を、違う音域に不揃いな間で5〜8個。塊ごとに音の組み合わせを変え、間は無音(release 0.15前後)' },
+    { id: 'glint', knobs: { notes: [0, 1], len: [1.2, 2], silence: [2, 3] }, label: '一瞬の光', w: 0.8, register: 'high', how: '最も高い所で、0.03〜0.05秒の密集した塊が一度だけ光る(Bを最大に開く)。無音のあと、ずっと小さな名残が一度だけ。全体で2秒以内' },
+    { id: 'silence', knobs: { silence: [2, 3] }, label: '無音で区切る', w: 1, how: '濁った塊が前触れなく断ち切られ(release 0.03)、1〜2秒の無音のあと、同じ音が別の状態(澄む・小さく・遠く)で戻る。無音の前後で質が変わることが主役' },
+    { id: 'chopped', knobs: { notes: [2, 3], silence: [1, 2] }, label: '無音が刻む', w: 0.8, how: '1つの和音が、不揃いな長さの無音で4〜6回刻まれる(鳴る所はだんだん短く、無音はだんだん長く。一定の拍にしない)。最後は途切れずに鳴って質が変わる' },
+    { id: 'spectral', knobs: { notes: [0, 1] }, label: '物音の響きの成分', w: 1, how: '物音(金属・ガラス・氷・木など)が持つ響きの成分を一度だけ: 整数倍でない倍音を bend の一定のセント値で正確に置いて同時に打ち、高い成分ほど早く消える。またはすべり落ちる響きの形を bend で。打つのは一度だけ' },
+    { id: 'texture', knobs: { notes: [0, 1], silence: [1, 2, 3] }, label: '物音の質', w: 0.8, how: '物音のざらつき・乾き・湿りの質を、帯域を絞った noise の短い一塊で一度だけ。高い密集した塊を一瞬重ね、あとは無音や低い名残。足音・水音のように繰り返さない' },
   ];
   const REGISTERS = [
     { id: 'high', label: '高い所だけ(C5〜C8。C4より下の音を使わない)', w: 1 },
@@ -311,9 +311,32 @@
     }
     return out;
   }
-  /** 1回の依頼の n 件に、違う質感・三層の変わり方・音域を割り当てる(一つの音で描く「呼吸」は一音の状態の変化の時だけ。音域が決まっている質感はそれ) */
-  function assignGestures(n) {
-    const ms = weightedPick(MOTIONS, n);
+  /* ---------------- 形の条件(2026-10-07) ----------------
+   * ユーザー「バリエーションは増えたが、結局君が用意したパターンのマイナーチェンジが多い」。同じ質感でも毎回違う形になるよう、
+   * 音の数・長さ・無音の割合・層の数・密度の変わり方を1件ごとにくじで決めて渡す。質感ごとに無理な組み合わせは knobs で絞る */
+  const KNOB_NOTES = [[2, 5], [6, 12], [13, 24], [25, 40]];
+  const KNOB_LEN = [2.5, 4, 6, 9];
+  const KNOB_SILENCE = ['無音はほとんど無し', '全体の2割ほどが無音', '全体の4割ほどが無音', '全体の6割ほどが無音(音より無音が長い)'];
+  const KNOB_DENSITY = ['だんだん密になる', 'だんだん疎になる', '真ん中が最も密', '一定の密度のまま、前触れなく終わる', '疎 → 密 → 疎 を2度', '最初に最も密で、あとは散っていく'];
+  const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+  function knobsFor(motion) {
+    const k = motion.knobs || {};
+    const n = KNOB_NOTES[pickOne(k.notes || [0, 1, 2, 3])];
+    const notes = n[0] + Math.floor(Math.random() * (n[1] - n[0] + 1));
+    return {
+      notes,
+      len: pickOne(k.len || KNOB_LEN),
+      silence: KNOB_SILENCE[pickOne(k.silence || [0, 1, 2, 3])],
+      parts: notes <= 3 ? 1 + Math.floor(Math.random() * notes) : 1 + Math.floor(Math.random() * 4),
+      density: notes >= 6 ? pickOne(KNOB_DENSITY) : '',
+    };
+  }
+  const knobsText = (kn) => `音は全部でおよそ ${kn.notes} 個 / 全体 ${kn.len} 秒前後 / ${kn.silence} / 層(parts)は ${kn.parts} 個${kn.density ? ` / 密度: ${kn.density}` : ''}`;
+
+  /** 1回の依頼の n 件に、違う質感・三層の変わり方・音域・形の条件を割り当てる(一つの音で描く「呼吸」は一音の状態の変化の時だけ。音域が決まっている質感はそれ)。
+   *  invented: Gemini が発想した新しい質感(下の「質感の発想」)。あればそれを先に使う */
+  function assignGestures(n, invented = []) {
+    const ms = [...invented.slice(0, n), ...weightedPick(MOTIONS, Math.max(0, n - invented.length))];
     const used = [];
     const usedReg = [];
     return ms.map((motion) => {
@@ -324,7 +347,7 @@
       const regPool = REGISTERS.filter((r) => !usedReg.includes(r));
       const register = fixed || weightedPick(regPool.length ? regPool : REGISTERS, 1)[0];
       usedReg.push(register);
-      return { motion, gesture, register };
+      return { motion, gesture, register, knobs: knobsFor(motion) };
     });
   }
 
@@ -476,16 +499,57 @@
     }
     return TEXTURE_EXAMPLES[motionId] || [];
   }
-  /** お手本: 割り当てた質感のお手本(2件。足りなければほかの質感から) */
+  /** お手本: **割り当てた質感とは違う質感**のお手本を2件(2026-10-07。同じ質感のお手本を見せると、軽いモデルは音の数・音域・時間の配り方までなぞり、
+   *  お手本のマイナーチェンジになった)。お手本は JSON の書き方と値の使い方の参考だけにする */
   function mystExamples(assigned) {
+    const avoid = new Set((assigned || []).map((a) => a.motion && a.motion.id));
+    const pool = MOTIONS.filter((m) => !avoid.has(m.id)).flatMap((m) => examplesOf(m.id)).sort(() => Math.random() - 0.5);
     const picked = [];
-    (assigned || []).forEach(({ motion }) => {
-      const list = examplesOf(motion && motion.id).filter((e) => !picked.includes(e));
-      if (list.length) picked.push(list[Math.floor(Math.random() * list.length)]);
+    pool.forEach((e) => {
+      if (picked.length < 2 && !picked.some((x) => x.motion === e.motion)) picked.push(e);
     });
-    const rest = MOTIONS.flatMap((m) => examplesOf(m.id)).filter((e) => !picked.includes(e)).sort(() => Math.random() - 0.5);
-    while (picked.length < 2 && rest.length) picked.push(rest.shift());
-    return picked.slice(0, 2);
+    return picked;
+  }
+
+  /* ---------------- 質感の発想(2026-10-07) ----------------
+   * ユーザー「無料枠は自ら『創造』はできないかんじ?」。軽いモデルは、新しい発想と細かい数値を1回で同時に出すのが苦手で、お手本の形へ逃げる。
+   * そこで発想と書き起こしを分ける: 先に言葉だけで新しい質感を発想させ(温度を上げる。切り口は1件ごとにくじ)、次の呼び出しでその質感どおりに音を書かせる。
+   * 組(2件)の半分ほどで使う(Gemini の回数は2件で3回。ふだんは2回)。発想した質感は記録の data.invented に残す(良いものを正式な質感に足す材料) */
+  const INVENT_RATE = 0.5;
+  const LENSES = [
+    '物の状態が変わる(凍る・溶ける・蒸発する・結晶になる)', '光のふるまい(屈折・干渉・残像・反射が消える)', '距離と空間(遠ざかる・こだまが戻らない・奥行きが消える)',
+    '時間の伸び縮み(一瞬が引き延ばされる・急に早回しになる)', '重さと支え(傾く・支えが外れる・宙に浮く)', '表面と内側(剥がれる・透ける・浸み込む)',
+    '群れと個(ばらける・そろう・一つだけ遅れる)', '境目(縁がにじむ・境目が消える・急に区切られる)', '錯覚(同じものが違って見える・あるはずのものが無い)',
+    '温度(冷たさが伝わる・熱がこもる・急に冷える)', '摩擦と共鳴(こすれる・共振が育つ・振動が移る)', '気配(何かが通り過ぎた・見られている)',
+    '密度(詰まる・まばらになる・一点に集まる)', '欠けと余白(抜け落ちる・穴があく・空白が広がる)',
+  ];
+  const IDEA_SCHEMA = OBJ({ ideas: ARR(OBJ({ name: S('STRING'), how: S('STRING'), differs: S('STRING') }, ['name', 'how'])) }, ['ideas']);
+
+  /** 質感の発想の依頼(言葉だけ。音のデータは書かせない) */
+  function ideaRequest(count, theme) {
+    const lenses = weightedPick(LENSES.map((x) => ({ id: x, w: 1 })), count).map((x) => x.id);
+    const prompt = [
+      INTRO,
+      `今回のあなたの仕事は、見立て蔵の神秘の部品のための、**まだ一覧に無い新しい「音の質感」を ${count} つ発想する**ことです。言葉だけで書き、音のデータ(音名・秒)は書きません。`,
+      `音の素材: 1つの音を3つの層で鳴らす「デチューン三層」(不動のA・+1/+2半音でぶつかるB・+5セントでうなるC。BとCの量・開き・うなりの速さは時間とともに変えられる)。
+音域は C2〜C8、長さは数秒、短い音・長い音・無音・帯域を絞ったノイズ・音程のすべりが使える`,
+      `守ること(一瞬の混沌):
+- 調性を持たせない。ピアノで弾いた時に、口ずさめる旋律の線や一定の拍のリズムが聞こえるものにしない
+- 物の動きや鳴き声・足音・水音をなぞらない(ミッキーマウシングにしない)
+- 低い持続音の上に、途中から高い音が重なるだけの形にしない`,
+      `すでにある質感(これと同じ・言い換えただけのものは出さない):\n${MOTIONS.map((m) => `- ${m.label}: ${m.how}`).join('\n')}`,
+      `切り口(1つ目から順に、この切り口から発想する):\n${lenses.map((l, i) => `${i + 1}つ目: ${l}`).join('\n')}`,
+      themeLine(theme),
+      `ideas に ${count} つ書いてください。name: 質感の名前(10字以内)。how: 音の並び方・時間の配り方・三層の変わり方・無音の使い方を、言葉だけで具体的に(80〜150字)。differs: すでにある質感とどこが違うか(30字以内)`,
+    ].join('\n\n');
+    return { prompt, schema: IDEA_SCHEMA };
+  }
+  /** 発想の結果 → 割り当てに使える質感(使えないものは捨てる) */
+  function inventedMotions(res) {
+    const names = new Set(MOTIONS.map((m) => m.label));
+    return ((res && res.ideas) || []).map((x) => ({ name: str(x.name, 12), how: str(x.how, 200) }))
+      .filter((x) => x.name && x.how.length >= 30 && !names.has(x.name))
+      .map((x) => ({ id: 'free', label: x.name, how: x.how, w: 0, invented: true }));
   }
 
   /**
@@ -597,7 +661,7 @@
   /** 身振りの指示(assigned があればそれぞれに割り当て、無ければ(デイリーのひな形)一覧から違うものを選ばせる) */
   function gestureText(assigned) {
     const head = assigned
-      ? `今回の質感・三層の変わり方・音域(1件目から順に。必ずこのとおりに。三層の変わり方は、質感全体にかける):\n${assigned.map((a, i) => `${i + 1}件目:\n  質感 motion "${a.motion.id}"(${a.motion.label}) — ${a.motion.how}\n  三層の変わり方 gesture "${a.gesture.id}"(${a.gesture.label}) — ${a.gesture.how}\n  音域: ${a.register.label}`).join('\n')}`
+      ? `今回の質感・三層の変わり方・音域・形の条件(1件目から順に。必ずこのとおりに。三層の変わり方は、質感全体にかける):\n${assigned.map((a, i) => `${i + 1}件目:\n  質感 motion "${a.motion.id}"(${a.motion.label}) — ${a.motion.how}${a.motion.invented ? '(この質感は今回新しく発想したもの。一覧に無い形をそのまま音にする)' : ''}\n  三層の変わり方 gesture "${a.gesture.id}"(${a.gesture.label}) — ${a.gesture.how}\n  音域: ${a.register.label}${a.knobs ? `\n  形の条件: ${knobsText(a.knobs)}` : ''}`).join('\n')}`
       : `質感の一覧(1件ごとに違うものを選び、motion にその id を書く):\n${MOTIONS.map((m) => `- ${m.id}(${m.label}): ${m.how}`).join('\n')}\n三層の変わり方の一覧(1件ごとに違うものを選び、gesture にその id を書く。質感全体にかける。clear はなるべく選ばない):\n${GESTURES.map((g) => `- ${g.id}(${g.label}): ${g.how}`).join('\n')}\n音域も1件ごとに変える(高い所だけ/中ほどだけ/低い所だけ/広く)`;
     return [head, crowdedShapes()].filter(Boolean).join('\n');
   }
@@ -699,7 +763,9 @@
       AVOID,
       opts.themeText != null ? opts.themeText : themeLine(theme),
       `すでに帳にある語彙(これと似た一瞬・似た仕掛けは作らない):\n${opts.book != null ? opts.book : bookLines()}`,
-      `お手本(帳にある語彙をこの型の形で書いたもの。形の参考で、内容はまねない${myst ? '。お手本の身振りと今回の身振りが違う時は、今回の身振りに従う' : ''}):\n${JSON.stringify(t.example(assigned))}`,
+      myst
+        ? `お手本(JSON の書き方と、値の使い方の参考。**今回の質感とはわざと違う質感**を見せています。お手本の音の数・音域・時間の配り方・仕掛けはまねず、上の質感と形の条件に従う):\n${JSON.stringify(t.example(assigned))}`
+        : `お手本(帳にある語彙をこの型の形で書いたもの。形の参考で、内容はまねない):\n${JSON.stringify(t.example(assigned))}`,
       WRITE,
       `items に ${count} 件を書いてください。`,
     ].join('\n\n');
@@ -722,7 +788,8 @@
 3. 帳にある語彙と、一瞬も仕掛けも似すぎていないか${typeId === 'myst' ? `
 4. 神秘型: 一瞬の混沌になっているか。ピアノで弾いて口ずさめる旋律の線・一定の拍のリズム・調性(長調/短調の和音)が聞こえるものは外す。
    motion(質感)と gesture(三層の変わり方)のとおりに書かれているか。「持続音に、途中から高い音が重なるだけ」の形(帳に多い)なら外す。
-   物音を使うものは、物の動きや鳴き方・足音・水音をなぞっていれば外す(響きの成分を一度だけ使うのはよい)` : ''}
+   物音を使うものは、物の動きや鳴き方・足音・水音をなぞっていれば外す(響きの成分を一度だけ使うのはよい)。
+   texture(新しく発想した質感の説明)があるものは、その説明どおりの音になっているか` : ''}
 迷う時は入れる(keep true)。明らかに当たる時だけ外す。reason は40字以内`,
       `帳にある語彙:\n${opts.book != null ? opts.book : bookLines()}`,
       `点検する語彙(index は0から):\n${opts.itemsText != null ? opts.itemsText : JSON.stringify(items.map((x, index) => ({ index, ...x })))}`,
@@ -777,21 +844,36 @@
       }
       return true;
     };
-    const ask = async (req, label) => {
+    const ask = async (req, label, temperature) => {
       if (calls > 0) await wait(GAP_MS);
       if (opts.signal && opts.signal.aborted) throw Object.assign(new Error('止めました'), { cancelled: true });
       calls += 1;
-      return askGeminiJson({ prompt: req.prompt, responseSchema: req.schema, maxOutputTokens: 8192, timeoutMs: 120000, label, signal: opts.signal });
+      return askGeminiJson({ prompt: req.prompt, responseSchema: req.schema, maxOutputTokens: 8192, timeoutMs: 120000, label, signal: opts.signal, temperature });
     };
     try {
       while (attempted < count) {
         const typeId = pickType(opts.typeId);
         const k = Math.min(2, count - attempted);
         if (!canCall()) break;
+        // 神秘型は組の半分ほどで、先に新しい質感を発想させる(失敗しても、くじの質感で続ける)
+        let invented = [];
+        if (typeId === 'myst' && Math.random() < INVENT_RATE) {
+          progress(`新しい質感を${k}つ発想しています…(${attempted + 1}〜${attempted + k}件目 / ${count}件)`);
+          try {
+            invented = inventedMotions(await ask(ideaRequest(k, opts.theme), '見立て蔵:質感の発想', 1.2));
+          } catch (err) {
+            if (err.cancelled || err.perDay) throw err;
+            debugLog(`見立て蔵の質感の発想に失敗(くじの質感で続ける): ${err.message}`);
+          }
+          if (!canCall()) break;
+        }
         progress(`${TYPES[typeId].label}を${k}件書いています…(${attempted + 1}〜${attempted + k}件目 / ${count}件)`);
         let items = [];
+        let assigned = null;
         try {
-          const res = await ask(batchRequest(typeId, k, opts.theme), `見立て蔵:${TYPES[typeId].label}`);
+          const req = batchRequest(typeId, k, opts.theme, typeId === 'myst' ? { gestures: assignGestures(k, invented) } : {});
+          assigned = req.gestures;
+          const res = await ask(req, `見立て蔵:${TYPES[typeId].label}`);
           items = (res.items || []).slice(0, k);
         } catch (err) {
           if (err.cancelled || err.perDay) throw err;
@@ -803,10 +885,19 @@
         attempted += k;
         // 形を整えて、使えないものは反芻の前に捨てる
         const candidates = [];
-        items.forEach((raw) => {
+        items.forEach((raw, i) => {
           const rec = toRecord(typeId, raw, opts);
-          if (rec.error) dropped.push({ name: str(raw && raw.name, 16) || '(名前なし)', reason: rec.error });
-          else candidates.push({ raw, rec });
+          if (rec.error) {
+            dropped.push({ name: str(raw && raw.name, 16) || '(名前なし)', reason: rec.error });
+            return;
+          }
+          // 発想した質感で書いたものは、その質感を記録に残し、反芻にも説明を渡す
+          const m = assigned && assigned[i] && assigned[i].motion;
+          if (m && m.invented) {
+            rec.data.motion = 'free';
+            rec.data.invented = { name: m.label, how: m.how };
+            candidates.push({ raw: { ...raw, texture: `${m.label}: ${m.how}` }, rec });
+          } else candidates.push({ raw, rec });
         });
         if (!candidates.length) continue;
         // 反芻(落ちたものは捨てる。反芻自体が失敗したら、安全側に入れない)
@@ -862,5 +953,5 @@
   /** 帳の一覧の1行(Apps Script が、その回に足した分を {{BOOK}} に足す時と同じ形) */
   const bookLineOf = (name, tone, turn, season, moment, shape) => `- ${name}(${tone || '神秘'}・${turn}・${season}): ${moment}${shape ? ` [音の形: ${shape}]` : ''}`;
 
-  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf, GESTURES, MOTIONS, TEXTURE_EXAMPLES, shapeOf, motionOf, shapeReport };
+  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, ideaRequest, inventedMotions, assignGestures, toRecord, run, colorKey, templates, bookLineOf, GESTURES, MOTIONS, TEXTURE_EXAMPLES, shapeOf, motionOf, shapeReport };
 })();

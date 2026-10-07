@@ -74,7 +74,7 @@ function withTimeoutSignal(externalSignal, ms) {
  *   無料キーだと即429になることがCONSTELLATIONで実機確認済みのため、最初から持たせない。
  * @returns {Promise<string>} 生成されたテキスト(responseSchema指定時はJSON文字列)
  */
-async function askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label }) {
+async function askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label, temperature }) {
   const parts = [{ text: prompt }];
   (files || []).forEach((f) => {
     if (f && f.fileUri) parts.push({ file_data: { mime_type: f.mimeType, file_uri: f.fileUri } });
@@ -84,6 +84,8 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
   const body = { contents: [{ parts }] };
   const generationConfig = {};
   if (maxOutputTokens) generationConfig.maxOutputTokens = maxOutputTokens;
+  // 温度(省略可。2026-10-07、見立て蔵の質感の発想だけで上げる。数値の音のデータを書かせる呼び出しでは上げない)
+  if (Number.isFinite(temperature)) generationConfig.temperature = temperature;
   if (responseSchema) {
     generationConfig.responseMimeType = 'application/json';
     generationConfig.responseSchema = responseSchema;
@@ -161,10 +163,10 @@ async function askGemini({ prompt, files, responseSchema, signal, maxOutputToken
  * JSONモードでもまれにコードフェンス付きで返ることがあるため、念のため除去してからparseする。
  * 出力が途中で切れた・JSONが壊れていた時は、1回だけ自動でやり直す(Liteモデルの暴走は毎回は起きないため)。
  */
-async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label }) {
+async function askGeminiJson({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label, temperature }) {
   for (let attempt = 0; ; attempt++) {
     try {
-      const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label });
+      const raw = await askGemini({ prompt, files, responseSchema, signal, maxOutputTokens, timeoutMs, label, temperature });
       const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
       try {
         return JSON.parse(cleaned);
