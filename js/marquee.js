@@ -310,6 +310,7 @@
     selRect = { x1, y1, x2, y2 };
     extraCount = currentScreen && typeof currentScreen.marqueeExtras === 'function' ? currentScreen.marqueeExtras(selRect) || 0 : 0;
     contentEl.querySelectorAll('.star-card').forEach((el) => {
+      if (el.style.display === 'none') return; // プランクの中の波形は独立したカードとして囲まない
       const r = cardRect(el);
       const hit = needsFull(el)
         ? r.x >= x1 && r.x + r.w <= x2 && r.y >= y1 && r.y + r.h <= y2

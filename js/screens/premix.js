@@ -134,6 +134,8 @@
   const hasTool = (id) => Boolean(state.premix) && currentPreset().tools.includes(id);
   const folders = () => data().cards.filter((c) => c.type === 'folder');
   const soundsOf = (folderId) => data().cards.filter((c) => c.type === 'sound' && c.folderId === folderId); // そのエリアにいるカード
+  const chainCardsOf = (id) => data().cards.filter(c => c.folderId === id && (c.type === 'planck' || (c.type === 'sound' && !c.planckId)));
+  const outsideSoundsOf = (id) => soundsOf(id).filter(s => !s.planckId);
   const isMidi = (sound) => Boolean(sound && (sound.midiRef || sound.midiInline)); // MIDIを合成音にしたカード(ファイルは無い)
   // 単体で読み込んだオーディオ(2026-10-02、ユーザー要望「フォルダだけでなくオーディオデータ単体のインポートも」): どのフォルダのファイルでもない
   const isSingle = (sound) => Boolean(sound && sound.single);
@@ -248,9 +250,13 @@
    * ソロはエリアごと: そのエリアに1枚でもソロのカードがあれば、ソロのカードだけが鳴る。ミュートはソロより強い。
    * カードの音量のゲインに掛ける(残響への送りはその後ろなので、残響も一緒に消える)。鳴っている途中でもすぐ効く */
   function audibleOf(s) {
+    if (s.planckId) {
+      const p = data().cards.find((p) => p.id === s.planckId);
+      return p && planck.audible(p, s.plLane) ? 1 : 0;
+    }
     if (s.mute) return 0;
     if (!s.folderId) return 1;
-    const soloing = data().cards.some((c) => c.type === 'sound' && c.folderId === s.folderId && c.solo);
+    const soloing = data().cards.some((c) => c.type === 'sound' && c.folderId === s.folderId && !c.planckId && c.solo);
     return soloing && !s.solo ? 0 : 1;
   }
   const cardGain = (s) => volumeGain(s.volume) * audibleOf(s);
@@ -336,10 +342,12 @@
       els.viewport.addEventListener('dragover', onNebulaDragOver);
       els.viewport.addEventListener('drop', onNebulaDrop);
       attachPlanetLayer();
+      planck.attach();
       setTools([
         ...LIST_TOOLS,
         { id: 'folder', label: 'フォルダ', icon: '<path d="M3 7h6l2 2h10v10H3z"/>', onClick: () => addFolder() },
         { id: 'audio', label: 'オーディオ', icon: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>', onClick: () => pickAudioFiles() },
+        { id: 'planck', label: 'プランク', icon: '<rect x="4" y="4" width="16" height="16"/><path d="M4 10h16M4 15h16M10 4v16"/>', onClick: () => addPlanck() },
         ...preset.tools.map((t) => PRESET_TOOLS[t]).filter(Boolean),
         { id: 'timbre', label: '音色', icon: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="M14.6 14.6L20 20"/><path d="M8 10.5c.8-1.6 1.6-1.6 2.5 0s1.7 1.6 2.5 0"/>', onClick: () => toggleTimbre() },
         { id: 'image', label: '画像', icon: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 3 3 3-3 3 3"/>', onClick: () => openImageSearch(null) },
@@ -377,6 +385,7 @@
       els.viewport.removeEventListener('dragover', onNebulaDragOver);
       els.viewport.removeEventListener('drop', onNebulaDrop);
       detachPlanetLayer();
+      planck.detach();
       stopAll();
       cancelAnimationFrame(rafId);
       rafId = null;
@@ -391,7 +400,11 @@
       } else if (card.type === 'vocab') buildVocab(card, el);
       else if (card.type === 'image') buildImage(card, el);
       else if (card.type === 'nebula') buildNebula(card, el);
-      else buildSound(card, el);
+      else if (card.type === 'planck') planck.build(card, el);
+      else {
+        buildSound(card, el);
+        if (card.planckId) el.style.display = 'none';
+      }
       attachPin(card, el);
       // エリア(フォルダカード)を押した時だけ、そのエリアをアクティブにする。オーディオカードを押しても切り替えない
       // (2026-09-29、ユーザー要望「アクティブなエリアの再生中に、別のエリアから音を取ってくる時に止まる。止まるのは他のエリアを触った時だけに」)
@@ -403,6 +416,7 @@
 
     cardHexes(card) {
       // オーディオカードは ASTR で線を引ける(チェーンモードで、線の向きに順に鳴る)。上の「語彙」で音を聞かせて長文の語彙カードにする
+      if (card.type === 'planck') return hexHtml('astr') + hexHtml('delete', 'Delete');
       if (card.type === 'sound') return (isMidi(card) ? hexHtml('save', '保存') + hexHtml('info', 'ⓘ') + hexHtml('respond', '応答') + hexHtml('extend', '伸ばす') + hexHtml('host', 'ホスト') : '') + hexHtml('vocab', '語彙') + hexHtml('astr') + hexHtml('delete', 'Delete');
       // 語彙カード・画像カードは、上の「MIDI」「ビート」で合成音のオーディオカードを作る
       if (card.type === 'vocab') return hexHtml('sketch', 'MIDI') + hexHtml('beat', 'ビート') + hexHtml('delete', 'Delete');
@@ -463,11 +477,11 @@
     },
     /** エリア・星雲は大きいので、囲みに全部入った時だけ選ぶ(中でShift+ドラッグして中のカードだけを選べるように) */
     marqueeNeedsFull(card) {
-      return card.type === 'folder' || card.type === 'nebula';
+      return card.type === 'folder' || card.type === 'nebula' || card.type === 'planck';
     },
     /** エリア・星雲の上からでも、Shift+ドラッグで囲み始められる */
     marqueeStartOn(card) {
-      return card.type === 'folder' || card.type === 'nebula';
+      return card.type === 'folder' || card.type === 'nebula' || card.type === 'planck';
     },
 
     onCardTap(card) {
@@ -481,8 +495,12 @@
 
     /** フォルダをドラッグしている間、中のオーディオカードも一緒に動かす(js/canvas.js の updateMove から) */
     onCardDragging(card, el, dx, dy) {
+      if (card.type === 'sound') {
+        planck.preview(card);
+        return;
+      }
       if (card.type !== 'folder') return;
-      soundsOf(card.id).forEach((s) => {
+      [...outsideSoundsOf(card.id), ...planck.cards().filter(p => p.folderId === card.id)].forEach((s) => {
         s.x = (s.x || 0) + dx;
         s.y = (s.y || 0) + dy;
         const sel = cardElById(s.id);
@@ -499,6 +517,25 @@
       if (card.type === 'sound') {
         dropSound(card, el);
         applyMuteSolo();
+      } else if (card.type === 'planck') {
+        const center = cardCenter(card);
+        const inside = folders().filter((f) => {
+          const ry = center.y - f.y;
+          return ry >= 0 && ry <= (f.height || 0) && center.x - f.x >= leftAt(f, ry) && center.x - f.x <= rightAt(f, ry);
+        });
+        // オーディオカードと同じ平行四辺形で判定し、重なった枠は内側を優先する。
+        const target = inside.sort((a, b) => a.width * a.height - b.width * b.height)[0] || null;
+        const prev = folderOf(card);
+        const nextId = target ? target.id : null;
+        if (nextId !== card.folderId) {
+          // 枠の外では再生と未来の予約を止め、中の音もどのバスにもつながない。
+          if (!target) planck.stop(card);
+          card.folderId = nextId;
+          planck.clips(card).forEach((s) => assignPlanckArea(s, nextId));
+          [prev, target].forEach((f) => f && refreshFolder(f));
+          if (!target) setStatus('プランクを枠の外に出しました(鳴りません。エリアへ戻して▶を押すとまた鳴ります)');
+          else if (!prev) setStatus(`プランクを「${target.name}」のエリアへ戻しました`);
+        }
       }
       scheduleAutoSave();
     },
@@ -559,7 +596,10 @@
       btn.addEventListener('click', (event) => {
         event.stopPropagation();
         const a = btn.dataset.f;
-        if (a === 'playall') soundsOf(f.id).forEach((s) => play(s));
+        if (a === 'playall') {
+          outsideSoundsOf(f.id).forEach((s) => play(s));
+          planck.cards().filter((p) => p.folderId === f.id).forEach((p) => togglePlanck(p, true));
+        }
         else if (a === 'view-card' || a === 'view-sphere') {
           soundsOf(f.id).forEach((s) => setView(s, a === 'view-sphere' ? 'sphere' : 'card'));
           refreshFolder(f);
@@ -570,6 +610,7 @@
         else if (a === 'stopall') {
           soundsOf(f.id).forEach((s) => stop(s));
           stopTransport(f);
+          planck.cards().filter(p=>p.folderId===f.id).forEach(p=>planck.stop(p));
         } else if (a === 'transport') toggleTransport(f);
         else if (a === 'free' || a === 'timeline' || a === 'chain') setMode(f, a);
         else if (a === 'reload') loadFolder(f, { interactive: true });
@@ -927,6 +968,10 @@
 
   /** フォルダカード(エリア)を外す。PCのフォルダ・ファイルには触れない(覚えていた読み取りのハンドルを忘れるだけ) */
   function removeFolder(f) {
+    planck.cards().filter((p) => p.folderId === f.id).forEach((p) => {
+      planck.remove(p);
+      removeCardFromScope(p);
+    });
     removableWith(f).forEach((s) => {
       stop(s);
       if (isSingle(s)) deleteHandle(s.id).catch(() => {}); // 覚えていたファイルの場所を忘れるだけ(PCのファイルはそのまま)
@@ -1104,8 +1149,13 @@
   }
 
   function refreshSound(s, elArg) {
+    if (s.planckId) {
+      const p = data().cards.find((p) => p.id === s.planckId);
+      if (p) planck.runtime(p).dirty = true;
+    }
     const el = elArg || cardElById(s.id);
     if (!el) return;
+    el.style.display = s.planckId ? 'none' : '';
     const rt = soundRt.get(s.id) || {};
     const f = folderOf(s);
     el.classList.toggle('star-card--sound-playing', Boolean(rt.playing));
@@ -1733,6 +1783,7 @@
   }
 
   async function play(s) {
+    if (s.planckId) return;
     if (!s.folderId) {
       setStatus('枠の外のカードは鳴りません。フォルダの枠の中へ戻すと鳴ります');
       return;
@@ -1824,11 +1875,17 @@
   function stopAll() {
     data().cards.filter((c) => c.type === 'sound').forEach(stop);
     folders().forEach(stopTransport);
+    planck.cards().forEach(p=>planck.stop(p));
   }
 
   /** フォルダ以外のカードを1枚外す(編集ガイドの Delete と、矩形選択のリジェクト) */
   function removeOne(card) {
-    if (card.type === 'vocab' || card.type === 'nebula') {
+    if (card.type === 'planck') {
+      planck.remove(card);
+      removeCardFromScope(card);
+      scheduleAutoSave();
+    }
+    else if (card.type === 'vocab' || card.type === 'nebula') {
       removeCardFromScope(card);
       nebRt.delete(card.id);
       scheduleAutoSave();
@@ -1849,7 +1906,7 @@
     el.classList.toggle('pm-pinned', Boolean(card.pinned));
     const old = el.querySelector(':scope .pm-pin');
     if (old) old.remove();
-    const head = el.querySelector('.snd-head, .sph-name, .fold-row, .pmv-head, .pmi-name');
+    const head = el.querySelector('.snd-head, .sph-name, .fold-row, .pmv-head, .pmi-name, .pk-head');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `pm-pin no-card-drag${head ? '' : ' pm-pin--float'}${card.pinned ? ' pm-pin--on' : ''}`;
@@ -1872,6 +1929,7 @@
   /** リジェクトで残すカード: ピン留めしたもの・ピン留めしたカードを抱えたエリア(外すと中のカードも外れるため) */
   function keepOnReject(card) {
     if (card.pinned) return true;
+    if (card.type === 'planck') return planck.clips(card).some(s=>s.pinned);
     return card.type === 'folder' && removableWith(card).some((s) => s.pinned);
   }
 
@@ -1934,6 +1992,7 @@
    * どの枠の外に落としたら、エリアから外して鳴らさない(2026-09-29、ユーザー要望。以前は今のエリアの中へ戻していた)
    */
   function dropSound(s, el) {
+    if (planck.drop(s)) return;
     const cx = s.x + el.offsetWidth / 2;
     const cy = s.y + el.offsetHeight / 2;
     const inside = folders().filter((f) => {
@@ -2023,6 +2082,7 @@
 
   /** カードの位置(x)から鳴り始めの時刻を決めて0.25秒にそろえ、その時刻の位置へ置き直す */
   function setStartFromX(s, el) {
+    if (s.planckId || !el) return;
     const f = folderOf(s);
     if (!isTimeline(f)) return;
     const raw = (s.x - (f.x + PAD)) / pxOf(f);
@@ -2031,6 +2091,7 @@
   }
 
   function placeAtStart(s, el) {
+    if (s.planckId || !el) return;
     const f = folderOf(s);
     const x = f.x + PAD + startSec(f, s) * pxOf(f);
     if (x === s.x) return;
@@ -2258,7 +2319,10 @@
   function toggleTransport(f) {
     const tl = tlOf(f);
     if (tl.playing) stopTransport(f);
-    else if (isChain(f)) startChain(f, beltsOf(f).map((belt) => beltHead(f, belt)), true);
+    else if (isChain(f)) {
+      startChain(f, beltsOf(f).map((belt) => beltHead(f, belt)), true);
+      planck.cards().filter((p) => p.folderId === f.id && beltOf(f, p.id).size === 1).forEach((p) => togglePlanck(p, true));
+    }
     else startTransport(f);
   }
 
@@ -2276,8 +2340,9 @@
     startTicker();
   }
 
-  function stopTransport(f) {
+  function stopTransport(f, keepPlancks = false) {
     const rt = folderRt.get(f.id);
+    if (keepPlancks !== true) planck.cards().filter(p=>p.folderId===f.id).forEach(p=>planck.stop(p));
     if (!rt || !rt.tl) return;
     const tl = rt.tl;
     const wasPlaying = tl.playing;
@@ -2318,7 +2383,7 @@
     const firstCycle = Math.floor((Math.max(now, tl.t0) - tl.t0) / len);
     const lastCycle = Math.floor((horizon - tl.t0) / len);
     tl.voices = tl.voices.filter((v) => v.end > now - 0.2);
-    soundsOf(f.id).forEach((s) => {
+    outsideSoundsOf(f.id).forEach((s) => {
       const rt = soundRt.get(s.id);
       if (!rt || !rt.buffer || rt.missing) return;
       const st = startSec(f, s);
@@ -2364,6 +2429,10 @@
       tl.voices = tl.voices.filter((v) => v !== voice);
     };
     tl.voices.push(voice);
+    // すべての予約を記録する。同じカードの発音区間が重なった本数も残す。
+    const same = tl.voices.filter(v=>v.cardId===s.id && v.when < end-1e-6 && v.end > when+1e-6).length;
+    planckDiagnostics.push({cardId:s.id, planckId:s.planckId || null, when, end, same, total:tl.voices.length});
+    if (planckDiagnostics.length > 2000) planckDiagnostics.shift();
   }
 
   /* ---------------- チェーンモード(線の向きに順に鳴らす) ---------------- */
@@ -2375,13 +2444,13 @@
     const outs = data().connections
       .filter((c) => lineMode(c) === 'chain' && group.has(c.cardIdA) && !group.has(c.cardIdB))
       .map((conn) => ({ conn, card: data().cards.find((x) => x.id === conn.cardIdB) }))
-      .filter((o) => o.card && o.card.type === 'sound' && o.card.folderId === f.id);
+      .filter((o) => o.card && (o.card.type === 'planck' || (o.card.type === 'sound' && !o.card.planckId)) && o.card.folderId === f.id);
     return outs.length ? outs[Math.floor(Math.random() * outs.length)] : null;
   }
 
   /** カードのベルト: 線でつながったカードのまとまり(向きは問わない。同じエリアのカードだけ) */
   function beltOf(f, cardId) {
-    const ids = new Set(soundsOf(f.id).map((x) => x.id));
+    const ids = new Set(chainCardsOf(f.id).map((x) => x.id));
     const belt = new Set([cardId]);
     const queue = [cardId];
     while (queue.length) {
@@ -2401,7 +2470,7 @@
   function beltsOf(f) {
     const seen = new Set();
     const list = [];
-    soundsOf(f.id).forEach((s) => {
+    chainCardsOf(f.id).forEach((s) => {
       if (seen.has(s.id)) return;
       const belt = beltOf(f, s.id);
       belt.forEach((id) => seen.add(id));
@@ -2412,7 +2481,7 @@
 
   /** ベルトの頭: 線が入ってこないカード(複数なら左上)。輪だけなら最後に触ったカード、無ければ左上のカード */
   function beltHead(f, belt) {
-    const cards = soundsOf(f.id).filter((s) => belt.has(s.id));
+    const cards = chainCardsOf(f.id).filter((s) => belt.has(s.id));
     const incoming = new Set(data().connections.filter((c) => lineMode(c) === 'chain' && belt.has(c.cardIdA) && belt.has(c.cardIdB)).map((c) => c.cardIdB));
     const topLeft = (list) => list.slice().sort((p, q) => (p.y - q.y) || (p.x - q.x))[0];
     const heads = cards.filter((s) => !incoming.has(s.id));
@@ -2457,7 +2526,8 @@
       }
     });
     tl.voices = tl.voices.filter((v) => v.walker !== w);
-    if (!tl.walkers.length) stopTransport(f);
+    planck.stopChain(w);
+    if (!tl.walkers.length) stopTransport(f, true);
     else soundsOf(f.id).forEach((s) => refreshSound(s));
   }
 
@@ -2468,6 +2538,10 @@
       return;
     }
     const c = audio();
+    fromIds.forEach((id) => {
+      const belt = beltOf(f, id);
+      planck.cards().filter((p) => belt.has(p.id) && planck.runtime(p).playing).forEach((p) => planck.stop(p));
+    });
     for (const s of soundsOf(f.id)) await decodeSound(s);
     const tl = tlOf(f);
     if (!tl.playing) {
@@ -2515,6 +2589,10 @@
         let len = 0;
         linkGroupOf(f, s.id).forEach((id) => {
           const x = inArea(id);
+          if (x && x.type === 'planck') {
+            len = Math.max(len, planck.once(x, w.when, w));
+            return;
+          }
           const rt = x && soundRt.get(x.id);
           if (!rt || !rt.buffer || rt.missing) return;
           const clip = clipOf(x, rt);
@@ -2543,7 +2621,7 @@
       }
       return !w.done;
     });
-    if (!tl.walkers.length && !tl.voices.some((v) => v.end > now)) stopTransport(f);
+    if (!tl.walkers.length && !tl.voices.some((v) => v.end > now)) stopTransport(f, true);
   }
 
   /** 流れが線を通った瞬間(次のカードが鳴り始める時)に、その線を光らせる */
@@ -2629,6 +2707,7 @@
           if (isTimeline(f)) scheduleTimeline(f);
           else scheduleChain(f); // チェーンのエリアのベルトと、フリーのエリアの線でつないだカード(流れが無ければ何もしない)
         });
+        planck.schedule();
         nebulaTick();
         planetTick();
       }, 30);
@@ -2642,6 +2721,7 @@
         drawPlayhead(f, now);
         drawAreaMeter(f);
       });
+      planck.tick();
       drawNebulae();
       drawNebulaChips();
       drawPlanets();
@@ -3248,8 +3328,9 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
     const el = cardElById(s.id);
     const w = el ? el.offsetWidth : s.width || SOUND_W;
     const h = el ? el.offsetHeight : s.height || 100;
-    const cx = s.x + w / 2;
-    const cy = s.y + h / 2;
+    const center = cardCenter(s);
+    const cx = center.x;
+    const cy = center.y;
     const out = {};
     nebs.forEach((n) => {
       const def = N.NEB[n.nebula];
@@ -3731,6 +3812,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
   const onCardTarget = (target) => Boolean(target && target.closest && target.closest('.star-card:not(.star-card--folder):not(.star-card--nebula), .star-card-hex, button, input, textarea, select'));
 
   function onPlanetPointerDown(event) {
+    if (event.target.closest('.pk-lens, .reticle, .pk-lanes')) return;
     if (!planets().length || event.shiftKey) return; // Shift は矩形選択
     if (event.button !== undefined && event.button !== 0) return;
     const overCard = onCardTarget(event.target);
@@ -3804,6 +3886,7 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
 
   /** 中心(または輪)の上のホイールで影響範囲を変える。それ以外はいつものズーム */
   function onPlanetWheel(event) {
+    if (event.target.closest('.pk-lens, .reticle, .pk-lanes')) return;
     if (!planets().length) return;
     const hit = planetHit(event, false);
     if (!hit || hit.mode === 'remove') return;
@@ -3818,6 +3901,14 @@ ${memo ? `ユーザーが書いた語彙メモ(最優先で尊重し、広げる
 
   /** オーディオカードの中心(キャンバス座標) */
   function cardCenter(s) {
+    if (s.planckId) {
+      const p = data().cards.find((p) => p.id === s.planckId);
+      if (p) return cardCenter(p);
+    }
+    if (s.type === 'planck') {
+      const el = cardElById(s.id);
+      return { x: (el ? Number(el.dataset.x) : s.x) + 300, y: (el ? Number(el.dataset.y) : s.y) + 246 };
+    }
     const el = cardElById(s.id);
     const w = el ? el.offsetWidth : s.width || SOUND_W;
     const h = el ? el.offsetHeight : s.height || 100;
@@ -4825,7 +4916,7 @@ ${choiceLines.join('\n')}
 
   /** リンクでつながったカードのまとまり(同じエリアの中)。自分を含む */
   function linkGroupOf(f, cardId) {
-    const ids = new Set(soundsOf(f.id).map((x) => x.id));
+    const ids = new Set(chainCardsOf(f.id).map((x) => x.id));
     const group = new Set([cardId]);
     const queue = [cardId];
     while (queue.length) {
@@ -5000,6 +5091,7 @@ ${choiceLines.join('\n')}
     const guide = getEditGuideCard();
     const guideCard = guide && getCardById(guide.dataset.id);
     const s = guideCard && guideCard.type === 'sound' ? guideCard : data().cards.find((c) => c.id === lastSoundId && c.type === 'sound');
+    if (s && s.planckId) return;
     if (!s) {
       setStatus('複製するオーディオカードを一度押してから Shift+D を押してください');
       return;
@@ -5044,6 +5136,145 @@ ${choiceLines.join('\n')}
     setStatus(`「${copy.fileName}」を複製しました(Shift+D を続けて押すと、さらに複製)`);
   }
 
+
+  const planckDiagnostics = [];
+  // エリア間では現在の音と予約を移し、枠外ではどちらも止める。
+  function assignPlanckArea(s, id) {
+    if (!id) {
+      stop(s);
+      stopVoicesOf(s.id);
+    }
+    const oldVoices = voicesOf(s.id);
+    folderRt.forEach((rt) => {
+      if (rt.tl) rt.tl.voices = rt.tl.voices.filter((v) => v.cardId !== s.id);
+    });
+    if (s.folderId !== id && !isMidi(s) && !isSingle(s)) s.sourceFolderId = sourceOf(s);
+    s.folderId = id;
+    if (s.sourceFolderId === id) delete s.sourceFolderId;
+    stripOf(s);
+    reroute(s);
+    if (oldVoices.length) {
+      const bus = busOf(id),
+        tl = tlOf(folderOf(s));
+      oldVoices.forEach((v) => {
+        v.send.disconnect();
+        v.send.connect(bus.conv);
+        tl.voices.push(v);
+        const ended = v.source.onended;
+        v.source.onended = () => {
+          if (ended) ended();
+          tl.voices = tl.voices.filter((x) => x !== v);
+        };
+      });
+    }
+  }
+  const planck = createLyraPlanck({
+    // 表示・操作モジュールへ、既存のデータとカード操作を渡す。
+    data,
+    id: newId,
+    clip: (s) => clipOf(s, soundRt.get(s.id)),
+    buffer: (s) => (soundRt.get(s.id) || {}).buffer,
+    el: cardElById,
+    escape: escapeHtml,
+    status: setStatus,
+    save: scheduleAutoSave,
+    lines: redrawAsterismLines,
+    gains: applyMuteSolo,
+    stopSound: stop,
+    stopVoices: stopVoicesOf,
+    assign: assignPlanckArea,
+    refresh: refreshSound,
+    restore(s) {
+      const el = cardElById(s.id);
+      if (el) el.remove();
+      renderCard(s);
+    },
+    clamp: (s) => clampIntoFolder(s, cardElById(s.id)),
+    position(s, x, y, gx, gy) {
+      const pos = clientToContent(x, y);
+      s.x = pos.x - gx;
+      s.y = pos.y - gy;
+      const el = cardElById(s.id);
+      el.dataset.x = s.x;
+      el.dataset.y = s.y;
+      applyCardTransform(el);
+      updateAsterismLinesForCard(s.id);
+    },
+    drop: (s) => dropSound(s, cardElById(s.id)),
+    toggle: togglePlanck,
+    ticker: startTicker,
+    now: () => (ctx ? ctx.currentTime : 0),
+    // 発音は既存のエフェクトとバスを通す。
+    voice(p, s, when, walker) {
+      const rt = soundRt.get(s.id),
+        f = folderOf(p);
+      if (rt && rt.buffer && f) voiceAt(f, s, rt, clipOf(s, rt), when, when + clipOf(s, rt).len, walker);
+    },
+    cancelFuture(p, now) {
+      const f = folderOf(p);
+      if (!f) return;
+      const tl = tlOf(f);
+      tl.voices = tl.voices.filter((v) => {
+        if (!planck.clips(p).some((s) => s.id === v.cardId) || v.when <= now) return true;
+        try {
+          v.source.stop();
+        } catch (e) {
+          /* 既に止まっている */
+        }
+        v.gain.disconnect();
+        v.send.disconnect();
+        return false;
+      });
+    },
+  });
+  // 固定の視野が収まるよう、必要な時だけエリアを広げる。
+  function addPlanck() {
+    const f = ensureArea('オーディオ');
+    const pos = newCardSpawnPos(0);
+    const expanded = f.width < 650 || f.height < 650;
+    f.width = Math.max(f.width, 650);
+    f.height = Math.max(f.height, 650);
+    refreshFolder(f);
+    const p = {
+      id: newId(),
+      type: 'planck',
+      folderId: f.id,
+      x: Math.max(f.x + 40, Math.min(pos.x - 260, f.x + f.width - 560)),
+      y: Math.max(f.y + HEAD_H, Math.min(pos.y - 233, f.y + f.height - 470)),
+      len: 4,
+      lanes: Array.from({ length: 4 }, () => ({ id: newId(), mute: false, solo: false })),
+      createdAt: new Date().toISOString(),
+    };
+    data().cards.push(p);
+    renderCard(p);
+    if (!folders().some((f) => f.id === data().activeId)) setActive(f.id);
+    scheduleAutoSave();
+    if (expanded) setStatus('エリアを広げてプランクを置きました');
+    return p;
+  }
+  // 線があればベルト、線が無ければプランク単体を再生する。
+  async function togglePlanck(p, forceStart) {
+    const f = folderOf(p);
+    if (!f) return;
+    const belt = beltOf(f, p.id),
+      w = walkerOnBelt(f, belt);
+    if (belt.size > 1) {
+      if (w && !forceStart) stopWalker(f, w);
+      else {
+        planck.stop(p);
+        await startChain(f, [p.id]);
+      }
+      return;
+    }
+    if (planck.runtime(p).playing && !forceStart) {
+      planck.stop(p);
+      return;
+    }
+    audio();
+    for (const s of planck.clips(p)) await decodeSound(s);
+    planck.start(p);
+    hintIfIdle(f);
+  }
   LYRA.screens.premix = screen;
-  window.LyraPremix = { _test: { soundRt, folderRt, loadFolder, importAudio, loadSingle, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, placeFromHost, adoptFromHost, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
+  window.LyraPremix = { _test: { planck, addPlanck, togglePlanck, planckDiagnostics, decodeSound, nebulaTick, cardCenter, soundRt, folderRt, loadFolder, importAudio, loadSingle, play, stop, setActive, dropSound, setMode, startTransport, stopTransport, duplicateSound, tlOf, setView, setLoopLen, fitLoopToSound, clipOf, onClipChanged, audioCtx: () => ctx, startChain, nextInChain, beltOf, beltsOf, beltHead, walkerOnBelt, stopWalker, placeNebula, placePlanet, planetInfluence, planetTick, kairosHost, saveMidiOf, respondTo, extendCard, undoExtend, placeFromHost, adoptFromHost, openInHost, patchFromImage, auditionMidi, readPatchFromHost, savePatchToSoul, openWithPatch, receiveFromHost, dropHostAudio, linkGroupOf, setLineMode, stripRt, nebRt, openMidiPicker, placeMidiSound, ensembleMidis, soundToVocab, areaToVocab, midiFrom, placeGeneratedMidi, putImage, vocabText, vocabBrief } };
 })();

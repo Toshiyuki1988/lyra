@@ -1401,7 +1401,7 @@ function redrawAsterismLines() {
   scope.connections.forEach((conn) => {
     const elA = cardElById(conn.cardIdA);
     const elB = cardElById(conn.cardIdB);
-    if (!elA || !elB) return;
+    if (!elA || !elB || elA.style.display === 'none' || elB.style.display === 'none') return;
     const line = drawAsterismLine(elA, elB, 'asterism-line--manual');
     line.dataset.connectionId = conn.id;
     if (conn.mode) line.dataset.mode = conn.mode; // プレミックスの線の種類(link / chain。2026-10-01)
