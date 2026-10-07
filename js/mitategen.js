@@ -48,7 +48,7 @@
   /* ---------------- 共通のことば ---------------- */
 
   const INTRO = `あなたは作曲支援アプリLYRAの「見立て蔵」の語彙係です。見立て蔵は、日本の自然・風土・暮らしの語彙を、数秒の音の部品にして集める帳面です。
-集めるのは物の絵ではなく、知覚が切り替わる一瞬の音です(例: 夜道でふと見上げると月が照っていた/石を割ったら中が瑪瑙だった)。
+集めるのは物の絵ではなく、知覚が切り替わる一瞬の音です(例: 石を割ったら中が瑪瑙だった/朝の土を踏んだら霜柱が崩れた)。
 物語や起承転結は、この部品を使う作曲の側で作ります。部品はその一瞬(文様・鳥なら、その形・その佇まい)だけを書いてください。`;
 
   const AVOID = `避けること(これまでの試作で実際に失敗したもの):
@@ -80,15 +80,17 @@
 3つが同時に鳴ると「和音なのか、1つの音が揺れているだけなのか」が判断しきれません。その判断のつかなさが狙いです。
 一瞬は、この三層の「状態の変わり方」で描きます。層(parts)ごとに次の値を持ち、morph のキーフレーム(t = 秒)で時間とともに変えられます:
 - spread: Bの開き(1 = +1・+2半音、0 = Aに重なって消える、2 = 広く濁る)。b: Bの音量の倍率(0〜2)。c: Cの音量の倍率(0〜2)。cdet: Cのずれの倍率(1 = +5セント。大きいほど速くうなる、0〜6)
-- 例: 霧が晴れる = BとCがAへ吸い込まれて、ただのサイン波に澄む/雪解けの雫 = 澄んだ一滴(b 0・c 0)から、広がる輪ほどBとCが増えてにじむ
+- 一瞬の描き方(身振り)は1件ごとに下で指定します。指定された身振りで描き、gesture にその id を書きます
+- 低い音を必ず置く必要はありません。1つの音のまま状態だけが変わる、高い所だけで終わる、無音や途切れで描く、なども同じくらい良い部品です
 音の書き方:
-- 時間は秒。全体で3〜8秒。parts は1〜4個。1つの part の notes は1〜5個で、0.5秒以上の長めの音を中心にする(短い音は1件に3つまで)
+- 時間は秒。全体で3〜8秒。parts は1〜4個。1つの part の notes は1〜5個で、0.5秒以上の長めの音を中心にする(短い音は1件に3つまで。粒を散らさず、音の状態の変わり方で描く)
 - notes: note(音名。C2〜C8。12音から自由に選んでよい。和音階・長調短調の旋律にしない)、start(秒)、duration(秒)、velocity(20〜120)
 - attack・release: 音の立ち上がり・余韻の秒(0.003〜3)
 - season: 春・夏・秋・冬・無季。senses: その一瞬がどの感覚から来たか(聴・視・嗅・触)`,
-      example: () => ({ items: ['gekko', 'kirihare'].map((id) => mystForPrompt(MIT().SEED.find((e) => e.id === id))) }),
+      // お手本は、割り当てた身振りに近い手書きの部品から(2026-10-07。以前は月光と霧の2件で固定していて、生成が「低い持続に遅れて高音が重なる」形ばかりになった)
+      example: (assigned) => ({ items: mystExamples(assigned).map((e) => mystForPrompt(e)) }),
       schema: OBJ({
-        name: S('STRING'), moment: S('STRING'), turn: S('STRING'), season: S('STRING'), senses: ARR(S('STRING')), device: S('STRING'),
+        name: S('STRING'), moment: S('STRING'), turn: S('STRING'), season: S('STRING'), senses: ARR(S('STRING')), device: S('STRING'), gesture: S('STRING'),
         parts: ARR(OBJ({
           name: S('STRING'), attack: S('NUMBER'), release: S('NUMBER'), spread: S('NUMBER'), b: S('NUMBER'), c: S('NUMBER'), cdet: S('NUMBER'),
           notes: ARR(OBJ({ note: S('STRING'), start: S('NUMBER'), duration: S('NUMBER'), velocity: S('INTEGER') }, ['note', 'start', 'duration'])),
@@ -128,7 +130,8 @@
         if (!parts.length) return { error: '音がありません' };
         if (short > 3) return { error: `短い音が${short}個(効果音になりやすい)` };
         if (end > 10) return { error: `長すぎます(${end.toFixed(1)}秒)` };
-        return { tone: '神秘', season: season(raw.season), senses: senses(raw.senses, ['視']), parts };
+        const gesture = GESTURES.find((g) => g.id === String(raw.gesture || '').trim());
+        return { tone: '神秘', season: season(raw.season), senses: senses(raw.senses, ['視']), ...(gesture ? { gesture: gesture.id } : {}), parts };
       },
     },
 
@@ -226,11 +229,121 @@
   };
   const typeIds = () => Object.keys(TYPES);
 
+  /* ---------------- 神秘型の身振り(2026-10-07) ----------------
+   * ユーザー指摘「神秘型が、ほとんど9割『ブゥーーン パァアアーン』といった低音に途中から高音が重なるデチューン三層構造でワンパターン。
+   * 最初に作らせた数種類のようなバリエーションがない」。お手本が月光・霧の2件(どちらも濁った持続音 → 澄む → 遅れて高い一点)で固定だったのが
+   * 主な原因と見て、1件ごとに身振りと音域をアプリが割り当てる。帳の一覧にも音の形を添え、反芻でも身振りどおりかを点検する。
+   * seed: その身振りの手書きのお手本(js/mitategura.js の SEED)。w: 選ばれやすさ(帳に多すぎる「濁→澄」は低く) */
+  const GESTURES = [
+    { id: 'clear', label: '濁りが澄む', w: 0.3, seed: 'kirihare', how: '三層のまま揺れていた音から、BとCがAへ吸い込まれ、ただのサイン波に澄む。澄んだ後に別の高い音を足さない' },
+    { id: 'shatter', label: '澄んだものが砕ける', w: 1, seed: 'shimobashira', how: 'Aだけの澄んだ一音が、ある瞬間にBが大きく開きCが激しくうなって砕け、すぐ狭い濁りへ潰れて引いていく' },
+    { id: 'strata', label: '一撃のあと縞が重なる', w: 1, seed: 'meno', how: '三層を開いた一撃の直後に、Bの開きを狭めた薄い層が少しずつずれて何枚も重なる' },
+    { id: 'bleed', label: '一点がにじんで広がる', w: 1, seed: 'shizuku', how: '濁りのない一点から始まり、外へ行く音ほどBとCが増えて輪郭がにじみ、判断がつかなくなる' },
+    { id: 'emerge', label: '無音から不意に浮かぶ', w: 1, seed: 'umenoka', how: '無音から前触れなく、Bを持たずCのうなりだけの音が浮かび、そのまま薄れて消える。始まりも終わりも曖昧' },
+    { id: 'flicker', label: 'うなりの速さが変わる', w: 1, seed: 'senkohanabi', how: '音の高さは変えず、Cのずれ(cdet)の速さだけで描く。速いちらつきが遅くなる、または静かなうなりが速まっていく' },
+    { id: 'sink', label: '高い所から沈む', w: 1, how: '高い音から始まり、遅れて入る層ほど低い。上から下へ重心が降りていき、最後の低い音で三層が閉じる(下から上へ開く形の逆)' },
+    { id: 'merge', label: 'ぶつかる二音が一つになる', w: 1, how: '半音・全音でぶつかる近い2〜3音が同時に鳴り、片方ずつ消えて、最後に1つの音だけが残る(Bの開きも閉じていく)' },
+    { id: 'breath', label: '一つの音が呼吸する', w: 1, how: '全体を1つの持続音(part も1つ)だけで描く。Bの開きとCの量が、開いて閉じ、また開く。周期は不規則で、最後は始めと違う状態で止む' },
+    { id: 'cut', label: '不意に途切れる', w: 1, how: '鳴っていた音の状態が、前触れなく途切れて無音になる。その無音の間が主役で、間のあとにごく小さく別の質の音が残るか、残らない' },
+    { id: 'fill', label: '薄い一点から満ちる', w: 1, how: '小さな一点から、近い音域に層が少しずつ増えていき、空間が満ちたところで止む(高い音を後から足す形にしない)' },
+  ];
+  const REGISTERS = [
+    { id: 'high', label: '高い所だけ(C5〜C8。C4より下の音を使わない)', w: 1 },
+    { id: 'mid', label: '中ほどだけ(C4〜C6)', w: 1 },
+    { id: 'low', label: '低い所だけ(C2〜C4。高い音を足さない)', w: 0.6 },
+    { id: 'wide', label: '低い所から高い所まで(広く使う)', w: 0.4 },
+  ];
+  /** list から重み w で、重ならないように n 個 */
+  function weightedPick(list, n) {
+    const out = [];
+    let pool = list.slice();
+    while (out.length < n) {
+      if (!pool.length) pool = list.slice();
+      const total = pool.reduce((a, x) => a + x.w, 0);
+      let r = Math.random() * total;
+      const hit = pool.find((x) => (r -= x.w) < 0) || pool[pool.length - 1];
+      out.push(hit);
+      pool = pool.filter((x) => x !== hit);
+    }
+    return out;
+  }
+  /** 1回の依頼の n 件に、違う身振りと音域を割り当てる */
+  function assignGestures(n) {
+    const gs = weightedPick(GESTURES, n);
+    const rs = weightedPick(REGISTERS, n);
+    return gs.map((gesture, i) => ({ gesture, register: rs[i] }));
+  }
+  /** お手本: 割り当てた身振りの手書きの部品。手書きの無い身振りなら、ほかの手書きから(月光・霧は帳に多い形なので選ばない) */
+  function mystExamples(assigned) {
+    const seeds = MIT().SEED.filter((e) => (e.tone || '神秘') === '神秘');
+    const picked = [];
+    (assigned || []).forEach(({ gesture }) => {
+      const e = gesture.seed && seeds.find((x) => x.id === gesture.seed);
+      if (e && !picked.includes(e)) picked.push(e);
+    });
+    const rest = seeds.filter((e) => !picked.includes(e) && !['gekko', 'kirihare'].includes(e.id)).sort(() => Math.random() - 0.5);
+    while (picked.length < 2 && rest.length) picked.push(rest.shift());
+    return picked.slice(0, 2);
+  }
+
+  /**
+   * 神秘の部品の音の形を、音のデータから短く言う(帳の一覧に添えて Gemini に見せる・偏りの診断)。
+   * lowHigh: 「持続音に、遅れて12半音以上高い音が別の層で重なる」形(ユーザー指摘のワンパターン)
+   */
+  function shapeOf(entry) {
+    const notes = [];
+    (entry.parts || []).forEach((p) => (p.notes || []).forEach(([n, start, dur]) => {
+      const m = T().noteToMidi(String(n));
+      if (m != null) notes.push({ m, start: Number(start) || 0, dur: Number(dur) || 0, part: p });
+    }));
+    if (!notes.length) return { tags: [], lowHigh: false, text: '' };
+    const tags = [];
+    const lowHigh = notes.some((a) => a.start <= 0.6 && a.dur >= 2 &&
+      notes.some((b) => b.part !== a.part && b.start >= a.start + 0.8 && b.start < a.start + a.dur && b.m >= a.m + 12));
+    if (lowHigh) tags.push('持続に遅れて高音');
+    const lo = Math.min(...notes.map((x) => x.m));
+    const hi = Math.max(...notes.map((x) => x.m));
+    tags.push(hi - lo >= 30 ? '広い音域' : lo >= 72 ? '高い所だけ' : hi < 64 ? '低め' : '中ほど');
+    const traj = (entry.parts || []).map((p) => {
+      const ks = (p.morph || []).map(([, v]) => v).filter((v) => v.b != null || v.c != null);
+      if (ks.length < 2) return null;
+      const amt = (v) => (v.b != null ? v.b : 1) + (v.c != null ? v.c : 1);
+      const d = amt(ks[ks.length - 1]) - amt(ks[0]);
+      return d <= -0.8 ? '濁→澄' : d >= 0.8 ? '澄→濁' : null;
+    }).filter(Boolean);
+    tags.push(...new Set(traj));
+    if ((entry.parts || []).length === 1 && new Set(notes.map((x) => x.m)).size <= 2) tags.push('一つの音');
+    return { tags, lowHigh, text: tags.join('・') };
+  }
+  const mystEntries = () => MIT().ALL().filter((e) => (e.tone || '神秘') === '神秘' && Array.isArray(e.parts));
+  /** 帳の神秘の部品の形の内訳(コンソールで LyraMitateGen.shapeReport())。偏りを数字で見る */
+  function shapeReport() {
+    const list = mystEntries();
+    const gen = list.filter((e) => e.generated);
+    const count = (arr) => arr.filter((e) => shapeOf(e).lowHigh).length;
+    if (typeof console.table === 'function') console.table(list.map((e) => ({ 名前: e.name, 由来: e.generated ? '生成' : '手書き', 身振り: e.gesture || '', 形: shapeOf(e).text })));
+    return { 手書き: list.length - gen.length, 手書きのうち持続に遅れて高音: count(list.filter((e) => !e.generated)), 生成: gen.length, 生成のうち持続に遅れて高音: count(gen) };
+  }
+  /** 帳に多い形(今回の依頼で避けるように伝える) */
+  function crowdedShapes() {
+    const list = mystEntries();
+    const n = list.filter((e) => shapeOf(e).lowHigh).length;
+    return list.length >= 4 && n / list.length >= 0.3 ? `帳の神秘の部品 ${list.length} 件のうち ${n} 件が「持続音に、途中から高い音が重なる」形です。今回はこの形を作らないでください` : '';
+  }
+  /** 身振りの指示(assigned があればそれぞれに割り当て、無ければ(デイリーのひな形)一覧から違うものを選ばせる) */
+  function gestureText(assigned) {
+    const head = assigned
+      ? `今回の身振りと音域(1件目から順に。必ずこのとおりに):\n${assigned.map((a, i) => `${i + 1}件目: gesture "${a.gesture.id}"(${a.gesture.label}) — ${a.gesture.how}。音域: ${a.register.label}`).join('\n')}`
+      : `身振りの一覧(1件ごとに違うものを選び、gesture にその id を書く。clear はなるべく選ばない):\n${GESTURES.map((g) => `- ${g.id}(${g.label}): ${g.how}`).join('\n')}\n音域も1件ごとに変える(高い所だけ/中ほどだけ/低い所だけ/広く)`;
+    return [head, crowdedShapes()].filter(Boolean).join('\n');
+  }
+
   /** 手書きの神秘の部品を、プロンプトのお手本の形に */
   function mystForPrompt(e) {
     const mu = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => ['spread', 'b', 'c', 'cdet'].includes(k)));
     return {
       name: e.name, moment: e.moment, turn: e.turn, season: e.season, senses: e.senses, device: e.device,
+      ...(GESTURES.some((g) => g.seed === e.id) ? { gesture: GESTURES.find((g) => g.seed === e.id).id } : {}),
       parts: e.parts.map((p) => ({
         name: p.name, attack: (p.env || {}).a, release: (p.env || {}).r, ...mu(p.mu),
         notes: p.notes.map(([note, start, duration, velocity]) => ({ note, start, duration, velocity })),
@@ -293,7 +406,7 @@
 
   /* ---------------- 帳の一覧(似たものを避けるため) ---------------- */
   function bookLines() {
-    return MIT().ALL().map((e) => bookLineOf(e.name, e.tone, e.turn, e.season, e.moment)).join('\n');
+    return MIT().ALL().map((e) => bookLineOf(e.name, e.tone, e.turn, e.season, e.moment, (e.tone || '神秘') === '神秘' && Array.isArray(e.parts) ? shapeOf(e).text : '')).join('\n');
   }
 
   function themeLine(theme) {
@@ -308,17 +421,21 @@
   function batchRequest(typeId, count, theme, opts = {}) {
     const t = TYPES[typeId];
     const rules = typeof t.rules === 'function' ? t.rules() : t.rules;
+    // 神秘型は1件ごとに身振りと音域を割り当てる(件数が数でない = デイリーのひな形の時は、一覧から選ばせる)
+    const myst = typeId === 'myst';
+    const assigned = myst && typeof count === 'number' ? (opts.gestures || assignGestures(count)) : null;
     const prompt = [
       INTRO,
       `今回は「${t.label}」(${t.text})で ${count} 件作ります。\n${rules}`,
+      ...(myst ? [gestureText(assigned)] : []),
       AVOID,
       opts.themeText != null ? opts.themeText : themeLine(theme),
       `すでに帳にある語彙(これと似た一瞬・似た仕掛けは作らない):\n${opts.book != null ? opts.book : bookLines()}`,
-      `お手本(帳にある語彙をこの型の形で書いたもの。形の参考で、内容はまねない):\n${JSON.stringify(t.example())}`,
+      `お手本(帳にある語彙をこの型の形で書いたもの。形の参考で、内容はまねない${myst ? '。お手本の身振りと今回の身振りが違う時は、今回の身振りに従う' : ''}):\n${JSON.stringify(t.example(assigned))}`,
       WRITE,
       `items に ${count} 件を書いてください。`,
     ].join('\n\n');
-    return { prompt, schema: OBJ({ items: ARR(t.schema) }, ['items']) };
+    return { prompt, schema: OBJ({ items: ARR(t.schema) }, ['items']), gestures: assigned };
   }
 
   const VERDICT_SCHEMA = OBJ({ verdicts: ARR(OBJ({ index: S('INTEGER'), keep: S('BOOLEAN'), reason: S('STRING') }, ['index', 'keep', 'reason'])) }, ['verdicts']);
@@ -334,7 +451,8 @@
       `点検の基準:
 1. 名前・一言(moment)・仕掛け(device)・音の書き方が噛み合っていて、その一瞬(文様・鳥なら、その形・佇まい)らしく聞こえそうか
 2. 上の「避けること」に当たっていないか(特に、ものまね・劇伴のような旋律・効果音)
-3. 帳にある語彙と、一瞬も仕掛けも似すぎていないか
+3. 帳にある語彙と、一瞬も仕掛けも似すぎていないか${typeId === 'myst' ? `
+4. 神秘型: gesture に書いた身振りのとおりに音が書かれているか。「持続音に、途中から高い音が重なるだけ」の形(帳に多い)になっていないか。なっていれば外す` : ''}
 迷う時は入れる(keep true)。明らかに当たる時だけ外す。reason は40字以内`,
       `帳にある語彙:\n${opts.book != null ? opts.book : bookLines()}`,
       `点検する語彙(index は0から):\n${opts.itemsText != null ? opts.itemsText : JSON.stringify(items.map((x, index) => ({ index, ...x })))}`,
@@ -472,7 +590,7 @@
     };
   }
   /** 帳の一覧の1行(Apps Script が、その回に足した分を {{BOOK}} に足す時と同じ形) */
-  const bookLineOf = (name, tone, turn, season, moment) => `- ${name}(${tone || '神秘'}・${turn}・${season}): ${moment}`;
+  const bookLineOf = (name, tone, turn, season, moment, shape) => `- ${name}(${tone || '神秘'}・${turn}・${season}): ${moment}${shape ? ` [音の形: ${shape}]` : ''}`;
 
-  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf };
+  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf, GESTURES, shapeOf, shapeReport };
 })();
