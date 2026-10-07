@@ -219,11 +219,13 @@
     if (has('occurrence')) L.occurrence = E.OCCURRENCES[raw.occurrence] ? raw.occurrence : 'sparse';
     // 見立て蔵の語彙(2026-10-02): 帳から音の写しを設計図に入れる。保存済みの設計図(写しあり)はそのまま使う(帳から外した語彙でも鳴るように)。
     // 帳に無い id・名前の層は、黙って無音にせず身振りの層にする
-    if (Array.isArray(raw.vocabNotes) && raw.vocabNotes.length) {
+    if (Array.isArray(raw.vocabNotes) && (raw.vocabNotes.length || raw.vocabParts)) {
       Object.assign(L, { vocab: str(raw.vocab, 40), vocabName: str(raw.vocabName, 20), vocabNotes: raw.vocabNotes.slice(0, 96), vocabLen: num(raw.vocabLen, 0.1, 30, 4) });
+      if (raw.vocabParts && window.LyraMitate) L.vocabParts = window.LyraMitate.sanitizeParts(raw.vocabParts);
+      L.vocabTone = str(raw.vocabTone, 8);
     } else if (has('vocab') || generator === 'mitate') {
       const V = E.vocab && E.vocab.get(raw.vocab || (generator === 'mitate' ? raw.name : ''));
-      if (V) Object.assign(L, { vocab: V.id, vocabName: V.name, vocabNotes: V.notes, vocabLen: V.len });
+      if (V) Object.assign(L, { vocab: V.id, vocabName: V.name, vocabNotes: V.notes, vocabLen: V.len, vocabTone: V.tone, ...(V.parts ? { vocabParts: V.parts } : {}) });
     }
     if (L.generator === 'mitate' && !L.vocabNotes) {
       if (typeof debugLog === 'function') debugLog(`見立て蔵の語彙が帳に無かったので身振りにした: ${String(raw.vocab || raw.name || '').slice(0, 40)}`);
@@ -231,6 +233,8 @@
       L.gesture = (E.gestureKey && E.gestureKey(raw.gesture)) || (L.role === 'ground' ? 'sustained_open' : 'scatter_stab');
     }
     if (L.vocabNotes && !L.occurrence) L.occurrence = 'once';
+    const tone = L.vocabTone || ((E.vocab && E.vocab.get(L.vocab)) || {}).tone;
+    if (L.generator === 'mitate' && (L.vocabParts || tone === '神秘' || tone === '日常') && ['periodic', 'continuous'].includes(L.occurrence)) L.occurrence = 'sparse';
     if (has('rule')) L.rule = str(raw.rule, 24).trim();
     L.step = num(raw.step, 0.125, 4, 0.5);
     L.repeats = int(raw.repeats, 1, 8, 2);
@@ -378,7 +382,7 @@
       layers: d.layers.map((l) => {
         const out = {};
         Object.entries(l).forEach(([k, v]) => {
-          if (k === 'reroll' || k === 'muted' || k === 'vocabNotes' || k === 'vocabLen' || v == null || (Array.isArray(v) && !v.length) || v === '') return;
+          if (k === 'reroll' || k === 'muted' || k === 'vocabNotes' || k === 'vocabParts' || k === 'vocabTone' || k === 'vocabLen' || v == null || (Array.isArray(v) && !v.length) || v === '') return;
           if (k === 'notes') out.notes = v.map((n) => ({ note: T.midiToNote(n.pitch), start: n.start, duration: n.duration, velocity: n.velocity }));
           else if (k === 'cell') out.cell = cellOut(v);
           else if (k === 'phrases') out.phrases = v.map((ph) => ph.map((n) => `${n.pitch == null ? 'R' : T.midiToNote(n.pitch)}:${n.duration}`).join(' '));

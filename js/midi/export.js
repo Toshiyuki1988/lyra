@@ -22,7 +22,8 @@
 
   /** 音のあるパート(新しい形は partNames の順、古い形は旋律→対旋律→コード→ベース→ドラム) */
   function partsOf(m) {
-    const used = new Set(m.notes.map((n) => n.part || ''));
+    const used = new Set(m.notes.filter((n) => !(m.vocabBParts || {})[n.part]).map((n) => n.part || ''));
+    if (M.muEvents) M.muEvents(m).forEach((event) => used.add(event.part));
     const ordered = [...Object.keys(m.partNames || {}), ...LEGACY_ORDER].filter((p, i, arr) => used.has(p) && arr.indexOf(p) === i);
     used.forEach((p) => { if (p && !ordered.includes(p)) ordered.push(p); });
     return ordered;
@@ -61,12 +62,22 @@
       ...T.meterStarts(m).filter((x) => x.start > first.start + EPS && x.start < sel.end - EPS).map((x) => ({ bar: x.bar - first.bar + 1, num: x.num, den: x.den })),
     ];
     const within = (beat) => beat >= sel.start - EPS && beat < sel.end - EPS;
+    const toSec = M.beatToSeconds(m);
+    const valid = new Set(M.muEvents(m).map((x) => x.part));
+    // 高さを絞った選択は音符を優先。時間だけの切り出しは原音の出現を引き継ぐ。
+    const wholePitch = (part) => m.notes.filter((n) => n.part === part && n.start < sel.end && n.start + n.duration > sel.start)
+      .every((n) => n.pitch >= sel.low && n.pitch <= sel.high);
+    const mu = (m.mu || []).filter((x) => valid.has(x.part) && wholePitch(x.part) && x.beat < sel.end && x.endBeat > sel.start)
+      .map((x) => ({ ...x, beat: Math.max(x.beat, sel.start) - sel.start, endBeat: Math.min(x.endBeat, sel.end) - sel.start,
+        offsetSec: (x.offsetSec || 0) + Math.max(0, toSec(sel.start) - toSec(x.beat)) }));
     return {
       ...m,
       tempo,
       beatsPerBar: T.meterLen(meters[0]),
       meters,
       notes,
+      mu,
+      muStamp: Object.fromEntries([...new Set(mu.map((x) => x.part))].map((p) => [p, window.LyraEngine.noteStamp(notes, p)])),
       cc: (m.cc || []).map((l) => ({ ...l, points: l.points.filter((p) => within(p.beat)).map((p) => ({ ...p, beat: p.beat - sel.start })) })).filter((l) => l.points.length),
       markers: (m.markers || []).filter((x) => within(x.beat)).map((x) => ({ ...x, beat: x.beat - sel.start })),
       tempoChanges: (m.tempoChanges || []).filter((t) => t.beat > sel.start + EPS && t.beat < sel.end - EPS).map((t) => ({ ...t, beat: t.beat - sel.start })),
@@ -81,7 +92,7 @@
     const base = String(card.name || 'lyra').replace(/\.mid$/i, '');
     const from = T.barAt(bars, sel.start).bar;
     const to = T.barAt(bars, sel.end - 0.001).bar;
-    return { ...card, name: `${base}_bars${from}${to > from ? `-${to}` : ''}.mid`, midi: sliceMidi(card.midi, sel) };
+    return { ...card, name: `${base}_bars${from}${to > from ? `-${to}` : ''}.mid`, midi: sliceMidi(withVocabB(card.midi), sel) };
   }
 
   function selectionLabel(card) {
@@ -139,7 +150,7 @@
    * ドラム(役割 drums)は GM の約束どおり10ch(0始まりで9)。ほかのパートは1chから順に、10chを飛ばして割り当てる
    */
   function buildSmf(card, mode) {
-    const m = card.midi;
+    const m = withVocabB(card.midi);
     const t = (beat) => Math.round(beat * PPQ);
     const conductor = [
       { tick: 0, order: 0, bytes: metaEvent(0x03, textBytes(card.name.replace(/\.mid$/i, ''))) },
@@ -172,13 +183,42 @@
     let tracks;
     if (mode === 'merged' || parts.length <= 1) {
       // 1トラックにまとめる時も、ドラムの音は10chのまま(ほかは1ch)
-      tracks = [noteTrack(m.notes, (n) => (M.roleOf(m, n.part) === 'drums' ? 9 : 0), card.name.replace(/\.mid$/i, ''), true)];
+      tracks = [noteTrack(m.notes.filter((n) => !(m.vocabBParts || {})[n.part]), (n) => (M.roleOf(m, n.part) === 'drums' ? 9 : 0), card.name.replace(/\.mid$/i, ''), true)];
     } else {
       tracks = parts.filter((p) => mode === 'split' || !mode || p === mode)
         .map((p, i) => noteTrack(m.notes.filter((n) => (n.part || '') === p), chOf, partTrackName(m, p), i === 0));
     }
+    // B は「1トラックで」でも独立したトラックにする。
+    Object.entries(m.vocabBParts || {}).forEach(([p, source]) => {
+      if (mode && !['merged', 'split'].includes(mode) && mode !== source) return;
+      tracks.push(noteTrack(m.notes.filter((n) => n.part === p), () => mode === 'merged' ? 0 : channels[source] || 0, partTrackName(m, p), false));
+    });
     const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, 1 + tracks.length, (PPQ >> 8) & 255, PPQ & 255];
     return new Uint8Array([...header, ...trackChunk(conductor), ...tracks.flatMap((ev) => trackChunk(ev))]);
+  }
+  function withVocabB(source) {
+    if (!window.LyraMitate || !(source.mu || []).length || source.vocabBParts) return source;
+    const m = { ...source, notes: source.notes.slice(), partNames: { ...source.partNames }, vocabBParts: {} };
+    const toSec = M.beatToSeconds(source);
+    const toBeat = M.secondsToBeat(source);
+    M.muEvents(source).forEach((event) => {
+      const layer = source.design.layers[source.partLayers[event.part]];
+      const p = `${event.part}_B`;
+      const origin = toSec(event.beat) - (event.offsetSec || 0);
+      const b = window.LyraMitate.midiFromParts(layer.vocabParts).notes.filter((n) => n.part === 'B').flatMap((n) => {
+        const start = Math.max(event.beat, toBeat(origin + n.start));
+        const end = Math.min(event.endBeat, toBeat(origin + n.start + n.duration));
+        const pitch = n.pitch + event.shift;
+        return end > start && pitch >= 0 && pitch <= 127 ? [{ part: p, pitch, start, duration: end - start,
+          velocity: Math.max(1, Math.min(127, Math.round(n.velocity * event.lift))) }] : [];
+      });
+      if (b.length) {
+        m.partNames[p] = `${layer.vocabName || layer.vocab}・B`;
+        m.vocabBParts[p] = event.part;
+        m.notes.push(...b);
+      }
+    });
+    return m;
   }
 
   function midiFileName(card, part) {
@@ -342,7 +382,7 @@
   }
 
   Object.assign(M, {
-    partsOf, partLabel, partTrackName, partColor, sliceMidi, exportCard, selectionLabel, buildSmf, midiFileName, downloadBlob,
+    partsOf, partLabel, partTrackName, partColor, sliceMidi, exportCard, selectionLabel, buildSmf, withVocabB, midiFileName, downloadBlob,
     canPickFolder, pickExportDir, exportDirName, saveToFolder, saveChipsHtml, bindSaveChips,
   });
 })();

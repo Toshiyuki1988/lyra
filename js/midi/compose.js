@@ -675,6 +675,14 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
 
   /** 設計図 → カードの midi(音はエンジンが作る) */
   function renderMidi(design, { seed, gauges, model, fixedStore }) {
+    design.layers.forEach((layer) => {
+      if (layer.generator !== 'mitate') return;
+      if (!layer.vocabParts && E.vocab) {
+        const entry = E.vocab.get(layer.vocab);
+        if (entry && entry.parts) Object.assign(layer, { vocabParts: entry.parts, vocabNotes: entry.notes, vocabLen: entry.len, vocabTone: entry.tone });
+      }
+      if (layer.vocabParts && ['periodic', 'continuous'].includes(layer.occurrence)) layer.occurrence = 'sparse';
+    });
     const out = E.render(design, { seed, gauges });
     const midi = { ...out, model, design, seed, gauges: gauges || null };
     delete midi.totalBeats;
@@ -767,7 +775,7 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     const seed = Math.floor(Math.random() * 2 ** 31);
     let midi = renderMidi(design, { seed, gauges: input.gauges, model: preset.id });
     midi = applyFixed(midi, input.fixed);
-    if (!midi.notes.length) {
+    if (!midi.notes.length && !(midi.mu && midi.mu.length)) {
       // 原因を事実で特定できるよう、設計図の層の中身を必ず残す(?debug のログにも)
       const layerLine = design.layers.map((l) => `${l.name || l.generator}[${l.generator}` +
         `${l.gesture ? ` ${l.gesture}` : ''}${l.patterns ? ` 区間${l.patterns.length}・行${l.patterns.reduce((n, p) => n + p.rows.length, 0)}` : ''}` +

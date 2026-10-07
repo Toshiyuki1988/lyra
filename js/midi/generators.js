@@ -695,21 +695,26 @@
       [rest[i], rest[j]] = [rest[j], rest[i]];
     }
     const shown = [...good, ...rest].slice(0, 90);
-    return shown.map((x) => `${x.id} | ${x.tone} | ${x.name} | ${x.turn} | ${x.moment} | ${x.season}${x.stars ? ` | ★${x.stars}` : ''}${x.confirmed ? ' | ✓' : ''}`).join('\n');
+    return shown.map((x) => `${x.id} | ${x.tone} | ${x.texture} | ${x.name} | ${x.turn} | ${x.moment} | ${x.season}${x.stars ? ` | ★${x.stars}` : ''}${x.confirmed ? ' | ✓' : ''}`).join('\n');
   }
 
   register('mitate', {
     label: '語彙(見立て蔵)',
     roles: ['figure', 'ground'],
-    text: '見立て蔵の帳にある語彙(知覚が切り替わる一瞬・和文様・鳥を、数秒のデチューン三層・配色の音にした部品)を1つ選び、その音をそのまま層に置く。モチーフに合う語彙があれば身振りより優先する',
+    text: '見立て蔵の帳の語彙を1つ選び、その音を層に置く。神秘・日常は「一瞬の混沌」。調性を持たせず、ピアノで弾いて旋律の線や一定の拍に聞こえる置き方をしない。モチーフに合う語彙を身振りより優先する',
     params: ['vocab', 'occurrence'],
     paramText: () => `vocab: 下の目録の id(左端の文字列。名前でもよい)。occurrence: once(一度だけ。一瞬の部品の基本)/ sparse(2〜3回)/ periodic(間を置いて繰り返す)/ continuous(切れ目なく繰り返す。文様の地に)。register を書くと、その音域へオクターブで動かす(書かなければ語彙の高さのまま)。
-  帳の目録(id | 型 | 名前 | 切り替わり方 | 一言 | 季節 | ★評価 | ✓確認済み。★・✓のある語彙を優先):
+  神秘・日常は「一瞬の混沌」。調性を持たせず、ピアノで弾いて旋律の線・一定の拍に聞こえる置き方をしない。
+  一瞬の光・点描・短い塊・無音・物音・塊が崩れる・一音の状態の変化は once(多くて sparse)。群れ・層・裂け目・和音の移り変わりは once か sparse。文様は continuous も可。鳥は sparse・periodic。
+  帳の目録(id | 型 | 質感 | 名前 | 切り替わり方 | 一言 | 季節 | ★評価 | ✓確認済み。★・✓のある語彙を優先):
 ${vocabCatalogText()}`,
     render(ctx, L) {
       const src = L.vocabNotes;
-      if (!Array.isArray(src) || !src.length) return [];
+      if (!Array.isArray(src) || (!src.length && !L.vocabParts)) return [];
       const bps = clamp(ctx.design && ctx.design.tempo, 30, 260, 72) / 60; // 1秒あたりの拍
+      const timing = window.LyraMidi;
+      const toSec = timing && timing.beatToSeconds ? timing.beatToSeconds(ctx.design) : (beat) => beat / bps;
+      const toBeat = timing && timing.secondsToBeat ? timing.secondsToBeat(ctx.design) : (sec) => sec * bps;
       const lenSec = Math.max(0.5, L.vocabLen || Math.max(...src.map((n) => n[1] + n[2])));
       const len = lenSec * bps;
       // 主音へ移す(D 基準)+ 音域
@@ -718,7 +723,8 @@ ${vocabCatalogText()}`,
       if (L.register) {
         const range = T.registerOf(L.register);
         const center = (range[0] + range[1]) / 2;
-        const avg = T.mean(src.map((n) => n[0] + shift));
+        const pitches = src.length ? src.map((n) => n[0]) : L.vocabParts.flatMap((p) => p.notes.map((n) => T.noteToMidi(n[0]))).filter((n) => n != null);
+        const avg = T.mean(pitches.map((n) => n + shift));
         shift += Math.round((center - avg) / 12) * 12;
       }
       const { total, rng } = ctx;
@@ -738,14 +744,18 @@ ${vocabCatalogText()}`,
         }
       }
       const out = [];
+      const mu = [];
       starts.forEach((t0, k) => {
+        if (L.vocabParts && ctx.activeRanges && !ctx.activeRanges.some((r) => t0 >= r.start - EPS && t0 < r.end - EPS)) return;
         const lift = occ === 'once' ? 1 : 0.85 + rng.next() * 0.25 - (k === 0 ? 0 : 0.05);
+        if (L.vocabParts) mu.push({ beat: t0, shift, lift });
         src.forEach(([pitch, start, dur, vel]) => {
-          const at = t0 + start * bps;
-          if (at < total - EPS) out.push(note(pitch + shift, at, Math.max(0.05, dur * bps), vel * lift));
+          const at = toBeat(toSec(t0) + start);
+          const end = toBeat(toSec(t0) + start + dur);
+          if (at < total - EPS) out.push(note(pitch + shift, at, Math.max(0.05, end - at), vel * lift));
         });
       });
-      return out;
+      return L.vocabParts ? { voices: [out], mu } : out;
     },
   });
 

@@ -260,10 +260,11 @@
   }
 
   /** 部品を ctx に予約する。{ stop, duration, startAt, ctx } */
-  function scheduleMu(ctx, entry, startAt) {
+  function scheduleMu(ctx, entry, startAt, options = {}) {
+    const offset = Math.max(0, options.offset || 0);
     const out = ctx.createGain();
-    out.gain.value = MU.master * 0.5;
-    out.connect(safeOut(ctx));
+    out.gain.value = MU.master * 0.5 * (options.gain == null ? 1 : options.gain);
+    out.connect(options.dest || safeOut(ctx));
     const rand = rng(hashSeed(entry.id));
     const nodes = [];
     let end = 0;
@@ -280,20 +281,29 @@
         return bend[bend.length - 1][1];
       };
       part.notes.forEach(([name, start, dur, vel]) => {
+        const originalStart = start;
+        const originalDuration = dur;
+        const originalEnd = start + dur;
+        if (originalEnd + env.r <= offset) return;
+        start = Math.max(start, offset);
+        dur = Math.max(0, originalEnd - start);
         const pitch = T().noteToMidi(name);
         if (pitch == null) return;
-        const f = midiToFreq(pitch);
-        const t0 = startAt + start;
+        const f = midiToFreq(pitch + (options.shift || 0));
+        const t0 = startAt + start - offset;
         const t1 = t0 + dur;
         const tEnd = t1 + env.r;
-        end = Math.max(end, start + dur + env.r);
+        end = Math.max(end, Math.max(start, originalEnd) + env.r - offset);
         const amp = vel / 127;
         // 音全体の包絡
         const noteGain = ctx.createGain();
-        noteGain.gain.setValueAtTime(0, t0);
-        noteGain.gain.linearRampToValueAtTime(amp, t0 + Math.max(0.002, env.a));
-        noteGain.gain.setValueAtTime(amp, Math.max(t0 + env.a, t1));
-        noteGain.gain.setTargetAtTime(0, Math.max(t0 + env.a, t1), env.r / 3);
+        const elapsed = start - originalStart;
+        const level = amp * Math.exp(-Math.max(0, start - originalEnd) / (env.r / 3));
+        const attack = Math.max(0, env.a - elapsed);
+        noteGain.gain.setValueAtTime(elapsed > 0 ? level * Math.min(1, elapsed / Math.max(0.002, env.a)) : 0, t0);
+        if (elapsed === 0 || attack > 0) noteGain.gain.linearRampToValueAtTime(level, t0 + Math.max(0.002, attack));
+        noteGain.gain.setValueAtTime(level, Math.max(t0 + attack, t1));
+        noteGain.gain.setTargetAtTime(0, Math.max(t0 + attack, t1), env.r / 3);
         noteGain.connect(out);
         // 断続(am): 音全体の音量を速く刻む
         let dest = noteGain;
@@ -337,14 +347,14 @@
         if (part.tones === false) return;
         // morph のキーフレームと滑りの点の時刻(この音の間にあるもの)
         const times = [...new Set([start, ...keys.map(([t]) => t).filter((t) => t > start && t < start + dur + env.r),
-          ...(bend || []).map(([rel]) => start + rel * dur).filter((t) => t > start)])].sort((a, b) => a - b);
-        const bendF = (t) => Math.pow(2, bendAt((t - start) / Math.max(1e-6, dur)) / 1200);
+          ...(bend || []).map(([rel]) => originalStart + rel * originalDuration).filter((t) => t > start)])].sort((a, b) => a - b);
+        const bendF = (t) => Math.pow(2, bendAt((t - originalStart) / Math.max(1e-6, originalDuration)) / 1200);
         const layer = (level, freqAt, wobble) => {
           const osc = ctx.createOscillator();
           osc.type = 'sine';
           const g = ctx.createGain();
           times.forEach((t, i) => {
-            const at = startAt + t;
+            const at = startAt + t - offset;
             const fr = freqAt(t);
             const lv = level(t);
             if (i === 0) {
@@ -380,6 +390,11 @@
         layer((t) => MU.levelC * valueAt(t, 'c'), (t) => f * bendF(t) * Math.pow(2, (MU.cCents * valueAt(t, 'cdet')) / 1200), true);
       });
     });
+    end += 0.1; // オシレーターを止める時刻まで含める
+    if (Number.isFinite(options.duration) && options.duration < end) {
+      end = Math.max(0, options.duration);
+      out.gain.setValueAtTime(0, startAt + end);
+    }
     return {
       ctx,
       startAt,
@@ -542,8 +557,11 @@
   const B_STEP = 0.05;
   function hostMidiOf(entry) {
     if (isColor(entry)) return midiOf(entry);
+    return midiFromParts(entry.parts);
+  }
+  function midiFromParts(parts) {
     const notes = [];
-    entry.parts.forEach((part) => {
+    parts.forEach((part) => {
       if (part.tones === false) return;
       const { valueAt } = muOf(part);
       part.notes.forEach(([name, start, duration, velocity]) => {
@@ -836,7 +854,10 @@
       return st === 0 || st >= 3;
     }).map((e) => {
       const r = ratingOf(e.id);
-      return { id: e.id, name: e.name, tone: e.tone || '神秘', turn: e.turn, moment: e.moment, season: e.season, stars: r.stars || 0, confirmed: Boolean(r.confirmed) };
+      const gen = window.LyraMitateGen;
+      const texture = isColor(e) ? (e.tone === '鳥' ? '鳥' : '文様') :
+        (gen && ((gen.MOTIONS.find((m) => m.id === e.motion) || {}).label || gen.motionOf(e))) || '';
+      return { id: e.id, name: e.name, tone: e.tone || '神秘', texture, turn: e.turn, moment: e.moment, season: e.season, stars: r.stars || 0, confirmed: Boolean(r.confirmed) };
     });
   }
   function vocabOf(idOrName) {
@@ -847,8 +868,35 @@
     if (!e) return null;
     const midi = midiOf(e);
     const notes = midi.notes.slice(0, 96).map((n) => [n.pitch, n.start, n.duration, n.velocity]);
-    const len = Math.max(isColor(e) ? e.len : 0, ...notes.map((n) => n[1] + n[2]));
-    return { id: e.id, name: e.name, tone: e.tone || '神秘', lydian: isColor(e), notes, len: Math.round(len * 1000) / 1000 };
+    const len = Math.max(isColor(e) ? e.len : 0, ...notes.map((n) => n[1] + n[2]), ...(!isColor(e) ? e.parts.flatMap((p) => p.notes.map((n) => n[1] + n[2])) : []));
+    return { id: e.id, name: e.name, tone: e.tone || '神秘', lydian: isColor(e), notes, parts: isColor(e) ? null : sanitizeParts(e.parts), len: Math.round(len * 1000) / 1000 };
+  }
+  // 保存する音の写しは既知の欄・有限の数値だけ。合計40音までに制限する。
+  function sanitizeParts(parts) {
+    if (!Array.isArray(parts)) return null;
+    let left = 40;
+    const number = (x, lo, hi) => Number.isFinite(Number(x)) ? Math.min(hi, Math.max(lo, Number(x))) : null;
+    const fields = (raw, limits) => Object.fromEntries(Object.entries(limits).flatMap(([key, [lo, hi]]) => {
+      const v = raw && raw[key] != null ? number(raw[key], lo, hi) : null;
+      return v == null ? [] : [[key, v]];
+    }));
+    const muLimits = { spread: [0, 4], b: [0, 4], c: [0, 4], cdet: [0, 8] };
+    const out = parts.slice(0, 16).filter((p) => p && Array.isArray(p.notes)).map((p) => {
+      const notes = p.notes.filter((n) => Array.isArray(n) && T().noteToMidi(String(n[0])) != null &&
+        n.slice(1, 4).length === 3 && n.slice(1, 4).every((x) => Number.isFinite(Number(x))))
+        .slice(0, left).map(([name, t, d, v]) => [String(name).slice(0, 8), number(t, 0, 30), number(d, 0.01, 30), number(v, 1, 127)]);
+      left -= notes.length;
+      const part = { name: String(p.name || '').slice(0, 40), notes, env: fields(p.env, { a: [0, 10], r: [0.01, 10] }), mu: fields(p.mu, muLimits) };
+      if (p.tones === false) part.tones = false;
+      if (p.noise) part.noise = fields(p.noise, { freq: [20, 20000], freqEnd: [20, 20000], q: [0.01, 100], level: [0, 4] });
+      if (p.am) part.am = { ...fields(p.am, { rate: [0.01, 100], depth: [0, 1] }), shape: p.am.shape === 'square' ? 'square' : 'sine' };
+      if (Array.isArray(p.morph)) part.morph = p.morph.filter((x) => Array.isArray(x) && Number.isFinite(Number(x[0])) && x[1]).slice(0, 32)
+        .map(([t, values]) => [number(t, 0, 40), fields(values, muLimits)]).sort((a, b) => a[0] - b[0]);
+      if (Array.isArray(p.bend)) part.bend = p.bend.filter((x) => Array.isArray(x) && x.length >= 2 && x.every((v) => Number.isFinite(Number(v)))).slice(0, 32)
+        .map(([t, cents]) => [number(t, 0, 1), number(cents, -2400, 2400)]).sort((a, b) => a[0] - b[0]);
+      return part;
+    }).filter((p) => p.notes.length);
+    return out.length ? out : null;
   }
   if (window.LyraEngine) window.LyraEngine.vocab = { catalog, get: vocabOf };
 
@@ -859,6 +907,6 @@
     updateGenNote();
   }
 
-  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, scheduleMu, loadVocab, saveVocabFile, catalog, vocabOf, store, addRecord, refresh };
+  window.LyraMitate = { SEED, ALL, MU, open, close, midiOf, hostMidiOf, midiFromParts, sanitizeParts, scheduleMu, loadVocab, saveVocabFile, catalog, vocabOf, store, addRecord, refresh };
 
 })();

@@ -250,6 +250,7 @@ ${needChords ? `- chords: ${headEnd}拍目からのコード進行(symbol・star
     let partNames = { ...(m.partNames || {}) };
     let partRoles = { ...(m.partRoles || {}) };
     let partLayers = { ...(m.partLayers || {}) };
+    const muRename = {};
     if (noDesign) {
       // パートごとの旋律に見立てた時は、元のパート名にそろえる
       const byLayer = {};
@@ -263,6 +264,7 @@ ${needChords ? `- chords: ${headEnd}拍目からのコード進行(symbol・star
       let extra = 0;
       Object.keys(out.partNames || {}).forEach((p) => {
         rename[p] = headKey.get(key(out.partNames, out.partLayers, p)) || `x${++extra}`;
+        muRename[p] = rename[p];
       });
       tail = tail.map((n) => ({ ...n, part: rename[n.part] || n.part }));
       Object.keys(rename).forEach((p) => {
@@ -285,6 +287,15 @@ ${needChords ? `- chords: ${headEnd}拍目からのコード進行(symbol・star
       ...(noDesign ? {} : { design: d }),
       extended: [...(m.extended || []), { at: new Date().toISOString(), dir: dir.id, bars: add, fromBar: keep + 1 }],
     };
+    // 元の出現と続きの出現を、音符と同じ境界・パート名でつなぐ。
+    const tailMidi = M.sliceMidi({ ...out, design: d }, { start: headEnd, end: total, low: 0, high: 127 });
+    const editedParts = new Set((m.mu || []).filter((event) => !M.muEvents(m).some((x) => x.part === event.part)).map((x) => x.part));
+    midi.mu = [
+      ...M.muEvents(m).filter((x) => x.beat < headEnd).map((x) => ({ ...x, endBeat: Math.min(x.endBeat, headEnd) })),
+      ...(tailMidi.mu || []).map((x) => ({ ...x, part: muRename[x.part] || x.part, beat: x.beat + headEnd, endBeat: x.endBeat + headEnd }))
+        .filter((x) => !editedParts.has(x.part)),
+    ];
+    midi.muStamp = Object.fromEntries([...new Set(midi.mu.map((x) => x.part))].map((p) => [p, E.noteStamp(midi.notes, p)]));
     delete midi.totalBeats;
     return {
       midi,

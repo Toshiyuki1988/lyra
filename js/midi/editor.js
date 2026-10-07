@@ -386,6 +386,7 @@
         tempo,
         tempoChanges: (m.tempoChanges || []).map((t) => ({ ...t, bpm: Math.round(t.bpm * (tempo / m.tempo) * 10) / 10 })),
         notes: notes.slice().sort((a, b) => a.start - b.start),
+        mu: (m.mu || []).filter((event) => !hidden.has(event.part)),
       };
     }
     const span = (list) => ({ start: Math.min(...list.map((n) => n.start)), end: Math.max(...list.map((n) => n.start + n.duration)) });

@@ -53,11 +53,26 @@
     return 'melody';
   }
   const isDrumNote = (m, n) => roleOf(m, n.part) === 'drums';
+  function vocabPart(m, part) {
+    const layer = m.design && m.design.layers[(m.partLayers || {})[part]];
+    return Boolean(layer && layer.generator === 'mitate' && layer.vocabParts);
+  }
+  function muEvents(m) {
+    const checked = new Map();
+    return (m.mu || []).filter((event) => {
+      if (!checked.has(event.part)) {
+        const layer = m.design && m.design.layers[(m.partLayers || {})[event.part]];
+        checked.set(event.part, Boolean(layer && layer.vocabParts && !layer.muted && m.muStamp &&
+          m.muStamp[event.part] === window.LyraEngine.noteStamp(m.notes, event.part)));
+      }
+      return checked.get(event.part);
+    });
+  }
 
   /** そのMIDIを鳴らすのに要る音を読み込む。1つでも読めなければ false(簡易シンセで鳴らす) */
   async function prepareVoice(voice, midi) {
     if (!voice.gm) return true;
-    const pitches = [...new Set(midi.notes.filter((n) => !isDrumNote(midi, n)).map((n) => samplePitch(n.pitch)))];
+    const pitches = [...new Set(midi.notes.filter((n) => !isDrumNote(midi, n) && !vocabPart(midi, n.part)).map((n) => samplePitch(n.pitch)))];
     const load = (p) => {
       const key = `${voice.gm}/${p}`;
       if (!sampleCache.has(key)) {
@@ -155,7 +170,7 @@
     }
     let useSamples = Boolean(voice.gm);
     if (useSamples) {
-      const needsLoad = card.midi.notes.some((n) => !isDrumNote(card.midi, n) && !cachedSample(voice, n.pitch));
+      const needsLoad = card.midi.notes.some((n) => !isDrumNote(card.midi, n) && !vocabPart(card.midi, n.part) && !cachedSample(voice, n.pitch));
       if (needsLoad) setStatus(`音色(${voice.label})を読み込んでいます…`, { busy: true });
       useSamples = await prepareVoice(voice, card.midi);
       if (needsLoad) setStatus(useSamples ? `音色(${voice.label})を読み込みました` : `音色(${voice.label})を読み込めなかったので、簡易シンセで鳴らします`, { important: !useSamples });
@@ -190,7 +205,22 @@
     let noise = null;
     const getNoise = () => noise || (noise = makeNoiseBuffer(ctx));
     const nodes = [];
+    const muHandles = [];
+    const muParts = new Set();
+    let muEnd = 0;
+    muEvents(m).forEach((event) => {
+      const layer = m.design && m.design.layers[(m.partLayers || {})[event.part]];
+      if (!window.LyraMitate) return;
+      muParts.add(event.part);
+      const at = toSec(event.beat);
+      // 元の窓より-1.94dB。既存のout(.22)とCCの段を通し、旧三層の音量とも合わせる。
+      const handle = window.LyraMitate.scheduleMu(ctx, { id: layer.vocab, parts: layer.vocabParts }, startAt + at,
+        { dest: out, gain: event.lift * (0.8 / 0.22), shift: event.shift, offset: event.offsetSec || 0, duration: toSec(event.endBeat) - at });
+      muHandles.push(handle);
+      muEnd = Math.max(muEnd, at + handle.duration);
+    });
     m.notes.forEach((n) => {
+      if (muParts.has(n.part)) return;
       const t0 = startAt + toSec(n.start);
       const t1 = startAt + toSec(n.start + n.duration);
       const role = roleOf(m, n.part);
@@ -201,8 +231,8 @@
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, t0);
       const gain = ROLE_GAIN[role] || 0.7;
-      if (voice && voice.synth) {
-        const kind = voice.synth === 'mix' ? MIX_KIND[role] || 'bell' : voice.synth;
+      if ((voice && voice.synth) || vocabPart(m, n.part)) {
+        const kind = vocabPart(m, n.part) ? 'mu' : voice.synth === 'mix' ? MIX_KIND[role] || 'bell' : voice.synth;
         nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
         return;
       }
@@ -258,7 +288,7 @@
       nodes.push(osc);
     });
     const end = m.notes.reduce((e, n) => Math.max(e, n.start + n.duration), 0);
-    const duration = toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : voice && voice.sampler ? 1.4 : 0.6); // 合成の音色・自作の音色は余韻が長い
+    const duration = Math.max(muEnd, toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : voice && voice.sampler ? 1.4 : 0.6)); // 語彙の余韻も含める
     const toBeat = secondsToBeat(m);
     return {
       duration,
@@ -266,6 +296,7 @@
       ctx,
       toBeat: (sec) => toBeat(sec),
       stop: () => {
+        muHandles.forEach((h) => h.stop());
         nodes.forEach((node) => {
           try {
             node.stop();
@@ -547,7 +578,7 @@
   }
 
   Object.assign(M, {
-    VOICES, DEFAULT_VOICE, voiceOf, roleOf, prepareVoice, scheduleVoiced, beatToSeconds, secondsToBeat,
+    VOICES, DEFAULT_VOICE, voiceOf, roleOf, prepareVoice, scheduleVoiced, beatToSeconds, secondsToBeat, muEvents,
     previewVolume, setPreviewVolume, stopAll, togglePlay, isPlaying, encodeWav, exportWav, renderBuffer,
   });
 })();

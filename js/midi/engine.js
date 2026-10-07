@@ -303,6 +303,10 @@
   /* ---------------- 合成 ---------------- */
 
   const partRolesOf = (layer, gen) => layer.role || (gen.roles || ['melody'])[0];
+  // 編集・部分ミュートで音符が変わったパートは、語彙の原音より音符を優先する。
+  function noteStamp(notes, part) {
+    return notes.filter((n) => n.part === part).map((n) => [n.pitch, n.start, n.duration, n.velocity].join(',')).sort().join(';');
+  }
 
   /** 設計図 → MIDI。design は js/midi/design.js の sanitizeDesign() を通したもの */
   function render(design, opts = {}) {
@@ -323,6 +327,7 @@
     const partNames = {};
     const partRoles = {};
     const partLayers = {};
+    const mu = [];
     const rendered = {}; // 層の名前 → その層の音(対位法など、ほかの層を聴く生成器用)
     const heard = []; // 描いた順の { name, role, generator, notes }
     let markers = [];
@@ -340,6 +345,7 @@
         : src;
       const ctx = {
         total, bars, meters, sections, tension, src: layerSrc, design, rendered, heard,
+        activeRanges: activeRanges(layer, sections, total),
         rng: T.rng(T.mixSeed(seed, i, layer.reroll || 0)),
         range: T.registerOf(layer.register || gen.defaultRegister),
         gauge: g01,
@@ -355,7 +361,7 @@
         return;
       }
       const voices = Array.isArray(res) ? [res] : res.voices || [];
-      const ranges = activeRanges(layer, sections, total);
+      const ranges = ctx.activeRanges;
       const layerNotes = [];
       voices.forEach((voice, vi) => {
         const list = (voice || [])
@@ -371,15 +377,19 @@
           list.forEach((n) => layerNotes.push({ ...n, pitch: Math.round(n.pitch) }));
           return;
         }
-        if (!list.length || partNo >= MAX_PARTS) return;
+        if ((!list.length && !(res.mu && res.mu.length)) || partNo >= MAX_PARTS) return;
         partNo += 1;
         const part = `p${partNo}`;
         const label = layer.name || gen.label;
         partNames[part] = voices.length > 1 ? `${label}${res.names ? res.names[vi] || '' : vi + 1}` : label;
         partRoles[part] = partRolesOf(layer, gen);
         partLayers[part] = i;
+        if (vi === 0 && res.mu) res.mu.forEach((event) => {
+          const r = ranges.find((x) => event.beat >= x.start - EPS && event.beat < x.end - EPS);
+          if (r) mu.push({ ...event, part, endBeat: Math.min(r.end, total) });
+        });
         // 層ごとに主音・音階を変えた時(複調)は、その層の音をその調の音にそろえる
-        const keyed = (layer.root != null || layer.scale) && partRolesOf(layer, gen) !== 'drums';
+        const keyed = layer.generator !== 'mitate' && (layer.root != null || layer.scale) && partRolesOf(layer, gen) !== 'drums';
         list.forEach((n) => {
           if (keyed) n.pitch = layerSrc.snap(Math.round(n.pitch), n.start);
           const note = {
@@ -400,15 +410,17 @@
     });
 
     // 後処理: ハネ → つんのめり → 感情 → 緊張曲線による強弱 → 重なりの整理
-    const drumParts = new Set(Object.keys(partRoles).filter((p) => partRoles[p] === 'drums'));
+    const muParts = new Set(mu.map((x) => x.part));
+    const drumParts = new Set(Object.keys(partRoles).filter((p) => partRoles[p] === 'drums' || muParts.has(p)));
     applySwing(notes, design.swing, drumParts);
-    const backing = new Set(Object.keys(partRoles).filter((p) => partRoles[p] === 'harmony' || partRoles[p] === 'bass'));
+    const backing = new Set(Object.keys(partRoles).filter((p) => !muParts.has(p) && (partRoles[p] === 'harmony' || partRoles[p] === 'bass')));
     let out = applyDub(notes, bars, clamp(gauges.dub, 0, 100, 0), backing, total);
-    applyEmotion(out, clamp(gauges.emotion, 0, 100, 50));
+    applyEmotion(out.filter((n) => !muParts.has(n.part)), clamp(gauges.emotion, 0, 100, 50));
     // ビート帳(groove)は区間の勢いを自分で強弱にしているので、緊張曲線の強弱はかけない
     if (sections.length && !design.beatModel) {
       const strength = clamp(gauges.emotion, 0, 100, 50) / 50;
       out.forEach((n) => {
+        if (muParts.has(n.part)) return;
         n.velocity = Math.round(Math.min(127, Math.max(20, n.velocity * (1 + (tension(n.start) - 0.5) * 0.5 * strength))));
       });
     }
@@ -436,9 +448,11 @@
       partNames,
       partRoles,
       partLayers,
+      mu,
+      muStamp: Object.fromEntries([...muParts].map((p) => [p, noteStamp(out, p)])),
       totalBeats: total,
     };
   }
 
-  window.LyraEngine = { GENERATORS, register, render, pitchSource, scaleOf, tensionCurve, arcSections, autoMeters, DEFAULT_GAUGES };
+  window.LyraEngine = { GENERATORS, register, render, pitchSource, scaleOf, tensionCurve, arcSections, autoMeters, DEFAULT_GAUGES, noteStamp };
 })();
