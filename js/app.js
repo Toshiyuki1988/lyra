@@ -932,13 +932,20 @@ function loadPremixIndex(data) {
 
 /** プレミックスを開けるようにする(まだなら Drive から読む)。返り値はそのデータ */
 async function loadPremixData(id) {
-  if (premixStore.loaded.has(id)) return premixStore.loaded.get(id);
+  if (premixStore.loaded.has(id)) {
+    const cached = premixStore.loaded.get(id);
+    if (LyraPremixMigration.migrate(cached)) scheduleAutoSave();
+    return cached;
+  }
   const entry = premixEntry(id);
   if (!entry) throw new Error('一覧にないプレミックスです');
   const raw = entry.fileId ? await loadJsonFile(entry.fileId) : {};
-  const data = { activeId: null, cards: [], connections: [], planets: [], ...raw, id: entry.id, name: entry.name, preset: entry.preset };
+  const data = { cards: [], sources: [], connections: [], planets: [], ...raw, id: entry.id, name: entry.name, preset: entry.preset };
+  const before = JSON.stringify(data);
+  const migrated = LyraPremixMigration.migrate(data);
   premixStore.loaded.set(id, data);
-  premixStore.savedJson.set(id, JSON.stringify(data)); // 読んだばかりの内容は保存し直さない
+  premixStore.savedJson.set(id, migrated ? before : JSON.stringify(data));
+  if (migrated) scheduleAutoSave();
   return data;
 }
 
@@ -947,7 +954,7 @@ function createPremixData({ name, preset }) {
   const now = new Date().toISOString();
   const entry = { id: newId(), name, preset, fileId: null, createdAt: now, updatedAt: now };
   state.premixIndex.push(entry);
-  premixStore.loaded.set(entry.id, { version: 1, id: entry.id, name, preset, activeId: null, cards: [], connections: [], planets: [], createdAt: now });
+  premixStore.loaded.set(entry.id, { version: 2, id: entry.id, name, preset, sources: [], cards: [], connections: [], planets: [], createdAt: now });
   scheduleAutoSave();
   return entry;
 }

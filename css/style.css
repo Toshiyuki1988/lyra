@@ -1911,56 +1911,6 @@ body[data-screen="premix"] .star-card .btn-small {
 body[data-screen="premix"] .star-card .btn-small:hover { border-color: var(--pm-amber); color: var(--pm-amber); }
 body[data-screen="premix"] .star-card .btn-small--accent { background: var(--pm-amber); border-color: var(--pm-amber); color: #1a1407; font-weight: 700; }
 
-/* フォルダカード=プレミックスエリア。オーディオカードより下に敷く */
-/* 2026-09-29: エリアは角の丸い平行四辺形(ユーザー要望)。要素の枠は長方形のまま透明にし、形は中の SVG(.fold-shape、js の drawFolderShape)で描く。
-   上の辺が右へ34pxずれた「/」の形。見出しは左の辺にかからないよう左を空ける */
-.star-card--folder {
-  z-index: 0; padding: 0; gap: 0; background: transparent; border: none; box-shadow: none;
-}
-.star-card--folder.star-card--edit-guide { z-index: 1; }
-.fold-shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: -1;
-  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.45)); transition: filter 0.25s ease-out; }
-.fold-shape-body { fill: rgba(27, 29, 36, 0.9); stroke: var(--pm-line); stroke-width: 1; transition: stroke 0.25s ease-out; }
-.fold-shape-line { fill: none; stroke: var(--pm-line); stroke-width: 1; }
-.star-card--folder-active .fold-shape { filter: drop-shadow(0 0 16px rgba(242, 178, 76, 0.22)) drop-shadow(0 18px 30px rgba(0, 0, 0, 0.5)); }
-.star-card--folder-active .fold-shape-body { stroke: rgba(242, 178, 76, 0.8); stroke-width: 1.4; }
-.star-card--folder-listening .fold-shape-body { stroke: #7fa6c9; stroke-width: 1.6; }
-.fold-head {
-  display: flex; flex-direction: column; gap: 7px; padding: 10px 14px 10px 46px; min-width: 0;
-}
-.fold-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.fold-badge { flex: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--pm-faint); }
-.fold-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3b3f49; box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.6); }
-.star-card--folder-active .fold-badge { color: var(--pm-amber); }
-.star-card--folder-active .fold-badge::before { background: var(--pm-amber); box-shadow: 0 0 8px var(--pm-amber), 0 0 2px #fff; animation: pm-led 2.4s ease-in-out infinite; }
-@keyframes pm-led { 50% { box-shadow: 0 0 14px var(--pm-amber), 0 0 3px #fff; } }
-.fold-name { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--pm-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; letter-spacing: 0.04em; }
-.fold-count { flex: none; margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--pm-faint); }
-.fold-mode { flex: none; display: inline-flex; padding: 2px; border-radius: 8px; background: #121318; border: 1px solid var(--pm-line); }
-.fold-mode-btn { font-size: 11px; padding: 3px 10px; border: none; border-radius: 6px; background: transparent; color: var(--pm-muted); cursor: pointer; }
-.fold-mode-btn--on { background: #2b2f39; color: var(--pm-amber); box-shadow: inset 0 0 0 1px rgba(242, 178, 76, 0.4); }
-.tl-time { flex: none; font-family: var(--mono); font-size: 12px; color: var(--pm-amber); min-width: 6.6em; text-shadow: 0 0 8px rgba(242, 178, 76, 0.4); }
-body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm-hot); border-color: var(--pm-hot); color: #fff; box-shadow: 0 0 12px rgba(255, 93, 82, 0.5); }
-.fold-msg { padding: 10px 14px; font-size: 12px; color: var(--pm-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-/* タイムライン: グリッド(0.25秒・1秒・4秒)と秒数、プレイヘッド */
-.tl-grid {
-  position: absolute; bottom: 10px; overflow: hidden; pointer-events: none; border-radius: 6px;
-  background-image:
-    linear-gradient(90deg, rgba(242, 178, 76, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: calc(var(--px) * 4) 100%, var(--px) 100%, calc(var(--px) / 4) 100%;
-  background-color: rgba(0, 0, 0, 0.18);
-}
-.tl-labels { position: absolute; left: 0; top: 0; right: 0; height: 16px; border-bottom: 1px solid var(--pm-line); background: rgba(10, 11, 14, 0.5); }
-.tl-label { position: absolute; top: 2px; transform: translateX(3px); font-family: var(--mono); font-size: 9px; color: var(--pm-faint); }
-.tl-label--bar { color: var(--pm-muted); }
-.tl-playhead { position: absolute; left: 0; top: 0; width: 2px; z-index: 4; pointer-events: none; background: rgba(255, 255, 255, 0.35); }
-.tl-playhead::before { content: ""; position: absolute; top: -6px; left: -5px; border: 6px solid transparent; border-top: 7px solid rgba(255, 255, 255, 0.5); border-bottom: 0; }
-.tl-playhead--playing { background: var(--pm-hot); box-shadow: 0 0 10px var(--pm-hot), 0 0 2px #fff; }
-.tl-playhead--playing::before { border-top-color: var(--pm-hot); }
-
 /* オーディオカード */
 .star-card--sound {
   z-index: 2; gap: 6px; padding: 9px 10px 10px;
@@ -1988,9 +1938,6 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
 }
 .star-card--sound-playing .snd-play { background: radial-gradient(circle at 35% 30%, #ff9a8f, var(--pm-hot) 60%, #c23a31); color: #fff; box-shadow: 0 0 12px rgba(255, 93, 82, 0.55); }
 .snd-play:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
-.snd-loop { flex: none; white-space: nowrap; font-size: 10.5px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--pm-line-2); background: transparent; color: var(--pm-faint); cursor: pointer; letter-spacing: 0.04em; }
-.snd-loop--on { border-color: rgba(242, 178, 76, 0.7); color: var(--pm-amber); box-shadow: inset 0 0 8px rgba(242, 178, 76, 0.15); }
-.star-card--sound-tl .snd-loop { display: none; }
 /* ミュート・ソロ(2026-10-01)。M=赤、S=黄。鳴らないカード(ミュート、またはほかのカードのソロで黙っている)は暗くする */
 .snd-ms { flex: none; width: 22px; height: 22px; padding: 0; border-radius: 6px; border: 1px solid var(--pm-line-2); background: transparent; color: var(--pm-faint); font: 700 10px/1 var(--mono, ui-monospace, monospace); cursor: pointer; }
 .snd-ms:hover { color: var(--pm-text); border-color: var(--pm-muted); }
@@ -2013,27 +1960,7 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
 .snd-param input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #f4f5f8; border: none; }
 /* タイムラインでは左端=鳴り始め(以前あった「音の長さの光る帯」は2026-09-29に廃止) */
 .star-card--sound-tl { border-left: 2px solid var(--pm-amber); border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
-.fold-row { flex-wrap: wrap; row-gap: 6px; }
-.fold-transport-group { flex: none; display: inline-flex; gap: 5px; }
-.fold-view .fold-mode-btn { padding: 3px 8px; }
-
 /* ループの長さ: −/+・ドラッグできる数字・½・×2・音に合わせる */
-.tl-len { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--pm-muted); }
-.tl-len-btn {
-  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--pm-line-2);
-  background: #1b1d24; color: var(--pm-text); font-size: 13px; line-height: 1; cursor: pointer;
-}
-.tl-len-btn:hover { border-color: var(--pm-amber); color: var(--pm-amber); }
-.tl-len-btn--word { font-size: 10.5px; color: var(--pm-muted); }
-.tl-len-val {
-  min-width: 4.4em; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--pm-line-2); background: #121318;
-  color: var(--pm-amber); font-family: var(--mono); font-size: 12.5px; text-align: center; cursor: ew-resize; user-select: none;
-  touch-action: none; text-shadow: 0 0 8px rgba(242, 178, 76, 0.35);
-}
-.tl-len-val:hover, .tl-len-val:focus, .tl-len-val--drag { outline: none; border-color: var(--pm-amber); background: #1c1a14; }
-.tl-len-input { width: 5em; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--pm-amber); background: #121318; color: var(--pm-amber); font-family: var(--mono); font-size: 12px; text-align: right; }
-.tl-len-input:focus { outline: none; }
-
 /* カードの見た目: 名前の行・切り取り・語彙メモ */
 .snd-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .snd-head .snd-name { flex: 1; min-width: 0; }
@@ -2102,7 +2029,6 @@ body[data-screen="premix"] .star-card .fold-transport--on { background: var(--pm
 }
 .sph-name .snd-from { margin-left: 0; }
 /* チェーン: カードのループは使わない。線は流れる点線で向き(引き始め→引いた先)を見せ、流れが通った線を光らせる */
-.star-card--sound-chain .snd-loop { display: none; }
 /* 線はフォルダ(z-index 0、半透明の背景)の上、オーディオカード(z-index 2)の下に重ねる。フォルダの下だと透けて見えなかった */
 body[data-screen="premix"] .asterism-layer { z-index: 1; }
 body[data-screen="premix"] .asterism-line--manual {
@@ -2163,10 +2089,6 @@ body[data-screen="premix"] .asterism-line--manual[data-mode="link"].asterism-lin
   background: #1b1d24; color: var(--pm-muted); font-size: 10px; letter-spacing: 0.06em; cursor: pointer;
 }
 .snd-vocab:hover { border-color: #7fa6c9; color: #a9cbe8; }
-body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
-.star-card--folder-listening .fold-shape { filter: drop-shadow(0 0 18px rgba(127, 166, 201, 0.45)); }
-.star-card--folder-listening .fold-listen { background: #4f7392 !important; color: #fff !important; }
-
 .star-card--pm-vocab {
   z-index: 3; gap: 6px; padding: 12px 13px 12px;
   background: linear-gradient(180deg, #1f2733, #181c24); border: 1px solid #34465c; border-radius: 12px;
@@ -2226,12 +2148,6 @@ body[data-screen="premix"] .star-card .fold-listen { color: #a9cbe8; }
 .out-meter--over .out-meter-over { color: #fff; background: #d8442f; border-color: #d8442f; }
 
 /* プレミックスのエリアのピークメーター(見出し) */
-.fold-meter { position: relative; flex: none; width: 54px; height: 5px; border-radius: 3px; overflow: hidden; background: #121318; box-shadow: inset 0 0 0 1px var(--pm-line); }
-.fm-bar { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(0); background: linear-gradient(90deg, #5fae6e 0%, #5fae6e 62%, var(--pm-amber) 80%, var(--pm-hot) 96%); }
-.fm-hold { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: rgba(255, 255, 255, 0.7); }
-.fold-meter--over { box-shadow: 0 0 0 1px var(--pm-hot), 0 0 8px rgba(255, 93, 82, 0.7); }
-.fold-meter--lim::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: var(--pm-amber); }
-
 /* プレミックスのMIDIのカードの .mid 保存(2026-09-29)。名前の行の「⇩」と、左の「保存」ヘックス(スフィアでも使える) */
 .snd-save {
   flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid rgba(242, 178, 76, 0.55);
@@ -2592,12 +2508,16 @@ body[data-screen="premix"] .imgsearch-thumb--picked { border-color: #f2b24c; }
 .pmi-name .pm-pin { width: 18px; height: 18px; vertical-align: middle; margin-left: 6px; }
 .sph-name .pm-pin { width: 16px; height: 16px; margin-left: 4px; vertical-align: middle; }
 .star-card.pm-pinned { box-shadow: 0 0 0 1px rgba(242, 196, 109, 0.55), 0 0 14px rgba(242, 196, 109, 0.18); }
-.star-card--folder.pm-pinned, .star-card--nebula.pm-pinned { box-shadow: none; }
+.star-card--nebula.pm-pinned { box-shadow: none; }
 .snd-msg .btn-small { pointer-events: auto; font-size: 10.5px; }
 
 /* ---------- 見立て蔵(語彙帳、js/mitategura.js、2026-10-02) ---------- */
 .mitate-btn { font-family: var(--serif); font-size: 14px; font-weight: 700; }
 .mitate-overlay { z-index: 240; }
+/* 見立て蔵の窓・お手本の窓(z-index 240)から開いた確認・入力のダイアログ(「Geminiで足す」「外す」など)は、窓より上に(2026-10-07、
+   ユーザー指摘「ポップアップが見立て蔵ウィンドウの裏で開いている」)。どれも body の直下に後から足されるので、後ろの兄弟として選ぶ */
+.mitate-overlay ~ .modal-overlay:not(.mitate-overlay):not(.demo-overlay),
+.demo-overlay ~ .modal-overlay:not(.mitate-overlay):not(.demo-overlay) { z-index: 250; }
 .modal.mitate-modal { position: relative; width: min(1180px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 32px); }
 .mitate-modal h2 { margin: 0 36px 6px 0; font-family: var(--serif); }
 .mitate-sub { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 10px; font-family: inherit; }
@@ -2717,3 +2637,12 @@ body[data-screen="premix"] .star-card--planck { background:transparent; border:0
 .pk-lenswrap { width:440px; height:440px; }
 .pk-head .read { font-size:10px; }
 .pk-head .pm-pin { flex:none; }
+
+/* プレミックスの出どころ一覧。エリアの枠は使わない。 */
+.pm-sources { position:fixed; left:24px; top:100px; width:340px; max-height:70vh; overflow:auto; z-index:80; padding:14px; border:1px solid #475063; border-radius:16px; color:#dfe2e8; background:rgba(20,23,32,.86); backdrop-filter:blur(14px); box-shadow:0 18px 50px #0006; }
+.pm-sources-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.pm-source { display:flex; flex-wrap:wrap; gap:6px; padding:12px 0; border-top:1px solid #ffffff18; }
+.pm-source > b, .pm-source > span { flex-basis:100%; }
+.pm-source > span { color:#9ba5ba; font-size:11px; }
+.pm-sources button { background:#ffffff08; border:1px solid #ffffff30; border-radius:7px; color:inherit; padding:5px 9px; cursor:pointer; }
+.snd-permission { position:absolute; top:-22px; left:0; }

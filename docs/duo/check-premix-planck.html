@@ -1,13 +1,13 @@
-<!doctype html><html lang="ja"><meta charset="utf-8"><title>PLANCK 段階1 確認</title>
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>PLANCK 段階2 確認</title>
 <style>html,body{margin:0;height:100%;background:#111216;color:#dfe2e8;font:13px system-ui}header{height:34px;display:flex;align-items:center;gap:12px;padding:0 12px}iframe{border:0;width:100%;height:calc(100% - 34px)}button{cursor:pointer}</style>
-<header>PLANCK 段階1・模擬データ <button id="run">数値検証</button><button id="reset">初期化</button><span id="result">準備中</span></header><iframe id="app"></iframe>
+<header>PLANCK 段階2・模擬データ <button id="run">数値検証</button><button id="reset">初期化</button><span id="result">準備中</span></header><iframe id="app"></iframe>
 <script>
 // 本物の接続スクリプトを読み込まず、音と保存先はこのページ内だけで作る。
 (async function(){
   const html=await (await fetch('../../index.html')).text();
   const stub=`<script>window.whenGisReady=()=>{};window.initAuth=()=>{};window.armAutoSignInOnFirstGesture=()=>{};window.getAccessToken=()=>null;window.isSignedIn=()=>false;window.signIn=()=>{};window.signOut=()=>{};window.askGemini=window.askGeminiJson=async()=>{throw Error('確認ページでは Gemini を呼びません');};<\/script>`;
   const src=html.replace('<head>','<head><base href="/">').replace(/<script[^>]*src="[^"]*(?:accounts\.google|js\/auth\.js|js\/drive\.js|js\/gemini\.js)[^"]*"[^>]*><\/script>/g,stub);
-  document.getElementById('app').srcdoc=src.replace('</body>','<script src="docs/duo/check-premix-planck.js"><\/script></body>');
+  document.getElementById('app').srcdoc=src.replace('</body>','<script src="docs/duo/check-premix-planck-legacy.js"><\/script><script src="docs/duo/check-premix-planck.js"><\/script></body>');
   document.getElementById('run').onclick=async()=>{const w=document.getElementById('app').contentWindow;try{const results=await w.planckCheck.run();document.getElementById('result').textContent=JSON.stringify(results);}catch(e){document.getElementById('result').textContent=e.stack;}};
   document.getElementById('reset').onclick=()=>location.reload();
 })();

@@ -449,7 +449,6 @@
         host.status(`頭から60秒を入れました(元は ${Math.floor(c.len / 60)}分${Math.round(c.len % 60)}秒)`);
       }
       setLen(p, land.needLen);
-      host.assign(s, p.folderId);
       s.planckId = p.id;
       s.plLane = land.lane;
       s.plAt = land.at;
@@ -525,7 +524,6 @@
         .forEach((s, i) => {
           const b = runtime(p).lens.getBoundingClientRect();
           toCard(p, s, b.left + 30 + i * 20, b.bottom - 60);
-          host.clamp(s);
         });
       states.delete(p.id);
     }
@@ -1042,6 +1040,7 @@
     }
 
     return {
+      refresh: (p) => renderLanes(runtime(p)),
       build,
       cards,
       clips,

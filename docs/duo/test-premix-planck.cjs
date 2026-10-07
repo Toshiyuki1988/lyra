@@ -88,7 +88,7 @@ const screenshot = (name) => path.join(outputDir, name);
     }, before),
     '音量線のドラッグで音量が変わりパンしない',
   );
-  b = await frame.locator('.reticle').boundingBox();
+  b = await frame.locator('[data-id="' + (await frame.evaluate(() => planckCheck.pk.id)) + '"] .reticle').boundingBox();
   before = await frame.evaluate(() => ({
     len: planckCheck.pk.len,
     n: planckCheck.pk.lanes.length,
@@ -190,10 +190,28 @@ const screenshot = (name) => path.join(outputDir, name);
   );
   const result = await page.locator('#result').textContent();
   console.log(result);
-  if (result.includes('Error')) console.log('DIAGNOSTICS', await frame.evaluate(() => {
-    const {T,pk}=planckCheck;
-    return {now:T.audioCtx().currentTime,state:T.audioCtx().state,folderId:pk.folderId,playing:T.planck.runtime(pk).playing,t0:T.planck.runtime(pk).t0,status:els.status.textContent,holdUntil:importantStatusUntil,wallTime:Date.now(),areas:state.premix.cards.filter(c=>c.type==='folder').map(c=>({width:c.width,height:c.height})),clips:T.planck.clips(pk).map(s=>({id:s.id,at:s.plAt})),voices:T.planckDiagnostics.slice(-8)};
-  }));
+  if (result.includes('Error'))
+    console.log(
+      'DIAGNOSTICS',
+      await frame.evaluate(() => {
+        const { T, pk } = planckCheck;
+        return {
+          now: T.audioCtx().currentTime,
+          state: T.audioCtx().state,
+          folderId: pk.folderId,
+          playing: T.planck.runtime(pk).playing,
+          t0: T.planck.runtime(pk).t0,
+          status: els.status.textContent,
+          holdUntil: importantStatusUntil,
+          wallTime: Date.now(),
+          areas: state.premix.cards
+            .filter((c) => c.type === 'folder')
+            .map((c) => ({ width: c.width, height: c.height })),
+          clips: T.planck.clips(pk).map((s) => ({ id: s.id, at: s.plAt })),
+          voices: T.planckDiagnostics.slice(-8),
+        };
+      }),
+    );
   console.log('PAGE_ERRORS', JSON.stringify(errors));
   await page.screenshot({ path: screenshot('planck-integration-after.png') });
   await browser.close();
