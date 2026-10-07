@@ -54,7 +54,7 @@
   const AVOID = `避けること(これまでの試作で実際に失敗したもの):
 - ものまね: 鳴き声・足音・水音などを合成してまねる、物の動きを音でなぞる(ミッキーマウシング)
 - かわいい旋律・情景が浮かぶ劇伴のようなメロディ
-- 短い音を細かく散らした効果音のような部品(粒を散らさず、長めの音の状態の変わり方で描く)
+- 短い音をでたらめに散らしただけの効果音のような部品(短い音を使う時は、リズム・音型・分散和音として形を持たせる)
 - 全体を箏で鳴らすような、いかにもなオリエンタリズム
 - 既存の曲・作品の旋律の引用、特定の作品名・人物名`;
 
@@ -80,21 +80,31 @@
 3つが同時に鳴ると「和音なのか、1つの音が揺れているだけなのか」が判断しきれません。その判断のつかなさが狙いです。
 一瞬は、この三層の「状態の変わり方」で描きます。層(parts)ごとに次の値を持ち、morph のキーフレーム(t = 秒)で時間とともに変えられます:
 - spread: Bの開き(1 = +1・+2半音、0 = Aに重なって消える、2 = 広く濁る)。b: Bの音量の倍率(0〜2)。c: Cの音量の倍率(0〜2)。cdet: Cのずれの倍率(1 = +5セント。大きいほど速くうなる、0〜6)
-- 一瞬の描き方(身振り)は1件ごとに下で指定します。指定された身振りで描き、gesture にその id を書きます
-- 低い音を必ず置く必要はありません。1つの音のまま状態だけが変わる、高い所だけで終わる、無音や途切れで描く、なども同じくらい良い部品です
+**目指すもの: 一瞬の混沌**(この見立て蔵でいちばん大事な決まり)
+- 自然界に調性はありません。調性・音高の中心・長調/短調の和音を持たせない。12音から自由に、半音・増4度・4度の積み重ね・密集などで
+- ピアノで弾いた時に、口ずさめる旋律の線や、一定の拍のリズムが聞こえてはいけません(それは物の動きをなぞるミッキーマウシングになる)。分散和音の上り下りの型も作らない
+- 低い持続音の上に、途中から高い音が重なる形(「ブゥーン … ポワァーン」)は帳に多すぎるので作らない
+- 1件ごとに「質感」(motion)と「三層の変わり方」(gesture)と音域を下で指定します。指定どおりに書き、motion と gesture にその id を書きます
 音の書き方:
-- 時間は秒。全体で3〜8秒。parts は1〜4個。1つの part の notes は1〜5個で、0.5秒以上の長めの音を中心にする(短い音は1件に3つまで。粒を散らさず、音の状態の変わり方で描く)
-- notes: note(音名。C2〜C8。12音から自由に選んでよい。和音階・長調短調の旋律にしない)、start(秒)、duration(秒)、velocity(20〜120)
-- attack・release: 音の立ち上がり・余韻の秒(0.003〜3)
+- 時間は秒。全体で2〜10秒。parts は1〜4個。1つの part の notes は1〜20個(全部で40個まで)。音の数・長さは指定された質感に合わせる(持続音ばかりにしない)
+- notes: note(音名。C2〜C8)、start(秒)、duration(秒)、velocity(20〜120)
+- attack・release: 音の立ち上がり・余韻の秒(0.001〜3)。**短い音を点として聞かせる時・無音を作る時は release を0.05〜0.15に**(長いと余韻が間を埋めて、無音が無くなる)
+- 無音: 音の無い時間も部品の一部です。無音を使う時は、前の音の duration+release が終わってから、次の音まで秒で空ける
+- 物音の素材(質感 spectral・texture の時など): noise と bend が使えます。物の動き・拍・鳴き方をなぞらず、その物音が持つ響きの成分を一度だけ素材にする
+  - noise: { freq(帯域の中心Hz 80〜12000), freqEnd(音の終わりの中心Hz), q(帯域の狭さ 0.3〜12), level(0〜1) }。その part の音にノイズを重ねる。tones: false にすると、その part は三層を鳴らさずノイズだけ
+  - bend: [{ at(音の長さの割合 0〜1), cents(-2400〜2400) }]。音の高さをすべらせる。一定のセント値(例: 全部 -42)なら、整数倍でない倍音の高さを正確に置ける
 - season: 春・夏・秋・冬・無季。senses: その一瞬がどの感覚から来たか(聴・視・嗅・触)`,
       // お手本は、割り当てた身振りに近い手書きの部品から(2026-10-07。以前は月光と霧の2件で固定していて、生成が「低い持続に遅れて高音が重なる」形ばかりになった)
       example: (assigned) => ({ items: mystExamples(assigned).map((e) => mystForPrompt(e)) }),
       schema: OBJ({
-        name: S('STRING'), moment: S('STRING'), turn: S('STRING'), season: S('STRING'), senses: ARR(S('STRING')), device: S('STRING'), gesture: S('STRING'),
+        name: S('STRING'), moment: S('STRING'), turn: S('STRING'), season: S('STRING'), senses: ARR(S('STRING')), device: S('STRING'), motion: S('STRING'), gesture: S('STRING'),
         parts: ARR(OBJ({
           name: S('STRING'), attack: S('NUMBER'), release: S('NUMBER'), spread: S('NUMBER'), b: S('NUMBER'), c: S('NUMBER'), cdet: S('NUMBER'),
           notes: ARR(OBJ({ note: S('STRING'), start: S('NUMBER'), duration: S('NUMBER'), velocity: S('INTEGER') }, ['note', 'start', 'duration'])),
           morph: ARR(MORPH),
+          tones: S('BOOLEAN'),
+          noise: OBJ({ freq: S('NUMBER'), freqEnd: S('NUMBER'), q: S('NUMBER'), level: S('NUMBER') }, ['freq']),
+          bend: ARR(OBJ({ at: S('NUMBER'), cents: S('NUMBER') }, ['at', 'cents'])),
         }, ['name', 'notes'])),
       }, ['name', 'moment', 'turn', 'device', 'parts']),
       sanitize(raw) {
@@ -107,31 +117,45 @@
           return out;
         };
         let end = 0;
-        let short = 0;
+        let total = 0;
         const parts = (raw.parts || []).slice(0, 4).map((p, i) => {
-          const notes = (p.notes || []).slice(0, 6).map((n) => {
+          const notes = (p.notes || []).slice(0, 20).map((n) => {
             const pitch = T().noteToMidi(String(n.note || '').trim());
             if (pitch == null || pitch < 36 || pitch > 108) return null;
             const start = round(clamp(n.start, 0, 9, 0));
             const dur = round(clamp(n.duration, 0.05, 9, 1));
-            if (dur < 0.35) short += 1;
+            if (total >= 40) return null;
+            total += 1;
             end = Math.max(end, start + dur);
             return [T().midiToNote(pitch), start, dur, Math.round(clamp(n.velocity, 15, 127, 70))];
           }).filter(Boolean);
-          const morph = (p.morph || []).slice(0, 6).map((k) => [round(clamp(k.t, 0, 12, 0)), mu(k)]).filter(([, v]) => Object.keys(v).length).sort((a, b) => a[0] - b[0]);
+          const morph = (p.morph || []).slice(0, 8).map((k) => [round(clamp(k.t, 0, 12, 0)), mu(k)]).filter(([, v]) => Object.keys(v).length).sort((a, b) => a[0] - b[0]);
           const m = mu(p);
+          // 物音の素材(2026-10-07): ノイズと音程のすべり。js/mitategura.js の scheduleMu がそのまま鳴らせる形に
+          const nz = p.noise && Number.isFinite(Number(p.noise.freq)) ? {
+            freq: Math.round(clamp(p.noise.freq, 80, 12000, 1000)),
+            ...(Number.isFinite(Number(p.noise.freqEnd)) ? { freqEnd: Math.round(clamp(p.noise.freqEnd, 80, 12000, 1000)) } : {}),
+            q: round(clamp(p.noise.q, 0.3, 12, 1), 100), level: round(clamp(p.noise.level, 0, 1, 0.5), 100),
+          } : null;
+          const bend = (p.bend || []).slice(0, 4).map((k) => [round(clamp(k.at, 0, 1, 0), 100), Math.round(clamp(k.cents, -2400, 2400, 0))]).sort((a, b) => a[0] - b[0]);
           return {
             name: str(p.name, 10) || `層${i + 1}`, notes,
-            env: { a: round(clamp(p.attack, 0.003, 3, 0.1)), r: round(clamp(p.release, 0.05, 3, 0.8)) },
+            env: { a: round(clamp(p.attack, 0.001, 3, 0.1)), r: round(clamp(p.release, 0.03, 3, 0.8)) },
             ...(Object.keys(m).length ? { mu: m } : {}),
             ...(morph.length ? { morph } : {}),
+            ...(nz ? { noise: nz } : {}),
+            ...(nz && p.tones === false ? { tones: false } : {}),
+            ...(bend.length ? { bend } : {}),
           };
         }).filter((p) => p.notes.length);
         if (!parts.length) return { error: '音がありません' };
-        if (short > 3) return { error: `短い音が${short}個(効果音になりやすい)` };
-        if (end > 10) return { error: `長すぎます(${end.toFixed(1)}秒)` };
+        if (end > 12) return { error: `長すぎます(${end.toFixed(1)}秒)` };
+        // 一瞬の混沌(2026-10-07): ピアノで弾いて旋律の線・一定の拍が聞こえるものは入れない
+        const heard = motionOf({ parts });
+        if (heard === '旋律' || heard === 'リズム') return { error: `${heard}に聞こえる(一瞬の混沌にならない)` };
         const gesture = GESTURES.find((g) => g.id === String(raw.gesture || '').trim());
-        return { tone: '神秘', season: season(raw.season), senses: senses(raw.senses, ['視']), ...(gesture ? { gesture: gesture.id } : {}), parts };
+        const motion = MOTIONS.find((m) => m.id === String(raw.motion || '').trim());
+        return { tone: '神秘', season: season(raw.season), senses: senses(raw.senses, ['視']), ...(motion ? { motion: motion.id } : {}), ...(gesture ? { gesture: gesture.id } : {}), parts };
       },
     },
 
@@ -243,15 +267,35 @@
     { id: 'flicker', label: 'うなりの速さが変わる', w: 1, seed: 'senkohanabi', how: '音の高さは変えず、Cのずれ(cdet)の速さだけで描く。速いちらつきが遅くなる、または静かなうなりが速まっていく' },
     { id: 'sink', label: '高い所から沈む', w: 1, how: '高い音から始まり、遅れて入る層ほど低い。上から下へ重心が降りていき、最後の低い音で三層が閉じる(下から上へ開く形の逆)' },
     { id: 'merge', label: 'ぶつかる二音が一つになる', w: 1, how: '半音・全音でぶつかる近い2〜3音が同時に鳴り、片方ずつ消えて、最後に1つの音だけが残る(Bの開きも閉じていく)' },
-    { id: 'breath', label: '一つの音が呼吸する', w: 1, how: '全体を1つの持続音(part も1つ)だけで描く。Bの開きとCの量が、開いて閉じ、また開く。周期は不規則で、最後は始めと違う状態で止む' },
+    { id: 'breath', label: '一つの音が呼吸する', w: 1, sustainOnly: true, how: '全体を1つの持続音(part も1つ)だけで描く。Bの開きとCの量が、開いて閉じ、また開く。周期は不規則で、最後は始めと違う状態で止む' },
     { id: 'cut', label: '不意に途切れる', w: 1, how: '鳴っていた音の状態が、前触れなく途切れて無音になる。その無音の間が主役で、間のあとにごく小さく別の質の音が残るか、残らない' },
     { id: 'fill', label: '薄い一点から満ちる', w: 1, how: '小さな一点から、近い音域に層が少しずつ増えていき、空間が満ちたところで止む(高い音を後から足す形にしない)' },
+  ];
+  /* ---------------- 神秘型の質感(2026-10-07。見立て蔵でいちばん大事な方向性。docs/mitategura.md「一瞬の混沌」) ----------------
+   * 経緯: 身振りだけ割り当てても「ブゥーン ポワァーン」ばかり → 旋律・リズム・分散和音を書けるようにした → 試聴で「旋律やリズムを入れると
+   * ミッキーマウシングっぽくなる。ピアノで弾いた時にわかりやすいメロディがあってはいけないのかも。求めているのはもっと一瞬の混沌。
+   * 自然界に調性はないでしょう?」。試聴(mockups/mitate-motion-mockup.html)で下の13種を全部採用(「一気に良くなりました」「全ていいと思う。これでいこう」)。
+   * 幅は線(旋律・リズム)ではなく、混沌の質感で出す。motion という名前は前の版のまま(記録の data.motion)。register: その質感で決まる音域 */
+  const MOTIONS = [
+    { id: 'chord', label: '和音の移り変わり', w: 1, how: '調性の無い3〜5音の和音を3〜6個、0.6〜1.5秒ずつ移る。毎回1音だけが半音動く、など少しずつ。長調・短調の和音進行にしない' },
+    { id: 'sustain', label: '一音の状態の変化', w: 0.6, how: '1〜2個の音だけで、三層の状態が急に変わる瞬間を聴かせる(澄んだ一音が砕ける、など)。低い持続音の上に高い音を足す形にはしない' },
+    { id: 'cluster', label: '塊が崩れる', w: 1, how: '1オクターブほどの中の5〜8音を、0.01〜0.12秒ずつずらしてほぼ同時に鳴らす密集した塊。音ごとにばらばらの時刻で抜けていき、1〜2音だけが残る' },
+    { id: 'swarm', label: '群れ', w: 1, how: '周期も線も持たない12〜20音の群れ。時刻も高さも不揃いに、0.5〜2.5秒の音を重ねる。密度が膨らんで引く、または積もって途切れる' },
+    { id: 'strata', label: '層がずれて重なる', w: 1, how: '4度・増4度などを積んだ6〜8音が、不揃いな間隔で1音ずつ入り、全部が最後まで鳴り続けて厚みになる' },
+    { id: 'rift', label: '音域の裂け目', w: 0.8, register: 'wide', how: '最も低い所と最も高い所で、2つの密集した塊が同時に鳴る(真ん中が空く)。片方が先に途切れる' },
+    { id: 'point', label: '点描', w: 1, how: '0.05〜0.1秒の点を10〜16個。点と点の間は無音(release 0.1前後)。時刻は不揃いで、高さは跳び回る(隣り合う点を近い高さで並べて線にしない)' },
+    { id: 'stab', label: '短い塊が散る', w: 1, how: '3〜4音の密集した短い塊(0.1〜0.2秒)を、違う音域に不揃いな間で5〜8個。塊ごとに音の組み合わせを変え、間は無音(release 0.15前後)' },
+    { id: 'glint', label: '一瞬の光', w: 0.8, register: 'high', how: '最も高い所で、0.03〜0.05秒の密集した塊が一度だけ光る(Bを最大に開く)。無音のあと、ずっと小さな名残が一度だけ。全体で2秒以内' },
+    { id: 'silence', label: '無音で区切る', w: 1, how: '濁った塊が前触れなく断ち切られ(release 0.03)、1〜2秒の無音のあと、同じ音が別の状態(澄む・小さく・遠く)で戻る。無音の前後で質が変わることが主役' },
+    { id: 'chopped', label: '無音が刻む', w: 0.8, how: '1つの和音が、不揃いな長さの無音で4〜6回刻まれる(鳴る所はだんだん短く、無音はだんだん長く。一定の拍にしない)。最後は途切れずに鳴って質が変わる' },
+    { id: 'spectral', label: '物音の響きの成分', w: 1, how: '物音(金属・ガラス・氷・木など)が持つ響きの成分を一度だけ: 整数倍でない倍音を bend の一定のセント値で正確に置いて同時に打ち、高い成分ほど早く消える。またはすべり落ちる響きの形を bend で。打つのは一度だけ' },
+    { id: 'texture', label: '物音の質', w: 0.8, how: '物音のざらつき・乾き・湿りの質を、帯域を絞った noise の短い一塊で一度だけ。高い密集した塊を一瞬重ね、あとは無音や低い名残。足音・水音のように繰り返さない' },
   ];
   const REGISTERS = [
     { id: 'high', label: '高い所だけ(C5〜C8。C4より下の音を使わない)', w: 1 },
     { id: 'mid', label: '中ほどだけ(C4〜C6)', w: 1 },
     { id: 'low', label: '低い所だけ(C2〜C4。高い音を足さない)', w: 0.6 },
-    { id: 'wide', label: '低い所から高い所まで(広く使う)', w: 0.4 },
+    { id: 'wide', label: '低い所から高い所まで(広く使う)', w: 0.6 },
   ];
   /** list から重み w で、重ならないように n 個 */
   function weightedPick(list, n) {
@@ -267,21 +311,179 @@
     }
     return out;
   }
-  /** 1回の依頼の n 件に、違う身振りと音域を割り当てる */
+  /** 1回の依頼の n 件に、違う質感・三層の変わり方・音域を割り当てる(一つの音で描く「呼吸」は一音の状態の変化の時だけ。音域が決まっている質感はそれ) */
   function assignGestures(n) {
-    const gs = weightedPick(GESTURES, n);
-    const rs = weightedPick(REGISTERS, n);
-    return gs.map((gesture, i) => ({ gesture, register: rs[i] }));
-  }
-  /** お手本: 割り当てた身振りの手書きの部品。手書きの無い身振りなら、ほかの手書きから(月光・霧は帳に多い形なので選ばない) */
-  function mystExamples(assigned) {
-    const seeds = MIT().SEED.filter((e) => (e.tone || '神秘') === '神秘');
-    const picked = [];
-    (assigned || []).forEach(({ gesture }) => {
-      const e = gesture.seed && seeds.find((x) => x.id === gesture.seed);
-      if (e && !picked.includes(e)) picked.push(e);
+    const ms = weightedPick(MOTIONS, n);
+    const used = [];
+    const usedReg = [];
+    return ms.map((motion) => {
+      const pool = GESTURES.filter((g) => (motion.id === 'sustain' || !g.sustainOnly) && !used.includes(g));
+      const gesture = weightedPick(pool.length ? pool : GESTURES, 1)[0];
+      used.push(gesture);
+      const fixed = motion.register && REGISTERS.find((r) => r.id === motion.register);
+      const regPool = REGISTERS.filter((r) => !usedReg.includes(r));
+      const register = fixed || weightedPick(regPool.length ? regPool : REGISTERS, 1)[0];
+      usedReg.push(register);
+      return { motion, gesture, register };
     });
-    const rest = seeds.filter((e) => !picked.includes(e) && !['gekko', 'kirihare'].includes(e.id)).sort(() => Math.random() - 0.5);
+  }
+
+  /*
+   * 質感のお手本(プロンプトの中だけ。帳には入れない)。mockups/mitate-motion-mockup.html で聴いて採用したもの(2026-10-07)。
+   * 形は js/mitategura.js の SEED と同じ([音名, 秒, 長さ, 強さ])。sustain は手書きの「霜柱を踏む」(SEED)を使う
+   */
+  const TEXTURE_EXAMPLES = {
+    chord: [{
+      name: '薄氷', moment: '朝の水たまりに、薄氷が張っていた', turn: '張る', season: '冬', senses: ['視', '触'], motion: 'chord', gesture: 'clear',
+      device: '4音の和音を1.2秒ずつ5つ移る。毎回1音だけが半音動き、和音の濁り(Bの開き)が少しずつ締まって、最後の和音はほとんど澄んだサイン波の重なりになる',
+      parts: [
+        { name: '下', notes: [['E4', 0, 1.4, 54], ['G#4', 0, 1.4, 50], ['E4', 1.2, 1.4, 52], ['G#4', 1.2, 1.4, 48], ['E4', 2.4, 1.4, 50], ['A4', 2.4, 1.4, 46],
+          ['F4', 3.6, 1.4, 48], ['A4', 3.6, 1.4, 44], ['F4', 4.8, 2.2, 46], ['A4', 4.8, 2.2, 42]], env: { a: 0.15, r: 1 },
+          morph: [[0, { spread: 1.2, b: 1, c: 1.2, cdet: 2 }], [5, { spread: 0.2, b: 0.2, c: 0.4, cdet: 0.6 }]] },
+        { name: '上', notes: [['B4', 0, 1.4, 48], ['D#5', 0, 1.4, 46], ['C5', 1.2, 1.4, 46], ['D#5', 1.2, 1.4, 44], ['C5', 2.4, 1.4, 44], ['D#5', 2.4, 1.4, 42],
+          ['C5', 3.6, 1.4, 42], ['D#5', 3.6, 1.4, 40], ['C5', 4.8, 2.2, 40], ['E5', 4.8, 2.2, 38]], env: { a: 0.15, r: 1 },
+          morph: [[0, { spread: 1.2, b: 1, c: 1.2, cdet: 2 }], [5, { spread: 0.2, b: 0.2, c: 0.4, cdet: 0.6 }]] },
+      ],
+    }],
+    cluster: [{
+      name: '落ちた椿', moment: '椿が、花ごと落ちていた', turn: '落ちる', season: '春', senses: ['視'], motion: 'cluster', gesture: 'shatter',
+      device: '1オクターブの中の7音を、ほんの少しずつずらして一度に鳴らす(Bを大きく開き、Cを速くうならせた塊)。塊は音ごとにばらばらの時刻で抜けていき、最後に1音だけがAで澄んで残る',
+      parts: [
+        { name: '塊', notes: [['C#5', 0, 0.9, 70], ['D5', 0.03, 2.1, 66], ['D#5', 0.07, 0.6, 64], ['F5', 0.02, 1.5, 62], ['F#5', 0.1, 0.8, 60], ['G#5', 0.05, 1.2, 58], ['A5', 0.12, 2.6, 54]],
+          env: { a: 0.004, r: 0.6 }, morph: [[0, { spread: 1.8, b: 1.4, c: 1.3, cdet: 4 }], [1.2, { spread: 0.8, b: 0.8, c: 1, cdet: 2 }], [2.6, { spread: 0.3, b: 0.3, c: 0.6, cdet: 1 }]] },
+        { name: '残る', notes: [['E6', 1.6, 2.6, 40]], env: { a: 0.8, r: 1.4 }, mu: { b: 0, c: 0.3 } },
+      ],
+    }],
+    swarm: [{
+      name: '蛍が湧く', moment: '暗い川べりに、蛍が一斉に灯った', turn: '湧く', season: '夏', senses: ['視'], motion: 'swarm', gesture: 'bleed',
+      device: '高い音域に、周期も線も持たない20音の群れ。最初はまばらで、真ん中で重なりが最も密になり、また引いていく。重なるほどBとCが増えて、群れ全体の輪郭がにじむ',
+      parts: [
+        { name: '群れ', notes: [['G#5', 0.72, 1.99, 56], ['C7', 1.48, 0.72, 45], ['A6', 1.53, 0.87, 53], ['D#5', 1.55, 1.62, 57], ['G5', 1.82, 2.16, 50], ['C#6', 1.83, 1.78, 40],
+          ['B5', 1.84, 0.82, 30], ['B6', 1.9, 0.98, 50], ['G6', 1.98, 1.25, 41], ['D#5', 2.32, 1.85, 59], ['G6', 2.71, 2.22, 41], ['E6', 2.84, 1.18, 64], ['G5', 3, 2.21, 55],
+          ['G5', 3.14, 1.44, 41], ['D#6', 3.17, 2.17, 31], ['D5', 3.35, 0.62, 64], ['A#5', 3.45, 1.65, 59], ['E5', 3.99, 1.48, 55], ['B5', 4.14, 1.49, 51], ['B5', 4.28, 1.35, 59]],
+          env: { a: 0.25, r: 0.9 }, morph: [[0, { spread: 0.3, b: 0.3, c: 0.8, cdet: 1.5 }], [2.8, { spread: 1, b: 1.1, c: 1.3, cdet: 3 }], [6, { spread: 0.4, b: 0.4, c: 0.8, cdet: 1.5 }]] },
+      ],
+    }, {
+      name: '雪の重み', moment: '枝の雪が、音もなく一度に落ちた', turn: '外れる', season: '冬', senses: ['視', '触'], motion: 'swarm', gesture: 'cut',
+      device: '中ほどの音域に、周期の無い群れが静かに積もっていく(だんだん厚く)。いちばん厚くなった所で全部が同時に途切れ、無音の後に、群れの中の1音だけがかすかに残る',
+      parts: [
+        { name: '積もる', notes: [['A4', 0.74, 1.76, 42], ['C#5', 0.93, 1.95, 25], ['B4', 1.22, 2.43, 43], ['A4', 1.24, 2.61, 51], ['A4', 1.38, 1.62, 33], ['C#4', 1.44, 2.9, 31],
+          ['F#4', 1.44, 2.96, 51], ['D4', 1.49, 1.55, 50], ['E5', 1.81, 2.59, 43], ['A#4', 1.89, 1.72, 28], ['G#4', 2.04, 2.36, 39], ['D5', 2.15, 1.87, 49], ['C#4', 2.32, 2.08, 50],
+          ['F4', 2.39, 1.64, 33], ['C#4', 2.83, 1.53, 39], ['A#4', 2.9, 1.5, 27], ['C#4', 2.99, 1.41, 31], ['G5', 3.19, 1.21, 50]], env: { a: 0.5, r: 0.04 },
+          morph: [[0, { spread: 0.5, b: 0.5, c: 0.9, cdet: 1.2 }], [4.3, { spread: 1.1, b: 1.2, c: 1.3, cdet: 2.4 }]] },
+        { name: '残る', notes: [['B5', 5.3, 1.8, 26]], env: { a: 0.6, r: 1.4 }, mu: { b: 0, c: 0.5 } },
+      ],
+    }],
+    strata: [{
+      name: '雨のあとの苔', moment: '雨のあと、苔の緑が一段深くなった', turn: '深まる', season: '夏', senses: ['視'], motion: 'strata', gesture: 'fill',
+      device: '4度と増4度を積んだ8音が、不揃いな間隔で1音ずつ入り、全部が最後まで鳴り続ける。入るほどBとCが濃くなり、最後は層の厚みだけが残る',
+      parts: [
+        { name: '層', notes: [['F3', 0, 6.4, 56], ['B3', 0.7, 5.7, 52], ['E4', 0.95, 5.4, 50], ['A#4', 1.8, 4.6, 48], ['D#5', 2.1, 4.3, 46], ['A5', 3.0, 3.4, 42], ['D6', 3.25, 3.1, 38], ['G#6', 4.1, 2.3, 34]],
+          env: { a: 0.6, r: 1.6 }, morph: [[0, { spread: 0.2, b: 0.2, c: 0.4, cdet: 0.8 }], [4.5, { spread: 1, b: 1.1, c: 1.3, cdet: 1.8 }]] },
+      ],
+    }],
+    rift: [{
+      name: '稲光の山', moment: '稲光で、一瞬だけ遠くの山が見えた', turn: '照らす', season: '秋', senses: ['視'], motion: 'rift', gesture: 'cut',
+      device: '最も低い所と最も高い所で、2つの密集した塊が同時に鳴る(真ん中が空いた裂け目)。高い塊は一瞬で途切れ、低い塊だけが残ってBが閉じていく',
+      parts: [
+        { name: '高', notes: [['F#7', 0, 0.45, 70], ['G7', 0.02, 0.4, 66], ['G#7', 0.01, 0.5, 64], ['A#7', 0.04, 0.35, 60]], env: { a: 0.003, r: 0.15 }, mu: { spread: 2.2, b: 1.6, c: 1.4, cdet: 5 } },
+        { name: '低', notes: [['C2', 0, 4.2, 70], ['C#2', 0.03, 4, 64], ['D#2', 0.06, 3.6, 60]], env: { a: 0.01, r: 1.6 },
+          morph: [[0, { spread: 1.6, b: 1.3, c: 1.2, cdet: 2 }], [0.6, { spread: 1.6, b: 1.3, c: 1.2, cdet: 2 }], [3.8, { spread: 0, b: 0, c: 0.3, cdet: 0.5 }]] },
+      ],
+    }],
+    point: [{
+      name: '霜の花', moment: '窓ガラスに、霜の花が広がっていた', turn: '広がる', season: '冬', senses: ['視'], motion: 'point', gesture: 'bleed',
+      device: 'ごく短い点(0.05〜0.1秒)が、1つの高さから上下へ不揃いに離れていく。点と点の間は無音。1つ1つの点はBを大きく開き、Cを速くうならせて、短くても濁りが光る',
+      parts: [
+        { name: '点', notes: [['G5', 0, 0.08, 62], ['G#5', 0.31, 0.07, 54], ['F#5', 0.52, 0.09, 58], ['A#5', 1.07, 0.06, 52], ['E5', 1.12, 0.08, 56], ['C6', 1.71, 0.06, 50],
+          ['D5', 1.9, 0.1, 54], ['D#6', 2.22, 0.06, 46], ['B4', 2.55, 0.08, 52], ['F#6', 3.02, 0.05, 42], ['G#4', 3.09, 0.09, 48], ['A6', 3.85, 0.05, 38], ['E4', 4.0, 0.1, 44],
+          ['C7', 4.7, 0.05, 32], ['C#4', 4.74, 0.12, 40]], env: { a: 0.002, r: 0.1 }, mu: { spread: 1.6, b: 1.2, c: 1.2, cdet: 5 } },
+      ],
+    }],
+    stab: [{
+      name: '鱗雲', moment: '見上げると、空一面が鱗雲だった', turn: '敷き詰める', season: '秋', senses: ['視'], motion: 'stab', gesture: 'strata',
+      device: '3〜4音の密集した短い塊(0.1〜0.2秒)が、違う音域に不揃いな間で7つ置かれる。塊ごとに音の組み合わせが違い、最後の塊だけ少し長く薄く残る',
+      parts: [
+        { name: '鱗', notes: [['D5', 0, 0.15, 64], ['D#5', 0.01, 0.15, 60], ['F5', 0.02, 0.15, 58], ['A5', 0.55, 0.12, 60], ['A#5', 0.56, 0.12, 58], ['B5', 0.57, 0.12, 56], ['C6', 0.58, 0.12, 54],
+          ['E4', 0.8, 0.18, 62], ['F4', 0.81, 0.18, 58], ['F#4', 0.82, 0.18, 56], ['C#6', 1.6, 0.1, 56], ['D6', 1.61, 0.1, 54], ['E6', 1.62, 0.1, 52],
+          ['G4', 1.75, 0.15, 58], ['G#4', 1.76, 0.15, 56], ['A#4', 1.77, 0.15, 54], ['F#5', 2.7, 0.2, 52], ['G5', 2.71, 0.2, 50], ['G#5', 2.72, 0.2, 48], ['A5', 2.73, 0.2, 46]],
+          env: { a: 0.003, r: 0.15 }, mu: { spread: 0.5, b: 0.9, c: 1, cdet: 3 } },
+        { name: '残り', notes: [['B4', 3.4, 0.6, 38], ['C5', 3.41, 0.6, 36]], env: { a: 0.003, r: 0.15 }, mu: { spread: 0.5, b: 0.9, c: 1, cdet: 3 } },
+      ],
+    }],
+    glint: [{
+      name: '針の光', moment: '縫い針の先が、一瞬光った', turn: '光る', season: '無季', senses: ['視'], motion: 'glint', gesture: 'shatter',
+      device: '最も高い所で、0.03秒の密集した塊がBを最大に開いて一度だけ光る。0.6秒の無音のあと、ずっと小さく、少し低い同じ塊がもう一度だけ',
+      parts: [
+        { name: '光', notes: [['A7', 0, 0.03, 80], ['A#7', 0.002, 0.03, 74], ['C8', 0.004, 0.03, 70]], env: { a: 0.001, r: 0.08 }, mu: { spread: 2.5, b: 1.8, c: 1.4, cdet: 6 } },
+        { name: '名残', notes: [['D#7', 0.66, 0.03, 34], ['E7', 0.662, 0.03, 30], ['F#7', 0.664, 0.03, 28]], env: { a: 0.001, r: 0.5 }, mu: { spread: 1.2, b: 0.8, c: 1.4, cdet: 3 } },
+      ],
+    }],
+    silence: [{
+      name: '鳥居をくぐる', moment: '鳥居をくぐると、空気が変わった', turn: '変わる', season: '無季', senses: ['触'], motion: 'silence', gesture: 'cut',
+      device: '中ほどの6音の濁った塊が、前触れなく断ち切られる。1.4秒の無音のあと、同じ6音が、BもCも持たないただのサイン波の重なりで、ごく小さく戻ってくる',
+      parts: [
+        { name: '外', notes: [['D4', 0, 1.6, 66], ['E4', 0.02, 1.58, 62], ['G#4', 0.04, 1.56, 60], ['A#4', 0.03, 1.57, 58], ['C#5', 0.05, 1.55, 56], ['D#5', 0.01, 1.59, 54]],
+          env: { a: 0.4, r: 0.03 }, mu: { spread: 1.4, b: 1.3, c: 1.3, cdet: 2.5 } },
+        { name: '内', notes: [['D4', 3.0, 2.4, 30], ['E4', 3.0, 2.4, 28], ['G#4', 3.0, 2.4, 28], ['A#4', 3.0, 2.4, 26], ['C#5', 3.0, 2.4, 26], ['D#5', 3.0, 2.4, 24]],
+          env: { a: 0.6, r: 1.6 }, mu: { spread: 0, b: 0, c: 0 } },
+      ],
+    }],
+    chopped: [{
+      name: '木漏れ日が止まる', moment: '風が止んで、木漏れ日が動かなくなった', turn: '止まる', season: '夏', senses: ['視'], motion: 'chopped', gesture: 'clear',
+      device: '4音の和音が、無音に不揃いに刻まれる(鳴る所は短く、無音はだんだん長く)。いちばん長い無音のあと、和音が途切れずに鳴り続け、BとCが消えて澄む',
+      parts: [
+        { name: '揺れ', notes: [['C#5', 0, 0.4, 60], ['F5', 0.004, 0.4, 58], ['A5', 0.008, 0.4, 56], ['D#6', 0.012, 0.4, 54], ['C#5', 0.55, 0.2, 58], ['F5', 0.554, 0.2, 56],
+          ['A5', 0.558, 0.2, 54], ['D#6', 0.562, 0.2, 52], ['C#5', 1.2, 0.15, 56], ['F5', 1.204, 0.15, 54], ['A5', 1.208, 0.15, 52], ['D#6', 1.212, 0.15, 50],
+          ['C#5', 2, 0.1, 54], ['F5', 2.004, 0.1, 52], ['A5', 2.008, 0.1, 50], ['D#6', 2.012, 0.1, 48], ['C#5', 3.1, 0.06, 52], ['F5', 3.104, 0.06, 50], ['A5', 3.108, 0.06, 48], ['D#6', 3.112, 0.06, 46]],
+          env: { a: 0.01, r: 0.05 }, mu: { spread: 0.8, b: 0.8, c: 1.2, cdet: 3 } },
+        { name: '止む', notes: [['C#5', 4.4, 2.6, 44], ['F5', 4.4, 2.6, 42], ['A5', 4.4, 2.6, 40], ['D#6', 4.4, 2.6, 38]], env: { a: 0.3, r: 1.4 },
+          morph: [[4.4, { spread: 0.8, b: 0.6, c: 1, cdet: 2 }], [6.2, { spread: 0, b: 0, c: 0.1, cdet: 0.3 }]] },
+      ],
+    }],
+    spectral: [{
+      name: '風鈴の最後の一打', moment: '風が止んで、風鈴の最後の一打だけが残った', turn: '残る', season: '夏', senses: ['聴'], motion: 'spectral', gesture: 'emerge',
+      device: '風鈴の打音そのものではなく、その響きの成分を一度だけ: 金属の短冊が持つ整数倍でない倍音(基音・2.76倍・5.4倍)を、ずれを含めて同時に打ち、高い成分ほど早く消える。基音だけがCのうなりで長く残る',
+      parts: [
+        { name: '基音', notes: [['G5', 0, 3.4, 70]], env: { a: 0.002, r: 1.6 }, morph: [[0, { spread: 0.3, b: 0.2, c: 0.8, cdet: 1.5 }], [3.4, { spread: 0, b: 0, c: 1.2, cdet: 1 }]] },
+        { name: '2.76倍', notes: [['C#7', 0, 1.1, 50]], env: { a: 0.002, r: 0.6 }, bend: [[0, -42], [1, -42]], mu: { spread: 0.3, b: 0.2, c: 0.8, cdet: 2 } },
+        { name: '5.4倍', notes: [['C8', 0, 0.35, 34]], env: { a: 0.001, r: 0.25 }, bend: [[0, 20], [1, 20]], mu: { spread: 0.3, b: 0.3, c: 0.8, cdet: 3 } },
+      ],
+    }, {
+      name: '池の氷が鳴る', moment: '凍った池が、遠くで低く鳴った', turn: '鳴る', season: '冬', senses: ['聴'], motion: 'spectral', gesture: 'sink',
+      device: '張った氷が鳴る時の、高い所から一気に落ちる響きの形だけを借りる: 高い一音が1.2秒で1オクターブ半すべり落ち、帯域ノイズも一緒に下がる。落ち切った所で、低いうなりだけが残る',
+      parts: [
+        { name: '鳴り', notes: [['C6', 0, 1.2, 66]], env: { a: 0.003, r: 0.5 }, bend: [[0, 0], [0.12, -250], [1, -1800]], noise: { freq: 2400, freqEnd: 380, q: 2, level: 0.25 },
+          mu: { spread: 1.4, b: 0.8, c: 1, cdet: 4 } },
+        { name: '残り', notes: [['F2', 1.0, 2.4, 38]], env: { a: 0.3, r: 1.4 }, mu: { spread: 0.2, b: 0.3, c: 1.4, cdet: 1.6 } },
+      ],
+    }],
+    texture: [{
+      name: '境内の砂利', moment: '境内の砂利を、一歩だけ踏んだ', turn: '踏む', season: '無季', senses: ['聴', '触'], motion: 'texture', gesture: 'cut',
+      device: '砂利の音の質(高い所の乾いたざらつき)を、一度だけ: 帯域を絞ったノイズの短い一塊に、高い音域の密集した塊を0.08秒だけ重ねる。あとは無音で、遅れて足の下の重さが低く1つ',
+      parts: [
+        { name: 'ざらつき', tones: false, notes: [['C6', 0, 0.22, 80]], env: { a: 0.004, r: 0.12 }, noise: { freq: 3400, freqEnd: 1900, q: 0.9, level: 0.7 } },
+        { name: '粒', notes: [['A#6', 0.01, 0.08, 46], ['B6', 0.015, 0.08, 42], ['C#7', 0.02, 0.08, 40]], env: { a: 0.002, r: 0.15 }, mu: { spread: 2, b: 1.4, c: 1.2, cdet: 6 } },
+        { name: '重さ', notes: [['E2', 0.9, 0.9, 40]], env: { a: 0.02, r: 0.8 }, mu: { spread: 0.6, b: 0.6, c: 0.8, cdet: 1 } },
+      ],
+    }],
+  };
+  /** 質感のお手本の一覧(sustain は手書きの霜柱を踏む) */
+  function examplesOf(motionId) {
+    if (motionId === 'sustain') {
+      const e = MIT().SEED.find((x) => x.id === 'shimobashira');
+      return e ? [{ ...e, motion: 'sustain', gesture: 'shatter' }] : [];
+    }
+    return TEXTURE_EXAMPLES[motionId] || [];
+  }
+  /** お手本: 割り当てた質感のお手本(2件。足りなければほかの質感から) */
+  function mystExamples(assigned) {
+    const picked = [];
+    (assigned || []).forEach(({ motion }) => {
+      const list = examplesOf(motion && motion.id).filter((e) => !picked.includes(e));
+      if (list.length) picked.push(list[Math.floor(Math.random() * list.length)]);
+    });
+    const rest = MOTIONS.flatMap((m) => examplesOf(m.id)).filter((e) => !picked.includes(e)).sort(() => Math.random() - 0.5);
     while (picked.length < 2 && rest.length) picked.push(rest.shift());
     return picked.slice(0, 2);
   }
@@ -301,6 +503,7 @@
     const lowHigh = notes.some((a) => a.start <= 0.6 && a.dur >= 2 &&
       notes.some((b) => b.part !== a.part && b.start >= a.start + 0.8 && b.start < a.start + a.dur && b.m >= a.m + 12));
     if (lowHigh) tags.push('持続に遅れて高音');
+    tags.push(motionOf(entry));
     const lo = Math.min(...notes.map((x) => x.m));
     const hi = Math.max(...notes.map((x) => x.m));
     tags.push(hi - lo >= 30 ? '広い音域' : lo >= 72 ? '高い所だけ' : hi < 64 ? '低め' : '中ほど');
@@ -315,39 +518,104 @@
     if ((entry.parts || []).length === 1 && new Set(notes.map((x) => x.m)).size <= 2) tags.push('一つの音');
     return { tags, lowHigh, text: tags.join('・') };
   }
+  /**
+   * 聞こえ方を音のデータから大まかに(帳の一覧・診断・整え方で使う)。
+   * 旋律: 1つの層の中で、1音ずつ(和音でなく)5回以上、近い高さ(中央値4半音以内)で、あまり重ならずに続く = ピアノで弾くと線が聞こえる
+   * リズム: 音の頭(0.06秒以内はまとめる)が6回以上で間隔がほぼ一定、または1つの層で2つ以下の高さを6回以上打つ
+   * 2026-10-07、ユーザー「ピアノで弾いた時にわかりやすいメロディがあってはいけない」。旋律・リズムは整え方で捨てる
+   */
+  function motionOf(entry) {
+    const parts = (entry.parts || []).filter((p) => p.tones !== false);
+    const notesOf = (p) => (p.notes || []).map(([n, t, d]) => ({ m: T().noteToMidi(String(n)), t: Number(t) || 0, d: Number(d) || 0, r: (p.env || {}).r || 0.6 })).filter((x) => x.m != null);
+    const all = parts.flatMap(notesOf).sort((a, b) => a.t - b.t);
+    if (!all.length) return '';
+    const groupsOf = (list) => {
+      const gs = [];
+      list.slice().sort((a, b) => a.t - b.t).forEach((x) => {
+        const g = gs[gs.length - 1];
+        if (g && x.t - g.t <= 0.06) g.notes.push(x);
+        else gs.push({ t: x.t, notes: [x] });
+      });
+      return gs;
+    };
+    const groups = groupsOf(all);
+    // 一定の拍
+    if (groups.length >= 6) {
+      const ioi = groups.slice(1).map((g, i) => g.t - groups[i].t);
+      const mean = ioi.reduce((a, x) => a + x, 0) / ioi.length;
+      const sd = Math.sqrt(ioi.reduce((a, x) => a + (x - mean) ** 2, 0) / ioi.length);
+      if (mean > 0 && sd / mean < 0.25) return 'リズム';
+    }
+    for (const p of parts) {
+      const ns = notesOf(p);
+      const gs = groupsOf(ns);
+      if (gs.length >= 6 && new Set(ns.map((x) => x.m)).size <= 2) return 'リズム';
+      if (gs.length >= 5 && ns.length / gs.length <= 1.2) {
+        const line = gs.map((g) => g.notes[0]);
+        const steps = line.slice(1).map((x, i) => Math.abs(x.m - line[i].m)).sort((a, b) => a - b);
+        const median = steps[Math.floor(steps.length / 2)];
+        let overlap = 0;
+        for (let i = 1; i < line.length; i++) if (line[i - 1].t + line[i - 1].d > line[i].t + 0.05) overlap += 1;
+        if (median <= 4 && overlap < (line.length - 1) / 2) return '旋律';
+      }
+    }
+    // 途中の無音(音と余韻のどれも鳴っていない時間)
+    let reach = all[0].t;
+    let gap = 0;
+    all.forEach((x) => {
+      if (x.t > reach) gap = Math.max(gap, x.t - reach);
+      reach = Math.max(reach, x.t + x.d + Math.min(x.r, 0.3));
+    });
+    const avgDur = all.reduce((a, x) => a + x.d, 0) / all.length;
+    if (avgDur < 0.3) return gap >= 0.3 ? '短い音と無音' : '短い音';
+    if (gap >= 0.8) return '無音で区切る';
+    if (groups.length <= 3 && all.length <= 4) return '持続';
+    if (groups.filter((g) => g.notes.length >= 3).length >= 2) return '和音・塊';
+    return '層・群れ';
+  }
   const mystEntries = () => MIT().ALL().filter((e) => (e.tone || '神秘') === '神秘' && Array.isArray(e.parts));
   /** 帳の神秘の部品の形の内訳(コンソールで LyraMitateGen.shapeReport())。偏りを数字で見る */
   function shapeReport() {
     const list = mystEntries();
     const gen = list.filter((e) => e.generated);
     const count = (arr) => arr.filter((e) => shapeOf(e).lowHigh).length;
-    if (typeof console.table === 'function') console.table(list.map((e) => ({ 名前: e.name, 由来: e.generated ? '生成' : '手書き', 身振り: e.gesture || '', 形: shapeOf(e).text })));
-    return { 手書き: list.length - gen.length, 手書きのうち持続に遅れて高音: count(list.filter((e) => !e.generated)), 生成: gen.length, 生成のうち持続に遅れて高音: count(gen) };
+    if (typeof console.table === 'function') console.table(list.map((e) => ({ 名前: e.name, 由来: e.generated ? '生成' : '手書き', 動き: e.motion || '', 身振り: e.gesture || '', 音の数: (e.parts || []).reduce((a, p) => a + (p.notes || []).length, 0), 形: shapeOf(e).text })));
+    const motions = {};
+    gen.forEach((e) => { const m = motionOf(e); motions[m] = (motions[m] || 0) + 1; });
+    return { 手書き: list.length - gen.length, 手書きのうち持続に遅れて高音: count(list.filter((e) => !e.generated)), 生成: gen.length, 生成のうち持続に遅れて高音: count(gen), 生成の聞こえ方: motions };
   }
   /** 帳に多い形(今回の依頼で避けるように伝える) */
   function crowdedShapes() {
     const list = mystEntries();
     const n = list.filter((e) => shapeOf(e).lowHigh).length;
-    return list.length >= 4 && n / list.length >= 0.3 ? `帳の神秘の部品 ${list.length} 件のうち ${n} 件が「持続音に、途中から高い音が重なる」形です。今回はこの形を作らないでください` : '';
+    const sus = list.filter((e) => motionOf(e) === '持続').length;
+    return [
+      list.length >= 4 && n / list.length >= 0.3 ? `帳の神秘の部品 ${list.length} 件のうち ${n} 件が「持続音に、途中から高い音が重なる」形です。今回はこの形を作らないでください` : '',
+      list.length >= 4 && sus / list.length >= 0.5 ? `帳の神秘の部品 ${list.length} 件のうち ${sus} 件が持続音だけの部品です。指定された質感で書き、持続音ばかりにしないでください` : '',
+    ].filter(Boolean).join('\n');
   }
   /** 身振りの指示(assigned があればそれぞれに割り当て、無ければ(デイリーのひな形)一覧から違うものを選ばせる) */
   function gestureText(assigned) {
     const head = assigned
-      ? `今回の身振りと音域(1件目から順に。必ずこのとおりに):\n${assigned.map((a, i) => `${i + 1}件目: gesture "${a.gesture.id}"(${a.gesture.label}) — ${a.gesture.how}。音域: ${a.register.label}`).join('\n')}`
-      : `身振りの一覧(1件ごとに違うものを選び、gesture にその id を書く。clear はなるべく選ばない):\n${GESTURES.map((g) => `- ${g.id}(${g.label}): ${g.how}`).join('\n')}\n音域も1件ごとに変える(高い所だけ/中ほどだけ/低い所だけ/広く)`;
+      ? `今回の質感・三層の変わり方・音域(1件目から順に。必ずこのとおりに。三層の変わり方は、質感全体にかける):\n${assigned.map((a, i) => `${i + 1}件目:\n  質感 motion "${a.motion.id}"(${a.motion.label}) — ${a.motion.how}\n  三層の変わり方 gesture "${a.gesture.id}"(${a.gesture.label}) — ${a.gesture.how}\n  音域: ${a.register.label}`).join('\n')}`
+      : `質感の一覧(1件ごとに違うものを選び、motion にその id を書く):\n${MOTIONS.map((m) => `- ${m.id}(${m.label}): ${m.how}`).join('\n')}\n三層の変わり方の一覧(1件ごとに違うものを選び、gesture にその id を書く。質感全体にかける。clear はなるべく選ばない):\n${GESTURES.map((g) => `- ${g.id}(${g.label}): ${g.how}`).join('\n')}\n音域も1件ごとに変える(高い所だけ/中ほどだけ/低い所だけ/広く)`;
     return [head, crowdedShapes()].filter(Boolean).join('\n');
   }
 
   /** 手書きの神秘の部品を、プロンプトのお手本の形に */
   function mystForPrompt(e) {
     const mu = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => ['spread', 'b', 'c', 'cdet'].includes(k)));
+    const gesture = e.gesture || (GESTURES.find((g) => g.seed === e.id) || {}).id;
     return {
       name: e.name, moment: e.moment, turn: e.turn, season: e.season, senses: e.senses, device: e.device,
-      ...(GESTURES.some((g) => g.seed === e.id) ? { gesture: GESTURES.find((g) => g.seed === e.id).id } : {}),
+      motion: e.motion || 'sustain', ...(gesture ? { gesture } : {}),
       parts: e.parts.map((p) => ({
         name: p.name, attack: (p.env || {}).a, release: (p.env || {}).r, ...mu(p.mu),
         notes: p.notes.map(([note, start, duration, velocity]) => ({ note, start, duration, velocity })),
         ...(p.morph ? { morph: p.morph.map(([t, v]) => ({ t, ...mu(v) })) } : {}),
+        ...(p.noise ? { noise: p.noise } : {}),
+        ...(p.tones === false ? { tones: false } : {}),
+        ...(p.bend ? { bend: p.bend.map(([at, cents]) => ({ at, cents })) } : {}),
       })),
     };
   }
@@ -452,7 +720,9 @@
 1. 名前・一言(moment)・仕掛け(device)・音の書き方が噛み合っていて、その一瞬(文様・鳥なら、その形・佇まい)らしく聞こえそうか
 2. 上の「避けること」に当たっていないか(特に、ものまね・劇伴のような旋律・効果音)
 3. 帳にある語彙と、一瞬も仕掛けも似すぎていないか${typeId === 'myst' ? `
-4. 神秘型: gesture に書いた身振りのとおりに音が書かれているか。「持続音に、途中から高い音が重なるだけ」の形(帳に多い)になっていないか。なっていれば外す` : ''}
+4. 神秘型: 一瞬の混沌になっているか。ピアノで弾いて口ずさめる旋律の線・一定の拍のリズム・調性(長調/短調の和音)が聞こえるものは外す。
+   motion(質感)と gesture(三層の変わり方)のとおりに書かれているか。「持続音に、途中から高い音が重なるだけ」の形(帳に多い)なら外す。
+   物音を使うものは、物の動きや鳴き方・足音・水音をなぞっていれば外す(響きの成分を一度だけ使うのはよい)` : ''}
 迷う時は入れる(keep true)。明らかに当たる時だけ外す。reason は40字以内`,
       `帳にある語彙:\n${opts.book != null ? opts.book : bookLines()}`,
       `点検する語彙(index は0から):\n${opts.itemsText != null ? opts.itemsText : JSON.stringify(items.map((x, index) => ({ index, ...x })))}`,
@@ -592,5 +862,5 @@
   /** 帳の一覧の1行(Apps Script が、その回に足した分を {{BOOK}} に足す時と同じ形) */
   const bookLineOf = (name, tone, turn, season, moment, shape) => `- ${name}(${tone || '神秘'}・${turn}・${season}): ${moment}${shape ? ` [音の形: ${shape}]` : ''}`;
 
-  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf, GESTURES, shapeOf, shapeReport };
+  window.LyraMitateGen = { TYPES, typeIds, koOf, batchRequest, ruminateRequest, toRecord, run, colorKey, templates, bookLineOf, GESTURES, MOTIONS, TEXTURE_EXAMPLES, shapeOf, motionOf, shapeReport };
 })();

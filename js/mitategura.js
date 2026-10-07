@@ -405,6 +405,7 @@
       const part = `p${i + 1}`;
       partNames[part] = p.name;
       partRoles[part] = p.role || 'melody';
+      if (p.tones === false) return; // ノイズだけの層(物音の質)は音の高さを持たないので MIDI に入れない(2026-10-07)
       p.notes.forEach(([n, start, duration, velocity]) => {
         const pitch = T().noteToMidi(n);
         if (pitch != null) notes.push({ part, pitch, start, duration, velocity });
