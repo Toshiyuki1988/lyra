@@ -25,6 +25,7 @@
     {
       id: 'gakuten', group: '基本', label: '基本の楽典モデル', short: '楽典',
       text: 'コード進行+旋律+ベースを、起承転結などの時間の設計図に沿って組む。和音の積み方・伴奏・ベースはアプリが展開',
+      kids: { title: '作文みたいに組み立てる', text: '作文の「はじめ・つづき・びっくり・おしまい」みたいに、曲の流れを先に決めておく。そこに、伴奏の和音・いちばん低い音・メロディーの3つを重ねていく。作文の書き方を習うと文章が書きやすくなるように、音楽の基本の決まりを使って、まとまった曲を作る方法。' },
       generators: ['chords', 'bass', 'line'],
       pitch: { systems: ['chords', 'scale'], hint: 'コード進行(pitch.chords)で書く。コードネームの例: Fmaj7、Em9、Bb/C、C#m7b5、Gsus4。「C|F#」のように「|」で区切ると2つ(最大3つ)のコードを重ねたポリコード(左が下)。start・duration は拍で、隙間なく並べる。scale にはキーの旋法・音階の名前(例: ドリアン)' },
       meter: 'free', arc: true, ruminate: true, bars: 8, voice: 'flute',
@@ -34,6 +35,7 @@
     {
       id: 'mitategura', group: '基本', label: '見立て蔵モデル(自然物由来・無階調)', short: '見立て蔵',
       text: '画像や言葉のモチーフ(名詞)ごとに、見立て蔵の帳の語彙(一瞬・文様・鳥の部品)か、鐘打ち・揺らぎ・装飾粒などの身振りを重ねる。コード進行に圧縮しない。要素ごとに別トラック',
+      kids: { title: '景色を音のかけらにする', text: 'お寺・満月・すすき、みたいに、絵や言葉の中にあるものをひとつずつ取り出して、それぞれに似合う音のかけらを選ぶ。音で形をまねするんじゃなくて、その物がもっている「感じ」を短い音にして重ねていく。だから、景色の中にそっと立っているような音になる。' },
       generators: ['mitate', 'gesture'],
       pitch: {
         systems: ['scale', 'chords'], defaultScale: 'miyako-bushi', rotate: true,
@@ -167,6 +169,7 @@
     {
       id: 'bach', group: '作曲家様式', label: 'バッハ風(対位法+機能和声)', short: 'バッハ風',
       text: '主題に、制約充足で探した対位声部を上下に付ける。機能和声・掛留・順次進行。楽典モデルの守備範囲に対位法の軸を足したもの',
+      kids: { title: 'みんなが主役の合唱', text: '何人かが、それぞれちがうメロディーを同時に歌う。ばらばらに歌っているのに、ぶつからずにぴったり合って、全体できれいなハーモニーになる。みんながそれぞれの道を歩いているのに、ちゃんと同じ場所にたどり着く、そんな曲の作り方。' },
       generators: ['line', 'counterpoint', 'bass', 'chords'],
       pitch: { systems: ['scale', 'chords'], hint: 'scale で長調か短調(和声的短音階も可)。和音を鳴らすなら chords で機能和声の進行' },
       meter: 'four', arc: true, ruminate: true, bars: 8, tempo: 84, voice: 'piano',
@@ -177,6 +180,7 @@
     {
       id: 'mozart', group: '作曲家様式', label: 'モーツァルト風(楽節構造+アルベルティ・バス)', short: 'モーツァルト風',
       text: '前楽節4小節(半終止)+後楽節4小節(完全終止)の楽節構造に、アルベルティ・バスの伴奏と歌う旋律',
+      kids: { title: '質問と答え', text: 'メロディーを「ねえ、これなあに?」という質問と、「これはね…」という答えの2つに分けて作る。最初の4小節は「?」で止まって、次の4小節で「。」とおしまいになる。左手はドミソをころころ転がすように弾くから、明るくて分かりやすい曲になる。' },
       generators: ['line', 'chords', 'bass'],
       pitch: { systems: ['chords'], hint: 'chords で古典派の機能和声(I・IV・V・ii・vi、V7、終止形)' },
       meter: 'four', arc: true, ruminate: true, bars: 8, tempo: 116, voice: 'piano',
@@ -187,6 +191,7 @@
     {
       id: 'beethoven', group: '作曲家様式', label: 'ベートーヴェン風(動機労作)', short: 'ベートーヴェン風',
       text: '短い動機を執拗に変容させ続ける動機労作に、機能和声と強い強弱の対比',
+      kids: { title: 'しつこい合言葉', text: 'ほんの3つか4つの音でできた「合言葉」をひとつ決めて、曲のあいだずっと使い続ける。高くしたり、ちぎったり、急に大きくしたり小さくしたり。同じ合言葉が何度も形を変えて出てくるから、だんだんドキドキが高まっていく。' },
       generators: ['motif', 'chords', 'bass'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords で機能和声(短調が合えば短調)。減七の和音やナポリの和音で劇的に' },
       meter: 'four', arc: true, bars: 16, tempo: 120, voice: 'piano',
@@ -197,6 +202,7 @@
     {
       id: 'debussy', group: '作曲家様式', label: 'ドビュッシー風(平行和音+全音音階・旋法)', short: 'ドビュッシー風',
       text: '機能和声を手放し、和音を同じ形のまま平行に動かす(プラーニング)。全音音階・五音音階・教会旋法、解決しない9thの色彩',
+      kids: { title: '水にうつる光', text: 'ふつうの曲は、ドキドキしたあと「ほっ」と落ち着く場所に帰ってくる。この方法はわざと帰らないで、同じ形の和音を、手のひらごと横にすべらせるように動かす。水にうつった光がゆらゆら揺れるみたいに、どこにも着地しない、ふわっとした色の音になる。' },
       generators: ['chords', 'line', 'gesture'],
       pitch: { systems: ['scale', 'chords'], defaultScale: 'whole-tone', hint: 'scale で全音音階(whole-tone)・五音音階・ドリアン・リディアン・ミクソリディアンなど。和音の進行を書くなら chords で9thや add9 を解決させずに' },
       meter: 'free', arc: true, ruminate: true, bars: 8, tempo: 66, voice: 'piano',
@@ -207,6 +213,7 @@
     {
       id: 'stravinsky', group: '作曲家様式', label: 'ストラヴィンスキー風(変拍子+オスティナートのブロック並置+複調)', short: 'ストラヴィンスキー風',
       text: '小節ごとに変わる拍子の上に、展開せずに切り替わるオスティナートのブロックを並べ、層ごとに別の調を重ねる(複調)。八音音階',
+      kids: { title: 'ブロックの組みかえ', text: '同じ音のくり返しを「ブロック」としていくつか作っておいて、それを急にパッと切りかえる。数え方も「1・2・3」「1・2・3・4・5」とどんどん変わるし、上と下でちがう調を同時に鳴らしたりもする。ブロックをガチャガチャ組みかえて遊ぶような、元気でびっくりする音楽。' },
       generators: ['ostinato', 'chords', 'line'],
       pitch: { systems: ['scale', 'chords'], defaultScale: 'diminished-hw', hint: 'scale で八音音階(diminished-hw)か民謡的な旋法。複調にしたい層は、その層の root と scale を別にする(例: 下はC、上はF#)' },
       meter: 'changing', arc: true, bitonal: true, bars: 12, tempo: 132, voice: 'strings',
@@ -217,6 +224,7 @@
     {
       id: 'schoenberg', group: '作曲家様式', label: 'シェーンベルク風(十二音技法)', short: 'シェーンベルク風',
       text: '十二音列の原型・反行・逆行・逆行の反行だけで旋律と和音を導く。調性の重力を排除する',
+      kids: { title: '王様のいない音楽', text: 'ふつうの曲には「ド」のような王様の音があって、ほかの音はみんなそこに帰りたがる。この方法は12個の音を全部平等にして、王様をつくらない。だから、どこにも帰らない、ちょっと不思議でドラマチックな音楽になる。' },
       generators: ['serial'],
       pitch: { systems: ['row'], hint: 'system は row' },
       meter: 'free', arc: false, bars: 12, tempo: 69, voice: 'piano',
@@ -227,6 +235,7 @@
     {
       id: 'part', group: '作曲家様式', label: 'ペルト風(ティンティナブリ)', short: 'ペルト風',
       text: '順次進行の旋律に、主和音の音だけを鳴らす鐘の声部を1音ずつ添える。静けさと透明な光',
+      kids: { title: '歌と鐘', text: 'ひとりは、階段を一段ずつ歩くようにメロディーを歌う。もうひとりは「ド・ミ・ソ」の3つの音だけを、鐘のようにポーンと鳴らして、そばに寄りそう。音はとても少ないのに、静かな教会に光がさしこむような、すきとおったひびきになる。' },
       generators: ['process', 'gesture'],
       pitch: { systems: ['scale'], defaultScale: 'minor', hint: 'scale で短調か長調(主和音の音)' },
       meter: 'four', arc: false, bars: 16, tempo: 60, voice: 'strings',
@@ -239,6 +248,7 @@
     {
       id: 'jazz_bebop', group: 'ジャズ', label: 'ジャズ・ビバップ', short: 'ビバップ',
       text: '速いスウィングの上で、ii-V-Iと裏コードを8分のアドリブ線が駆け抜ける。ルートレスのコンピング、ウォーキングベース、ライドのシンバル',
+      kids: { title: '全力ダッシュの即興', text: 'すごく速いテンポの上で、和音がどんどん変わっていく。その和音に合う音をその場で選びながら、細かい音のメロディーで駆け抜ける。ジェットコースターに乗りながら、カーブにぴったり合わせてハンドルを切るような、スリルのある音楽。' },
       generators: ['chords', 'bass', 'bebop', 'line', 'drums'],
       pitch: { systems: ['chords'], hint: 'chords でジャズの進行(ii-V-I、裏コード、セカンダリードミナント、テンション付きのコードネーム 例 Dm9 G13 Cmaj9 Db7#11)。1〜2拍か1小節ごとにコードを変える' },
       meter: 'four', arc: true, ruminate: true, bars: 16, tempo: 208, voice: 'epiano',
@@ -249,6 +259,7 @@
     {
       id: 'jazz_modal', group: 'ジャズ', label: 'ジャズ・モード', short: 'モードジャズ',
       text: '長く続く1つの旋法の上で、4度堆積の響きと浮遊するアドリブ線。コードは数小節ごとにしか変わらない',
+      kids: { title: 'ひとつの景色を散歩する', text: '和音がなかなか変わらない。決まった音の並びの中で、長い時間をかけて自由にメロディーを作っていく。同じ公園の中をのんびり散歩しながら、木や空をながめて歩くような、広々とした、ふわっと浮かんでいるような音楽。' },
       generators: ['chords', 'bass', 'bebop', 'drums'],
       pitch: { systems: ['chords', 'scale'], hint: 'chords なら4〜8小節ごとに変わる長いコード(Dm11 → Ebm11 など)。scale なら dorian などの旋法' },
       meter: 'four', arc: true, bars: 16, tempo: 138, voice: 'epiano',
@@ -259,6 +270,7 @@
     {
       id: 'jazz_ballad', group: 'ジャズ', label: 'ジャズ・バラード', short: 'ジャズバラード',
       text: 'ゆったりしたテンポで、テンションの豊かな和音と歌うテーマ。ベースはツー・フィール、ブラシのようなささやくドラム',
+      kids: { title: '夜のないしょ話', text: 'ゆっくりのテンポで、少しにごっているけれど甘いひびきの和音を使う。ドラムはささやくように小さく、メロディーは歌うようにゆったり。夜にひそひそ声で大切な話をしているような、やさしくて、ちょっと切ない音楽。' },
       generators: ['chords', 'bass', 'line', 'bebop', 'drums'],
       pitch: { systems: ['chords'], hint: 'chords でテンションの多いコード(maj9、m11、13、7(b9)、sus、分数コード)。1〜2拍ごとの細かい進行も使う' },
       meter: 'four', arc: true, ruminate: true, bars: 16, tempo: 64, voice: 'piano',
@@ -269,6 +281,7 @@
     {
       id: 'jazz_bossa', group: 'ジャズ', label: 'ボサノヴァ', short: 'ボサノヴァ',
       text: 'ハネないまっすぐな8分と、ギターの刻み・付点のベース・クロススティック。ジャズの和声で穏やかに揺れる',
+      kids: { title: '波打ちぎわのゆらゆら', text: 'ギターが「チャッ・チャチャ」と少しずれたリズムで刻んで、ベースは「ボーン・ボン」とのんびり歩く。はねないまっすぐなリズムなのに、どこかゆらゆら揺れて聞こえる。砂浜で、寄せては返す波をながめているような、おだやかで気持ちいい音楽。' },
       generators: ['chords', 'bass', 'line', 'drums'],
       pitch: { systems: ['chords'], hint: 'chords でボサノヴァの進行(maj7、m7、7(b9)、半音で下がる進行、ii-V)。1〜2小節ごと' },
       meter: 'four', arc: true, ruminate: true, bars: 16, tempo: 132, voice: 'guitar',
