@@ -1903,6 +1903,9 @@ a.btn-secondary { display: block; }
 .demo-model { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
 .demo-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line, #ddd); background: #fff; cursor: pointer; font-size: 14px; line-height: 1; }
 .demo-kids { display: flex; align-items: center; gap: 6px; font-family: var(--serif); font-size: 13px; font-weight: 700; color: var(--accent-deep); margin-bottom: 6px; }
+.demo-kids-box { margin: 6px 0 8px; padding: 8px 12px; border: 1px solid var(--accent-line, #e6d3b3); border-radius: 8px; background: #fff8ec; }
+.demo-kids-box .demo-kids { margin-bottom: 2px; }
+.demo-kids-text { margin: 0; font-size: 13px; line-height: 1.8; color: var(--ink); }
 .demo-listen { font-size: 13px; line-height: 1.8; margin: 4px 0 10px; }
 .demo-listen b { display: inline-block; font-size: 11px; padding: 1px 7px; margin-right: 6px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 600; }
 .demo-roll { position: relative; border-radius: 8px; overflow: hidden; background: #1d1a16; padding: 6px 0; }

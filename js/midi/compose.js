@@ -218,7 +218,9 @@
       `<button type="button" class="demo-close" data-close aria-label="閉じる">✕</button>` +
       `<div class="demo-model">お手本の演奏</div>` +
       `<h2>${escapeHtml(preset.label)}</h2>` +
-      (preset.kids ? `<div class="demo-kids">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` : '') +
+      // 2026-11-06、ユーザー要望「お手本を聞きながら子供解説を見れるように」: 題名だけでなく本文も出す
+      (preset.kids ? `<div class="demo-kids-box"><div class="demo-kids">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` +
+        `<p class="demo-kids-text">${escapeHtml(preset.kids.text)}</p></div>` : '') +
       `<p class="demo-listen"><b>聴きどころ</b>${escapeHtml(window.LyraDemos.listen(presetId))}</p>` +
       `<div class="demo-roll">${M.pianoRollSvg(midi, 720, 240)}<div class="demo-head" hidden></div></div>` +
       `<div class="roll-legend demo-legend">${parts.map((p) => `<span><i style="background:${M.partColor(midi, p)}"></i>${escapeHtml(M.partLabel(midi, p))}</span>`).join('')}</div>` +
