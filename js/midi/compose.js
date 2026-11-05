@@ -313,7 +313,8 @@
       });
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay visible';
-      overlay.innerHTML = `<div class="modal model-picker"><h2>${escapeHtml(title || 'どのモデルで作りますか?')}</h2>` +
+      overlay.innerHTML = `<div class="modal model-picker"><div class="history-map-heading"><h2>${escapeHtml(title || 'どのモデルで作りますか?')}</h2>` +
+        `<button type="button" class="secondary" data-history-map>音楽史マップ</button></div>` +
         `<p class="modal-desc">モデルは「音高・拍子・時間の設計・層の作り方」の組み合わせです。Geminiは設計図を1回だけ書き、音はアプリが作ります(主旋律をGeminiが書くモデルは、反芻でもう1回)。</p>` +
         groups.map((g) => `<div class="model-group"><div class="model-group-name">${escapeHtml(g.name)}</div>` +
           g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}" data-model="${p.id}">` +
@@ -332,6 +333,9 @@
         }
         resolve(id);
       };
+      overlay.querySelector('[data-history-map]').addEventListener('click', () => {
+        window.LyraHistoryMap.open({ onPick: finish });
+      });
       overlay.querySelectorAll('[data-model]').forEach((b) => b.addEventListener('click', () => finish(b.dataset.model)));
       bindKidsPopups(overlay);
       overlay.querySelectorAll('[data-demo]').forEach((icon) => icon.addEventListener('click', (event) => {
@@ -1540,6 +1544,7 @@ ${models}
 
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
+    bindKidsPopups, openDemo, KIDS_ICON, DEMO_ICON,
     analyzeMidi, createResponse, renderResponse, ruminateNotes, createBeatResponse, rhythmAnalysis, BEAT_KNOBS, beatFields, readBeat,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries, beatPrompt, sanitizeBeat, writeBeat },
   });
