@@ -28,6 +28,8 @@
       return c;
     });
   }
+  /** 同じ拍に重ねる和音「Db4 F4 C5」→ 旋律の音の形 [{note, start, duration, velocity}](フェルドマンの弱い和音など) */
+  const chord = (start, names, duration, velocity = 34) => names.trim().split(/\s+/).map((n) => ({ note: n, start, duration, velocity }));
   const wave = (n, f) => Array.from({ length: n }, (_, i) => Math.round(f(i) * 1000) / 1000);
   const sec = (name, startBar, tension, extra) => ({ name, startBar, tension, ...(extra || {}) });
 
@@ -444,6 +446,115 @@
         { name: 'ソプラノ', generator: 'line', role: 'melody', notes: seq('B4:1 A4:1 G4:1 G4:1 B4:1 A4:1 G4:2 B4:1 D5:1 C5:1 B4:1 C5:1 A4:1 A4:2 D5:1 C5:1 A4:1 B4:1 C5:1 E5:1 D5:2 B4:1 C5:1 B4:1 A4:1 G4:4') },
         { name: '内声', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'low' },
         { name: 'バス', generator: 'bass', pattern: 'root' },
+      ],
+    },
+    /* ---- 音楽史マップ 近代・戦後の波(2026-11-07) ---- */
+    ives: {
+      listen: '遠くでずっと静かな賛美歌(ト長調・ゆっくり)。3小節目からハ長調の行進曲とチューバが遠くから近づき、6小節目には変ホ長調の別の行進曲が、少し速いテンポでだんだん速くなりながら加わる。9小節目でヘ長調の速い踊りの節も重なって、4つの調と4つの速さがそろわないまま一番にぎやかになり、楽隊が去ると賛美歌だけが残る',
+      bars: 12, tempo: 104,
+      pitch: { system: 'scale', root: 'C', scale: 'major' },
+      arc: { form: '広場', sections: [sec('夕暮れ', 1, 2), sec('楽隊A', 3, 5), sec('楽隊B', 6, 7), sec('騒ぎ', 9, 10), sec('余韻', 11, 1)] },
+      layers: [
+        { name: '賛美歌', generator: 'collage', cell: 'G4:2 B4:2 D5:3 C5:1 B4:2 A4:2 G4:4 E4:2 G4:2 A4:3 B4:1 G4:2 F#4:2 G4:4', speed: 0.75, swell: 'distant' },
+        { name: '行進曲A', generator: 'collage', cell: 'C5:0.75 C5:0.25 E5:0.5 G5:0.5 C6:1 G5:0.5 E5:0.5 D5:0.75 D5:0.25 F5:0.5 B5:0.5 D6:1 B5:0.5 G5:0.5 E5:0.75 F5:0.25 G5:0.5 A5:0.5 G5:0.5 F5:0.5 E5:0.5 D5:0.5 C5:1 G4:1', speed: 1, swell: 'pass', active: ['楽隊A', '楽隊B', '騒ぎ'] },
+        { name: 'チューバ', generator: 'collage', cell: 'C3:1 G2:1 C3:1 G2:1 G2:1 D3:1 G2:1 D3:1 C3:1 G2:1 F2:1 G2:1 C3:1 G2:1 C3:1 G2:1', speed: 1, swell: 'pass', active: ['楽隊A', '楽隊B', '騒ぎ'] },
+        { name: '行進曲B', generator: 'collage', cell: 'C5:0.5 C5:0.25 D5:0.25 E5:0.5 G5:0.5 A5:0.25 G5:0.25 E5:0.5 C5:0.5 D5:0.5 E5:0.25 D5:0.25 C5:0.5 G4:0.5 C5:1', speed: 1.33, drift: 0.3, transpose: [3], swell: 'rise', active: ['楽隊B', '騒ぎ'] },
+        { name: '踊りの節', generator: 'collage', cell: 'A5:0.5 B5:0.5 C#6:0.5 A5:0.5 E6:0.5 C#6:0.5 D6:0.5 B5:0.5 A5:0.5 G#5:0.5 A5:1', speed: 1.5, transpose: [-4], swell: 'pass', active: ['騒ぎ'] },
+      ],
+    },
+    whole_tone: {
+      listen: '使う音は C・D・E・F#・G#・A# の6つだけ。どれも全音ずつ離れているので、和音はすべて同じ形の増三和音になり、そのまま平行に滑る。旋律はどこにも着地せず、最後の C も「終わった」感じがしない',
+      bars: 8, tempo: 66,
+      pitch: { system: 'scale', root: 'C', scale: 'whole-tone' },
+      arc: { sections: [sec('浮かぶ', 1, 3), sec('ゆらぐ', 4, 6), sec('溶ける', 7, 2)] },
+      layers: [
+        { name: '増三和音', generator: 'chords', degrees: [1, 2, 3, 2, 4, 3, 2, 1], chordBars: 1, comping: 'arpeggio', voicing: 'parallel' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('E5:2 F#5:1 G#5:1 A#5:3 R:1 G#5:1.5 F#5:0.5 E5:2 D5:4 C5:2 D5:1 E5:1 F#5:2 A#4:2 C5:1 D5:1 E5:2 C5:4') },
+        { name: '揺らぎ', generator: 'gesture', gesture: 'tremolo', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    octatonic: {
+      listen: '低い音型は C・Eb・F#・A と短3度ずつ上がる(減七の和音の形)。和音も4音の減七の和音で、短3度ずつ動いても同じ響きに戻る。旋律は半音と全音を交互にたどり、緊迫したまま、暗くきらめく',
+      bars: 8, tempo: 96,
+      pitch: { system: 'scale', root: 'C', scale: 'diminished-hw' },
+      arc: { sections: [sec('影', 1, 4), sec('迫る', 5, 8), sec('消える', 7, 3)] },
+      layers: [
+        { name: '音型', generator: 'ostinato', cell: 'C3:0.5 Eb3:0.5 F#3:0.5 A3:0.5 F#3:0.5 Eb3:0.5', accent: 4, register: 'low' },
+        { name: '減七', generator: 'chords', degrees: [1, 3, 1, 5], chordBars: 2, size: 4, comping: 'stabs' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('E5:1 F#5:0.5 G5:0.5 A5:1 Bb5:1 A5:0.5 G5:0.5 F#5:1 E5:2 Db5:1 Eb5:0.5 E5:0.5 F#5:1 C6:1 Bb5:2 A5:2 G5:1 A5:0.5 Bb5:0.5 C6:1 Db6:1 C6:1 Bb5:1 A5:2 F#5:1 E5:1 Eb5:1 Db5:1 C5:4') },
+      ],
+    },
+    bitonality: {
+      listen: '下の和音とベースはハ長調(C・F・G)、上の旋律は三全音離れた嬰ヘ長調。どちらもそれぞれの調の中では素直で明るいのに、重なると、明るさと苦さが混ざったぴりっとした響きになる',
+      bars: 8, tempo: 104,
+      pitch: { system: 'scale', root: 'C', scale: 'major' },
+      layers: [
+        { name: 'ハ長調の和音', generator: 'chords', degrees: [1, 4, 5, 1], chordBars: 2, comping: 'pulse' },
+        { name: 'ハ長調のベース', generator: 'bass', pattern: 'root-fifth' },
+        { name: '嬰ヘ長調の旋律', generator: 'line', role: 'melody', root: 'F#', scale: 'major', notes: seq('C#6:1 D#6:0.5 F#6:0.5 A#5:1 G#5:1 F#5:1 D#5:1 C#5:2 D#5:1 F#5:1 G#5:1 A#5:1 B5:2 A#5:2 G#5:1 F#5:0.5 G#5:0.5 A#5:1 C#6:1 A#5:1 G#5:1 F#5:2 D#5:1 C#5:1 A#4:1 C#5:1 F#5:4') },
+      ],
+    },
+    webern: {
+      listen: '音列の前半6音を、反行して逆から読むと後半6音になる対称な音列(C B Eb E Ab G | F# F A Bb D C#)。高い・中・低い3つの声が、1音ずつ遠く離れた高さへ跳び、長い沈黙をはさんで、旋律を声から声へ受け渡す',
+      bars: 6, tempo: 56,
+      pitch: { system: 'row' },
+      layers: [
+        { name: '高い声', generator: 'serial', texture: 'pointillist', row: ['C', 'B', 'Eb', 'E', 'Ab', 'G', 'F#', 'F', 'A', 'Bb', 'D', 'C#'], forms: ['P0', 'RI1'], rhythm: [0.5, -2.5, 0.25, -1.75, 1, -3], register: 'high' },
+        { name: '中の声', generator: 'serial', texture: 'pointillist', row: ['C', 'B', 'Eb', 'E', 'Ab', 'G', 'F#', 'F', 'A', 'Bb', 'D', 'C#'], forms: ['I6', 'R6'], rhythm: [-1.5, 0.75, -3, 0.5, 0.25, -2.5], register: 'mid' },
+        { name: '低い声', generator: 'serial', texture: 'pointillist', row: ['C', 'B', 'Eb', 'E', 'Ab', 'G', 'F#', 'F', 'A', 'Bb', 'D', 'C#'], forms: ['R0'], rhythm: [-3, 1.5, -4, 1], register: 'low' },
+      ],
+    },
+    cluster: {
+      listen: '半音がぎっしり詰まった塊が、はじめは3〜4音の細い帯で静かに鳴り、緊張とともに14音の厚い壁へ育って、高く・強くなる。中ほどでは低い塊の短い打撃が割り込み、最後はまた細い帯へほどける',
+      bars: 8, tempo: 66,
+      pitch: { system: 'scale', root: 'C', scale: 'chromatic' },
+      arc: { sections: [sec('帯', 1, 1), sec('育つ', 3, 6), sec('壁', 5, 10), sec('ほどける', 7, 2)] },
+      layers: [
+        { name: '持続の塊', generator: 'cluster', rhythm: [6, 4, 6, 4, 5, 4, 3], width: 14, spread: 0.5, register: 'mid' },
+        { name: '打撃', generator: 'cluster', rhythm: [0.5, 1.5, 3, 1, 2], width: 7, spread: 0.3, register: 'low', active: ['育つ', '壁'] },
+        { name: '火花', generator: 'gesture', gesture: 'scatter_stab', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    additive: {
+      listen: '上の音型は「A」→「A C」→「A C E」…と1音ずつ伸び、6音そろうと1音ずつ縮む。下の音型は5音で同じことをするので、伸び縮みの周期が少しずつずれていく。同じ8分の刻みのまま、模様だけが呼吸する',
+      bars: 16, tempo: 132,
+      pitch: { system: 'scale', root: 'A', scale: 'minor' },
+      layers: [
+        { name: '上の音型', generator: 'process', rule: 'additive', cell: 'A4:0.5 C5:0.5 E5:0.5 A5:0.5 G5:0.5 E5:0.5', repeats: 2 },
+        { name: '下の音型', generator: 'process', rule: 'additive', cell: 'A2:0.5 E3:0.5 A3:0.5 C4:0.5 E3:0.5', repeats: 2 },
+        { name: '和音', generator: 'chords', degrees: [1, 6], chordBars: 4, comping: 'sustain', register: 'mid' },
+      ],
+    },
+    nancarrow: {
+      listen: '同じブルースの速い旋律を、3つの声が「よーい、どん」で同時に弾き始める。速さの比は 4:5:6 で、高い声ほど速い。すぐにばらばらになり、速い声が遅い声を何周も追い越していく。下ではブギウギの低音がずっと同じ歩幅で歩く',
+      bars: 12, tempo: 112,
+      pitch: { system: 'scale', root: 'C', scale: 'blues' },
+      layers: [
+        { name: 'テンポ・カノン', generator: 'process', rule: 'canon', cell: 'C5:0.25 Eb5:0.25 F5:0.25 F#5:0.25 G5:0.5 Bb5:0.25 G5:0.25 C6:0.5 Bb5:0.25 G5:0.25 F5:0.25 Eb5:0.25 C5:0.5', voices: 3, delay: 0, speeds: [1, 0.8, 0.6667], transpose: [-12, 0, 12] },
+        { name: 'ブギウギ', generator: 'ostinato', cell: 'C2:0.5 E2:0.5 G2:0.5 A2:0.5 Bb2:0.5 A2:0.5 G2:0.5 E2:0.5', accent: 0 },
+      ],
+    },
+    feldman: {
+      listen: 'とても弱い3音の和音を、ゆっくり何度も繰り返す。繰り返すたびに、1音だけが半音ずれたり(Db → D、C → B)、入る拍が半拍遅れたりする。高い音がぽつんと鳴り、その高さも少しずつ変わる。展開も山場もなく、模様のわずかなずれだけを聴く',
+      bars: 8, tempo: 63,
+      pitch: { system: 'free' },
+      layers: [
+        { name: '和音', generator: 'line', role: 'melody', notes: [
+          ...chord(0, 'Db4 F4 C5', 3), ...chord(4, 'Db4 F4 C5', 3), ...chord(8, 'D4 F4 C5', 3), ...chord(12.5, 'D4 F4 C5', 2.5),
+          ...chord(16, 'D4 F4 B4', 3), ...chord(20, 'D4 F4 B4', 3, 31), ...chord(24.5, 'Db4 F4 B4', 3), ...chord(28, 'Db4 F4 C5', 4, 30),
+        ] },
+        { name: '高い音', generator: 'line', role: 'counter', notes: seq('R:2 G5:1 R:3 G5:1 R:3 Ab5:1.5 R:2.5 G5:1 R:3 Ab5:1 R:3 A5:1 R:3 Ab5:1 R:4').map((n) => ({ ...n, velocity: 32 })) },
+      ],
+    },
+    satie: {
+      listen: '3拍子で、1拍目に低い音、2拍目から和音が伸びる「ズン・チャー」が静かに続く。和音は Fmaj7 と Em7 の7thのまま行き来して解決せず、7小節目と11小節目だけ、遠い Abmaj7・Dbmaj7 へふっと横すべりする。旋律は飾りのない長い音',
+      bars: 12, tempo: 72,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('Fmaj7:3 Em7:3 Fmaj7:3 Em7:3 Fmaj7:3 Em7:3 Abmaj7:3 Em7:3 Fmaj7:3 Em7:3 Dbmaj7:3 Em7:3') },
+      layers: [
+        { name: '低い音', generator: 'bass', pattern: 'root' },
+        { name: '和音', generator: 'chords', hits: '..o---', hitSteps: 2, voicing: 'close', register: 'mid' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('R:3 R:1 A5:1 G5:1 C6:1 B5:1 G5:1 E5:3 R:1 A5:1 G5:1 B5:1 A5:1 G5:1 Eb5:3 E5:3 R:1 C6:1 B5:1 A5:1 G5:1 E5:1 F5:2 C5:1 E5:3').map((n) => ({ ...n, velocity: 80 })) },
       ],
     },
   };

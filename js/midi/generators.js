@@ -1588,11 +1588,24 @@ ${vocabCatalogText()}`,
     roles: ['melody'],
     text: '12の音を1回ずつ使う音列を語彙とし、原型(P)・反行(I)・逆行(R)・逆行の反行(RI)とその移高だけで音高を導く。調性の重力を持たない',
     params: ['row', 'forms', 'rhythm', 'texture', 'group'],
-    paramText: 'row: 12の音名(C〜B を1回ずつ。欠けや重複はアプリが直す)。forms: 使う形の並び(例 ["P0","RI5","I7","R0"]。数字は半音の移高)。rhythm: 音価の並び(拍。循環して使う 例 [1,0.5,0.5,1.5,0.5])。texture: line(旋律として近い音へ)/ pointillist(音ごとに離れた高さへ跳ぶ点描)/ chords(group 個ずつ和音にする)。group(和音にする音の数 2〜4)',
+    paramText: 'row: 12の音名(C〜B を1回ずつ。欠けや重複はアプリが直す)。forms: 使う形の並び(例 ["P0","RI5","I7","R0"]。数字は半音の移高)。rhythm: 音価の並び(拍。循環して使う 例 [1,0.5,0.5,1.5,0.5]。負の値は休み 例 -2 で2拍休む)。texture: line(旋律として近い音へ)/ pointillist(音ごとに離れた高さへ跳ぶ点描)/ chords(group 個ずつ和音にする)。group(和音にする音の数 2〜4)',
     render(ctx, L) {
       const row = L.row && L.row.length === 12 ? L.row : [0, 11, 7, 8, 3, 1, 2, 10, 6, 5, 4, 9];
       const forms = L.forms && L.forms.length ? L.forms : ['P0', 'RI5', 'I7', 'R0'];
-      const rhythm = (L.rhythm && L.rhythm.length ? L.rhythm : [1, 0.5, 0.5, 1, 1.5, 0.5]).map((d) => Math.max(0.125, d * ctx.grainScale));
+      // 負の値は休み(音列の音を使わずに、その長さだけ進む。ウェーベルンの点描の沈黙)
+      let rhythm = (L.rhythm && L.rhythm.length ? L.rhythm : [1, 0.5, 0.5, 1, 1.5, 0.5]).map((d) => Math.sign(d || 1) * Math.max(0.125, Math.abs(d) * ctx.grainScale));
+      if (!rhythm.some((d) => d > 0)) rhythm = rhythm.map(Math.abs);
+      let ri = 0;
+      /** 次の音の長さ。休みはその分だけ t を進めて飛ばす */
+      const nextDur = (t) => {
+        let rest = 0;
+        for (let k = 0; k < rhythm.length; k++) {
+          const d = rhythm[ri++ % rhythm.length];
+          if (d > 0) return { rest, d };
+          rest += -d;
+        }
+        return { rest, d: 1 };
+      };
       const formPcs = (f) => {
         const m = /^(RI|P|I|R)(\d{1,2})?$/i.exec(String(f).trim());
         const kind = m ? m[1].toUpperCase() : 'P';
@@ -1604,7 +1617,6 @@ ${vocabCatalogText()}`,
       const out = [];
       const markers = [];
       let prev = Math.round((ctx.range[0] + ctx.range[1]) / 2);
-      let ri = 0;
       const group = Math.max(2, Math.min(4, L.group || 3));
       for (let t = 0, fi = 0; t < ctx.total && fi < 200; fi++) {
         const f = forms[fi % forms.length];
@@ -1617,14 +1629,18 @@ ${vocabCatalogText()}`,
         };
         if (L.texture === 'chords') {
           for (let k = 0; k < 12 && t < ctx.total; k += group) {
-            const d = rhythm[ri++ % rhythm.length];
+            const { rest, d } = nextDur();
+            t += rest;
+            if (t >= ctx.total) break;
             pcs.slice(k, k + group).forEach((pc, j) => out.push(note(place(pc, prev + j * 4), t, d * 0.95, 70)));
             t += d;
           }
         } else {
           pcs.forEach((pc) => {
             if (t >= ctx.total) return;
-            const d = rhythm[ri++ % rhythm.length];
+            const { rest, d } = nextDur();
+            t += rest;
+            if (t >= ctx.total) return;
             const p = place(pc, prev);
             out.push(note(p, t, d * (L.texture === 'pointillist' ? 0.6 : 0.95), L.texture === 'pointillist' ? ctx.rng.between(50, 100) : 72 + ctx.rng.between(-6, 6)));
             prev = p;
@@ -1848,6 +1864,93 @@ ${vocabCatalogText()}`,
           out.push(note(p, t, 0.5 * 0.9, velocity));
           t += 0.5;
         }
+      }
+      return out;
+    },
+  });
+
+  /* ================= 音楽史マップ 近代・戦後の波(2026-11-07): コラージュ(アイヴズ)・クラスター ================= */
+
+  const SWELLS = ['pass', 'rise', 'fade', 'distant', 'steady'];
+
+  /**
+   * アイヴズ: 別々の音楽(行進曲・賛美歌・流行歌の断片)を、それぞれ自分の速さ・自分の調のまま同時に重ねる。
+   * 層ごとに speed(全体のテンポに対する速さの比)・transpose(半音。別の調)・swell(近づいて遠ざかる強さ)を持つので、
+   * 「広場を、別々の楽隊が違う曲を演奏しながら横切っていく」ように、ずれたまま出入りする。drift で層の中で速くなっていく
+   */
+  register('collage', {
+    fixed: true, // 乱数を使わない
+    label: 'コラージュ',
+    roles: ['melody'],
+    text: '短い曲の断片(行進曲・賛美歌・踊りの節など)を、層ごとに自分の速さ(speed)と自分の調(transpose)のまま繰り返す。いくつも重ねると、別々の楽隊が違う曲を同時に演奏しているように、合わないまま重なる。swell で、遠くから近づいて通り過ぎる強さの変化を付ける。active で途中から入る・途中で去る',
+    params: ['cell', 'speed', 'drift', 'transpose', 'swell'],
+    paramText: 'cell: その層の曲の断片 [{note, duration}] 6〜20音(1つの層は1つの調・1つの性格。行進曲なら付点のはずむリズム、賛美歌なら長い音の歌)。speed: 全体のテンポに対する速さの比(0.5〜2。層ごとに 1・1.33・0.75 のように違える。整数の比にしない方がずれが目立つ)。drift: その層の中で速さが変わる割合(-0.5〜0.5。正なら最後に向けて速くなる。0 で一定)。transpose: [半音] 1つ(層ごとに別の調にする。例 [0]・[3]・[-5]・[6])。swell: pass(遠くから近づいて通り過ぎる。active の続いた区間全体で1回)/ rise(だんだん近づく)/ fade(だんだん遠ざかる)/ distant(遠くで静かに一定)/ steady(近くで一定)',
+    render(ctx, L) {
+      const cell = (L.cell || []).filter((n) => n.pitch != null);
+      if (cell.length < 2) return [];
+      const speed = Math.max(0.25, Math.min(4, L.speed || 1));
+      const drift = Math.max(-0.5, Math.min(0.5, L.drift || 0));
+      const shift = (L.transpose && L.transpose.length ? L.transpose[0] : 0) || 0;
+      const swell = SWELLS.includes(L.swell) ? L.swell : 'steady';
+      const loud = (pos) => (swell === 'pass' ? 30 + 66 * Math.sin(Math.PI * pos)
+        : swell === 'rise' ? 34 + 60 * pos
+          : swell === 'fade' ? 94 - 60 * pos
+            : swell === 'distant' ? 44 : 76);
+      // 続いた区間(楽隊A・楽隊B のように隣り合う active)は1つにつなぐ。近づいて通り過ぎるのを、区間ごとでなく、居る間の全体で1回にする
+      const spans = [];
+      ctx.activeRanges.slice().sort((a, b) => a.start - b.start).forEach((r) => {
+        const last = spans[spans.length - 1];
+        if (last && r.start <= last.end + EPS) last.end = Math.max(last.end, r.end);
+        else spans.push({ start: r.start, end: r.end });
+      });
+      const out = [];
+      spans.forEach((r) => {
+        const len = Math.max(EPS, r.end - r.start);
+        let t = r.start;
+        for (let k = 0; t < r.end - EPS && k < 4000; k++) {
+          const c = cell[k % cell.length];
+          const pos = (t - r.start) / len;
+          const d = c.duration / (speed * (1 + drift * pos));
+          let p = c.pitch + shift;
+          while (p < 28) p += 12;
+          while (p > 104) p -= 12;
+          out.push(note(p, t, Math.min(d * 0.9, r.end - t), loud(pos) + (k % cell.length === 0 ? 8 : 0)));
+          t += d;
+        }
+      });
+      return out;
+    },
+  });
+
+  /**
+   * トーンクラスター(カウエル・ペンデレツキ): 音階の隣り合う音を何音もまとめて、1つの塊として鳴らす。
+   * 半音階なら半音の密集、長音階なら白鍵だけの塊になる。緊張が高い所ほど塊が厚く・高く・強くなる
+   */
+  register('cluster', {
+    label: 'クラスター',
+    roles: ['texture'],
+    text: '音階の隣り合う音を何音もまとめた塊(トーンクラスター)を、rhythm の長さで次々に鳴らす。半音階(chromatic)なら半音がぎっしり詰まった塊、長音階なら白鍵だけの塊。時間の設計図の緊張が高い所ほど、塊が厚く・高く・強くなり、低い所では細い帯になる',
+    params: ['width', 'rhythm', 'spread'],
+    paramText: 'width: いちばん厚い時の塊の音の数(5〜16。緊張が低い所では3音まで細くなる)。rhythm: 塊の長さの並び(拍。例 [4, 2, 6] の長い持続か、[0.5, 0.5, 1] の短い打撃。循環して使う)。spread: 塊の中心が緊張とともに上下に動く幅(0〜1。0 なら同じ高さ、1 なら2オクターブ動く)',
+    render(ctx, L) {
+      const rhythm = L.rhythm && L.rhythm.length ? L.rhythm : [4, 2, 6];
+      const widest = Math.max(5, Math.min(16, L.width || 10));
+      const spread = L.spread != null ? Math.max(0, Math.min(1, L.spread)) : 0.4;
+      const home = (ctx.range[0] + ctx.range[1]) / 2;
+      const out = [];
+      let t = 0;
+      for (let k = 0; t < ctx.total - EPS && k < 600; k++) {
+        const d = rhythm[k % rhythm.length];
+        const ten = ctx.tension(t);
+        const w = Math.round(3 + (widest - 3) * ten);
+        const centre = home + spread * (ten - 0.5) * 24 + (ctx.rng.next() * 2 - 1) * 2;
+        const ladder = ctx.src.ladder(t, [21, 108]);
+        let i = 0;
+        while (i < ladder.length - 1 && ladder[i] < centre) i += 1;
+        const lo = Math.max(0, Math.min(ladder.length - w, i - Math.floor(w / 2)));
+        const velocity = 46 + 46 * ten + (ctx.rng.next() * 2 - 1) * 4;
+        ladder.slice(lo, lo + w).forEach((p) => out.push(note(p, t, Math.min(d * 0.95, ctx.total - t), velocity)));
+        t += d;
       }
       return out;
     },

@@ -354,3 +354,13 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - 中世〜バロックの10件(organum_parallel・fauxbourdon・imitative_poly・cantus_firmus・folia・romanesca・passacaglia・lament_bass・canon・chorale)。ピッカーのグループは「古楽(中世〜バロック)」
 - 生成器は足していない。平行の声部(オルガヌム・フォーブルドン)は、模倣(imitate)の delay を 0 にして作る(design.js で imitate だけ 0 を許す)
 - フォリア・ロマネスカ・ラメント・バスの和声と低音の型は、共有の定型(手順)として使う。旋律はお手本の中で新しく書いた
+
+## 音楽史マップ 近代・戦後の波(2026-11-07)
+- 10件(ives・whole_tone・octatonic・bitonality・webern・cluster・additive・nancarrow・feldman・satie)。ピッカーのグループは「近代・戦後」。ユーザー依頼「次は近代、戦後から10個作って。アイヴズ型がきになる」
+- 足した生成器: `collage`(アイヴズ。層ごとに曲の断片 cell を、自分の速さ `speed`・自分の調 `transpose`(半音)のまま繰り返す。`drift` で層の中で速く/遅くなる。
+  `swell` = pass(近づいて通り過ぎる。active の続いた区間をつないで、居る間の全体で1回)/ rise / fade / distant(遠くで静かに)/ steady)と
+  `cluster`(トーンクラスター。音階の隣り合う音の塊。緊張が高いほど厚く・高く・強く。`width`・`rhythm`・`spread`)
+- 変えた仕組み: 十二音列(serial)の `rhythm` に負の値=休みを許した(ウェーベルンの点描に沈黙を入れるため。ほかの生成器の rhythm は正の値だけのまま)/
+  規則(process)の delay にも 0 を許した(カノンを同時に弾き始め、速さの比で離れていく。ナンカロウ)
+- アイヴズの断片(行進曲・賛美歌・踊りの節)は、お手本の中で新しく書いた。実在の行進曲・賛美歌は引用しない(プリセットの style にも書いた)。
+  断片は collage の cell なので、反芻(`ruminateMelody()`)は line の主旋律だけに掛かり、collage の断片には掛からない【未対応。Gemini が実在の賛美歌をなぞる心配があれば、collage の cell も反芻に入れる】

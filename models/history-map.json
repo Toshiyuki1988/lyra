@@ -1,7 +1,7 @@
 {
   "title": "音楽史MIDI生成モデルマップ",
   "version": 1,
-  "updated": "2026-11-06",
+  "updated": "2026-11-07",
   "note": "地図の順と時代だけを持つ目録。既存かどうか・子どもの解説・お手本の有無は、id で js/midi/presets.js(LyraPresets)・js/midi/demos.js(LyraDemos)・js/midi/beatbook.js(LyraBeatbook)から引く。kind は preset / beat / response / extend。tier は作るのに要るもの(P=プリセットだけ / G=生成器を足す / M=微分音などの仕組み)。計画は docs/duo/task-midi-history-map.md",
   "eras": [
     { "id": "tradition", "label": "伝統・民族の基層", "years": "年代を問わず" },

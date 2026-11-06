@@ -42,6 +42,7 @@
     accent: S('INTEGER'),
     partials: ARR(S('INTEGER')), spectrum: S('STRING'), tuning: S('STRING'), strands: S('INTEGER'), ratio: S('NUMBER'), groups: ARR(S('INTEGER')),
     phraseLen: S('NUMBER'), chromatic: S('NUMBER'), triplets: S('NUMBER'),
+    speed: S('NUMBER'), drift: S('NUMBER'), swell: S('STRING'),
     stepsPerBeat: S('INTEGER'), swing: S('NUMBER'), patterns: ARR(OBJ({ section: S('STRING'), rows: DRUM_ROWS, fill: DRUM_ROWS }, ['rows'])),
   };
 
@@ -241,7 +242,7 @@
     L.repeats = int(raw.repeats, 1, 8, 2);
     L.shiftEvery = int(raw.shiftEvery != null ? raw.shiftEvery : raw.shift_every, 1, 16, 4);
     L.voices = int(raw.voices, 2, 4, 2);
-    L.delay = num(raw.delay, generator === 'imitate' ? 0 : 0.25, 16, 2); // 模倣は 0(同時=平行の声部。オルガヌム・フォーブルドン)を許す
+    L.delay = num(raw.delay, generator === 'imitate' || generator === 'process' ? 0 : 0.25, 16, 2); // 模倣は 0(同時=平行の声部。オルガヌム・フォーブルドン)、規則のカノンも 0(同時に弾き始めて速さの差で離れる。ナンカロウ)を許す
     L.transpose = nums(raw.transpose, -24, 24, 4).map(Math.round);
     L.speeds = nums(raw.speeds, 0.25, 4, 4);
     L.talea = nums(raw.talea, -4, 4, 16).filter((x) => Math.abs(x) >= 0.125);
@@ -279,7 +280,10 @@
     if (has('gap')) L.gap = num(raw.gap, 0, 4, 0);
     if (has('row')) L.row = parseRow(raw.row);
     if (has('forms')) L.forms = strs(raw.forms, 6, 16);
-    if (has('rhythm')) L.rhythm = nums(raw.rhythm, 0.125, 8, 16);
+    // 十二音列だけ、負の値=休みを許す(2026-11-07、ウェーベルンの点描に沈黙を入れるため。ほかの生成器は正の音価だけ)
+    if (has('rhythm')) L.rhythm = generator === 'serial'
+      ? nums(raw.rhythm, -8, 8, 16).filter((x) => Math.abs(x) >= 0.125)
+      : nums(raw.rhythm, 0.125, 8, 16);
     if (has('texture')) L.texture = ['line', 'pointillist', 'chords'].includes(raw.texture) ? raw.texture : 'line';
     if (has('group')) L.group = int(raw.group, 2, 4, 3);
     if (has('phraseLen')) L.phraseLen = num(raw.phraseLen, 2, 32, 6);
@@ -293,6 +297,10 @@
     if (has('strands')) L.strands = int(raw.strands, 3, 24, 8);
     if (has('ratio')) L.ratio = num(raw.ratio, 1.5, 4, 2);
     if (has('groups')) L.groups = nums(raw.groups, 2, 4, 8).map(Math.round);
+    // 音楽史マップ 近代・戦後の波(2026-11-07): コラージュ(アイヴズ)
+    if (has('speed')) L.speed = num(raw.speed, 0.25, 4, 1);
+    if (has('drift')) L.drift = num(raw.drift, -0.5, 0.5, 0);
+    if (has('swell')) L.swell = pickWord(raw.swell, ['pass', 'rise', 'fade', 'distant', 'steady'], 'steady');
     if (has('stepsPerBeat')) L.stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.stepsPerBeat))) ? Math.round(Number(raw.stepsPerBeat)) : 4;
     if (generator === 'drums') L.swing = (L.stepsPerBeat || 4) % 3 === 0 ? 0 : num(raw.swing, 0, 1, 0);
     if (has('patterns')) {

@@ -59,6 +59,8 @@
       case 'fractal': return `形 ${cellNames(l.cell)} · ${l.iterations || 3}つの尺度(×${l.ratio || 2}倍ずつ)`;
       case 'aksak': return `アクサク ${(l.groups && l.groups.length ? l.groups : [2, 2, 3]).join('+')}(8分音符のまとまり)`;
       case 'ostinato': return `音型 ${cellNames(l.cell)}${l.accent ? ` · ${l.accent}音ごとのアクセント` : ''}`;
+      case 'collage': return `断片 ${cellNames(l.cell)} · 速さ ×${l.speed || 1}${l.drift ? `(${l.drift > 0 ? 'だんだん速く' : 'だんだん遅く'})` : ''}${(l.transpose || [])[0] ? ` · ${l.transpose[0] > 0 ? '+' : ''}${l.transpose[0]}半音の調` : ''} · ${{ pass: '近づいて通り過ぎる', rise: '近づく', fade: '遠ざかる', distant: '遠くで静かに', steady: '一定' }[l.swell || 'steady']}`;
+      case 'cluster': return `塊 最大${l.width || 10}音 · 長さ ${(l.rhythm && l.rhythm.length ? l.rhythm : [4, 2, 6]).join('・')}拍 · 上下の動き${Math.round((l.spread != null ? l.spread : 0.4) * 100)}%`;
       case 'groove': {
         const B = window.LyraBeatbook;
         const mdl = B && B.byId(l.model);
