@@ -1340,7 +1340,7 @@ ${vocabCatalogText()}`,
     listens: true,
     text: '聴いた旋律(元のMIDIの旋律)を、時間差と音階の上の音程差で追いかける模倣・カノン。反行・逆行・拡大・縮小の変形もできる',
     params: ['against', 'delay', 'transpose', 'transform', 'entries'],
-    paramText: 'against(追いかける層の name。空なら元の旋律)、delay(何拍遅れて入るか。1小節=4拍が目安)、transpose(音階の段数。例: [-7]=オクターブ下、[4]=5度上、[-2]=3度下。声ごとに1つ)、transform: none / inversion(反行)/ retrograde(逆行)/ augmentation(拡大)/ diminution(縮小)、entries(追いかける声の数 1〜3)',
+    paramText: 'against(追いかける層の name。空なら元の旋律)、delay(何拍遅れて入るか。1小節=4拍が目安。0 なら同時に鳴る平行の声部)、transpose(音階の段数。例: [-7]=オクターブ下、[4]=5度上、[-2]=3度下。声ごとに1つ)、transform: none / inversion(反行)/ retrograde(逆行)/ augmentation(拡大)/ diminution(縮小)、entries(追いかける声の数 1〜3)',
     render(ctx, L) {
       let target = L.against ? ctx.rendered[String(L.against).toLowerCase()] : null;
       if (!target || !target.length) {

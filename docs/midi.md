@@ -349,3 +349,8 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - 生成器 `spectral` は倍音の音高を平均律の音+cents(±50)で持つ。音符の `cents` は engine.js が保持し、試聴(play.js)は周波数をずらし、.mid(export.js)はピッチベンドにする(詳細は `docs/midi-history-map.md` 8節)
 - 足した生成器: `spectral`(倍音の和音)・`micropoly`(細かいカノンの網)・`palindrome`(非可逆リズム)・`fractal`(時間の尺度を重ねる)・`aksak`(2+3の不均等な拍+黄金比の頂点)
 - プリセットとお手本: spectral・micropolyphony・fractal(生成モデル)、messiaen・bartok(作曲家様式)
+
+## 音楽史マップ 波2〜3(2026-11-07)
+- 中世〜バロックの10件(organum_parallel・fauxbourdon・imitative_poly・cantus_firmus・folia・romanesca・passacaglia・lament_bass・canon・chorale)。ピッカーのグループは「古楽(中世〜バロック)」
+- 生成器は足していない。平行の声部(オルガヌム・フォーブルドン)は、模倣(imitate)の delay を 0 にして作る(design.js で imitate だけ 0 を許す)
+- フォリア・ロマネスカ・ラメント・バスの和声と低音の型は、共有の定型(手順)として使う。旋律はお手本の中で新しく書いた

@@ -241,7 +241,7 @@
     L.repeats = int(raw.repeats, 1, 8, 2);
     L.shiftEvery = int(raw.shiftEvery != null ? raw.shiftEvery : raw.shift_every, 1, 16, 4);
     L.voices = int(raw.voices, 2, 4, 2);
-    L.delay = num(raw.delay, 0.25, 16, 2);
+    L.delay = num(raw.delay, generator === 'imitate' ? 0 : 0.25, 16, 2); // 模倣は 0(同時=平行の声部。オルガヌム・フォーブルドン)を許す
     L.transpose = nums(raw.transpose, -24, 24, 4).map(Math.round);
     L.speeds = nums(raw.speeds, 0.25, 4, 4);
     L.talea = nums(raw.talea, -4, 4, 16).filter((x) => Math.abs(x) >= 0.125);

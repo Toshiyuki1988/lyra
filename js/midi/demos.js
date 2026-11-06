@@ -343,6 +343,109 @@
         { name: '鏡', generator: 'imitate', against: '旋律', transform: 'inversion', delay: 3.5, transpose: [-7] },
       ],
     },
+    /* ---- 音楽史マップ 波2〜3(2026-11-07) ---- */
+    organum_parallel: {
+      listen: 'ドリアンの聖歌風の旋律に、4度下とオクターブ下の声が、同じリズムでぴったり平行に付いていく。3つの声が1本の太い線になって動く',
+      bars: 6, tempo: 60,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: '定旋律', generator: 'line', role: 'melody', notes: seq('D5:1 F5:1 G5:2 A5:1 G5:1 F5:1 G5:1 A5:2 C6:1 A5:1 G5:2 F5:1 G5:1 A5:1 G5:1 F5:1 E5:1 D5:4') },
+        { name: 'オルガヌム声部', generator: 'imitate', against: '定旋律', delay: 0, entries: 2, transpose: [-3, -7] },
+      ],
+    },
+    fauxbourdon: {
+      listen: '上の旋律の4度下と6度下に声が付き、3つの声が「6の和音」の形をくずさずに平行に動く。やわらかく甘い響きが続く',
+      bars: 8, tempo: 72,
+      pitch: { system: 'scale', root: 'F', scale: 'major' },
+      layers: [
+        { name: '上声', generator: 'line', role: 'melody', notes: seq('F5:1 G5:1 A5:2 G5:1 F5:1 E5:1 F5:1 G5:2 A5:1 Bb5:1 A5:2 G5:2 F5:1 E5:1 D5:2 E5:1 F5:1 G5:2 A5:1 G5:1 F5:1 E5:1 F5:4') },
+        { name: '下の2声', generator: 'imitate', against: '上声', delay: 0, entries: 2, transpose: [-3, -5] },
+      ],
+    },
+    imitative_poly: {
+      listen: '最初の声が2小節の動機で歌い出し、1小節ずつ遅れて、5度下・オクターブ下・12度下の声が同じ動機で順に入ってくる。声が増えるほど響きが厚くなる',
+      bars: 8, tempo: 80,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: 'ソプラノ', generator: 'line', role: 'melody', notes: seq('D5:2 A4:1 C5:1 Bb4:1 A4:1 G4:2 A4:1 F4:0.5 G4:0.5 A4:1 D5:1 C5:1 Bb4:0.5 A4:0.5 G4:1 A4:2 F4:1 G4:1 A4:1 Bb4:1 A4:2 G4:1 F4:1 E4:2 D4:5') },
+        { name: '模倣', generator: 'imitate', against: 'ソプラノ', delay: 4, entries: 3, transpose: [-4, -7, -11] },
+      ],
+    },
+    cantus_firmus: {
+      listen: '真ん中の低い声が、1音4拍の長い定旋律を据える。その上で2つの声が、1対2の動きと掛留(タイでずらす音)で、規則を守りながら包む',
+      bars: 8, tempo: 76,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: '定旋律', generator: 'line', role: 'cantus', notes: seq('D4:4 F4:4 E4:4 D4:4 G4:4 F4:4 E4:4 D4:4') },
+        { name: '上の声', generator: 'counterpoint', against: '定旋律', species: 2, position: 'above', register: 'mid' },
+        { name: '高い声', generator: 'counterpoint', against: '定旋律', species: 4, position: 'above', register: 'high' },
+      ],
+    },
+    folia: {
+      listen: '3拍子で、Dm-A-Dm-C-F-C-Dm-A の決まった和声が2周する。和音は2拍目に重みのあるサラバンドのリズム。旋律は1周目は長い音、2周目は8分音符の分散で細かく変奏される',
+      bars: 16, tempo: 100,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'D', scale: 'harmonic-minor', chords: prog('Dm:3 A:3 Dm:3 C:3 F:3 C:3 Dm:3 A:3 Dm:3 A:3 Dm:3 C:3 F:3 C:3 Dm:1.5 A:1.5 Dm:3') },
+      arc: { sections: [sec('主題', 1, 4), sec('変奏', 9, 7)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'stabs', hits: 'X.X..x', hitSteps: 2, voicing: 'close' },
+        { name: 'ベース', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('F5:1 F5:1.5 E5:0.5 E5:2 C#5:1 D5:1 F5:1.5 A5:0.5 G5:1 E5:1.5 C5:0.5 F5:1 A5:1.5 G5:0.5 E5:1 G5:1.5 E5:0.5 F5:1 E5:1 D5:1 C#5:3 A5:0.5 F5:0.5 D5:0.5 F5:0.5 A5:0.5 D6:0.5 C#6:0.5 A5:0.5 E5:0.5 A5:0.5 C#6:0.5 E6:0.5 D6:0.5 A5:0.5 F5:0.5 A5:0.5 D6:0.5 F6:0.5 E6:0.5 C6:0.5 G5:0.5 C6:0.5 E6:0.5 G6:0.5 F6:0.5 C6:0.5 A5:0.5 C6:0.5 F6:0.5 A5:0.5 G5:0.5 E5:0.5 C5:0.5 E5:0.5 G5:0.5 C6:0.5 A5:0.5 F5:0.5 D5:0.5 E5:0.5 C#5:0.5 A4:0.5 D5:3') },
+      ],
+    },
+    romanesca: {
+      listen: 'Bb-F-Gm-D の決まった型が2周する(2周目の終わりは Gm-D-Gm)。和音はリュートのような分散で、旋律は長い音を8分音符の細かい音型に割って飾る',
+      bars: 8, tempo: 84,
+      pitch: { system: 'chords', root: 'G', scale: 'minor', chords: prog('Bb:4 F:4 Gm:4 D:4 Bb:4 F:4 Gm:2 D:2 Gm:4') },
+      layers: [
+        { name: 'リュート', generator: 'chords', comping: 'arpeggio', voicing: 'open' },
+        { name: 'ベース', generator: 'bass', pattern: 'root' },
+        { name: 'ディヴィジョン', generator: 'line', role: 'melody', notes: seq('D5:1 C5:0.5 Bb4:0.5 F5:2 C5:1 A4:0.5 C5:0.5 F5:1 Eb5:1 D5:0.5 C5:0.5 Bb4:0.5 A4:0.5 G4:2 A4:1 F#4:1 A4:1 D5:1 F5:0.5 Eb5:0.5 D5:0.5 C5:0.5 Bb4:0.5 C5:0.5 D5:1 C5:0.5 Bb4:0.5 A4:0.5 Bb4:0.5 C5:2 Bb4:1 G4:1 A4:1 F#4:1 G4:4') },
+      ],
+    },
+    passacaglia: {
+      listen: 'C-Bb-Ab-G と下りる4小節の低音が3周する(3拍子)。上の旋律は、1周目は4分音符、2周目は8分音符、3周目は16分音符と、周ごとに細かくなって高まる',
+      bars: 12, tempo: 88,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'C', scale: 'harmonic-minor', chords: prog('Cm:3 Gm/Bb:3 Fm/Ab:3 G:3 Cm:3 Gm/Bb:3 Fm/Ab:3 G:3 Cm:3 Gm/Bb:3 Fm/Ab:3 G:3') },
+      arc: { sections: [sec('1周目', 1, 3), sec('2周目', 5, 5), sec('3周目', 9, 8)] },
+      layers: [
+        { name: '低音', generator: 'ostinato', role: 'bass', register: 'low', cell: 'C3:3 Bb2:3 Ab2:3 G2:3' },
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close' },
+        { name: '変奏', generator: 'line', role: 'melody', notes: seq('G5:2 Eb5:1 D5:2 G5:1 C5:1.5 D5:0.5 Eb5:1 D5:2 B4:1 C5:0.5 Eb5:0.5 G5:0.5 Eb5:0.5 C5:0.5 G4:0.5 Bb4:0.5 D5:0.5 G5:0.5 D5:0.5 Bb4:0.5 D5:0.5 Ab4:0.5 C5:0.5 F5:0.5 C5:0.5 Ab4:0.5 C5:0.5 G4:0.5 B4:0.5 D5:0.5 G5:0.5 F5:0.5 D5:0.5 C6:0.25 B5:0.25 C6:0.25 G5:0.25 Eb5:0.25 G5:0.25 C5:0.25 Eb5:0.25 G5:0.25 C6:0.25 Eb6:0.25 C6:0.25 D6:0.25 C6:0.25 Bb5:0.25 G5:0.25 D5:0.25 G5:0.25 Bb5:0.25 D6:0.25 G6:0.25 F6:0.25 D6:0.25 Bb5:0.25 C6:0.25 Ab5:0.25 F5:0.25 C5:0.25 F5:0.25 Ab5:0.25 C6:0.25 F6:0.25 Eb6:0.25 C6:0.25 Ab5:0.25 F5:0.25 G5:0.25 B5:0.25 D6:0.25 G6:0.25 F6:0.25 D6:0.25 B5:0.25 G5:0.25 G5:1') },
+      ],
+    },
+    lament_bass: {
+      listen: '低音が D-C#-C-B-Bb-A と半音ずつ4度下まで下りて、2周する。上の旋律は、強拍の高い音から1つ下へ寄りかかる「ため息」の2音を重ねていく',
+      bars: 8, tempo: 72,
+      pitch: { system: 'chords', root: 'D', scale: 'harmonic-minor', chords: prog('Dm:2 A/C#:2 Dm/C:2 G/B:2 Gm/Bb:2 A:2 A7:4 Dm:2 A/C#:2 Dm/C:2 G/B:2 Gm/Bb:2 A:2 A7:4') },
+      arc: { sections: [sec('1周目', 1, 4), sec('2周目', 5, 7)] },
+      layers: [
+        { name: '低音', generator: 'ostinato', role: 'bass', register: 'low', cell: 'D3:2 C#3:2 C3:2 B2:2 Bb2:2 A2:2 A2:4' },
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close' },
+        { name: 'ため息', generator: 'line', role: 'melody', notes: seq('A5:1.5 G5:0.5 F5:1 E5:1 E5:1 F5:0.5 G5:0.5 A5:1 G5:1 G5:1.5 F5:0.5 E5:1 D5:1 D5:1 C#5:1 E5:2 D6:1.5 C6:0.5 Bb5:1 A5:1 A5:1 G5:0.5 F5:0.5 E5:1 G5:1 F5:1.5 E5:0.5 D5:1 Bb5:1 A5:1 G5:1 E5:1 C#5:1') },
+      ],
+    },
+    canon: {
+      listen: 'D-A の2小節の和音の周期の上で、先の声の旋律を、2小節遅れてオクターブ下の声が、さらに2小節遅れて2オクターブ下の声が、そのまま追いかける。遅れが和音の周期と同じなので、重なってもぶつからない',
+      bars: 8, tempo: 92,
+      pitch: { system: 'chords', root: 'D', scale: 'major', chords: prog('D:4 A:4 D:4 A:4 D:4 A:4 D:4 A:4') },
+      layers: [
+        { name: '先の声', generator: 'line', role: 'melody', notes: seq('D5:1 F#5:1 A5:1 F#5:1 E5:1.5 C#5:0.5 A4:1 E5:1 F#5:0.5 G5:0.5 A5:1 D6:1 A5:1 G5:1 E5:1 C#5:1 A4:1 D5:0.5 E5:0.5 F#5:0.5 G5:0.5 A5:2 C#6:1 B5:0.5 A5:0.5 E5:2 F#5:1 D5:1 A4:1 D5:1 E5:2 C#5:2') },
+        { name: '追う声', generator: 'imitate', against: '先の声', delay: 8, entries: 2, transpose: [-7, -14] },
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open' },
+      ],
+    },
+    chorale: {
+      listen: 'ソプラノが4分音符で歌い、その下の内声とバスが1拍ごとに和音を変えて支える4声体。2小節ごとの句の終わりで伸ばし、4小節目で半終止(D)、最後に完全終止(G)',
+      bars: 8, tempo: 72,
+      pitch: { system: 'chords', root: 'G', scale: 'major', chords: prog('G:1 D/F#:1 Em:1 C:1 G/D:1 D:1 G:2 Em:1 Bm/D:1 C:1 G/B:1 Am:1 A7/C#:1 D:2 G:1 C/E:1 D:1 G:1 C:1 Am:1 D:2 Em:1 C:1 G/D:1 D7:1 G:4') },
+      layers: [
+        { name: 'ソプラノ', generator: 'line', role: 'melody', notes: seq('B4:1 A4:1 G4:1 G4:1 B4:1 A4:1 G4:2 B4:1 D5:1 C5:1 B4:1 C5:1 A4:1 A4:2 D5:1 C5:1 A4:1 B4:1 C5:1 E5:1 D5:2 B4:1 C5:1 B4:1 A4:1 G4:4') },
+        { name: '内声', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'low' },
+        { name: 'バス', generator: 'bass', pattern: 'root' },
+      ],
+    },
   };
 
   const cache = {};
