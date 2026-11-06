@@ -40,6 +40,7 @@
     chain: ARR(S('STRING')), gap: S('NUMBER'),
     row: ARR(S('STRING')), forms: ARR(S('STRING')), rhythm: ARR(S('NUMBER')), texture: S('STRING'), group: S('INTEGER'),
     accent: S('INTEGER'),
+    partials: ARR(S('INTEGER')), spectrum: S('STRING'), tuning: S('STRING'), strands: S('INTEGER'), ratio: S('NUMBER'), groups: ARR(S('INTEGER')),
     phraseLen: S('NUMBER'), chromatic: S('NUMBER'), triplets: S('NUMBER'),
     stepsPerBeat: S('INTEGER'), swing: S('NUMBER'), patterns: ARR(OBJ({ section: S('STRING'), rows: DRUM_ROWS, fill: DRUM_ROWS }, ['rows'])),
   };
@@ -285,6 +286,13 @@
     if (has('chromatic')) L.chromatic = num(raw.chromatic, 0, 1, 0.45);
     if (has('triplets')) L.triplets = num(raw.triplets, 0, 1, 0.15);
     if (has('accent')) L.accent = int(raw.accent, 0, 16, 0);
+    // 音楽史マップ 波6〜7(2026-11-06)
+    if (has('partials')) L.partials = nums(raw.partials, 1, 48, 16).map(Math.round).filter((x, i, a) => a.indexOf(x) === i);
+    if (has('spectrum')) L.spectrum = pickWord(raw.spectrum, ['stretched', 'inharmonic'], 'harmonic');
+    if (has('tuning')) L.tuning = /equal|平均/i.test(String(raw.tuning)) ? 'equal' : 'exact';
+    if (has('strands')) L.strands = int(raw.strands, 3, 24, 8);
+    if (has('ratio')) L.ratio = num(raw.ratio, 1.5, 4, 2);
+    if (has('groups')) L.groups = nums(raw.groups, 2, 4, 8).map(Math.round);
     if (has('stepsPerBeat')) L.stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.stepsPerBeat))) ? Math.round(Number(raw.stepsPerBeat)) : 4;
     if (generator === 'drums') L.swing = (L.stepsPerBeat || 4) % 3 === 0 ? 0 : num(raw.swing, 0, 1, 0);
     if (has('patterns')) {

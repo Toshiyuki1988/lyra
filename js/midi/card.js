@@ -53,6 +53,11 @@
       case 'dialogue': return `${l.voices}人 · ${(l.temperaments || []).map((x) => E.TEMPERAMENTS[x] || x).join('・')} · 最初の句 ${cellNames(l.cell)}`;
       case 'motif': return `動機 ${cellNames(l.cell)} · ${(l.chain || []).join(' → ')}`;
       case 'serial': return `音列 ${(l.row || []).map((pc) => T.NOTE_NAMES[pc]).join(' ')} · ${(l.forms || []).join(' ')} · ${{ line: '旋律', pointillist: '点描', chords: `${l.group || 3}音の和音` }[l.texture || 'line']}`;
+      case 'spectral': return `倍音 ${(l.partials && l.partials.length ? l.partials : [1, 2, 3, 4, 5, 6, 7, 9, 11, 13]).join('・')} · ${l.hold}拍ごとに基音が動く · ${l.tuning === 'equal' ? '平均律に丸める' : '微分音(ピッチベンド)'}${l.spectrum && l.spectrum !== 'harmonic' ? ` · ${{ stretched: '広がる倍音', inharmonic: '不揃いな倍音' }[l.spectrum]}` : ''}`;
+      case 'micropoly': return `${l.strands || 8}本の声 · ${l.delay}拍ずつ遅れて入る · 旋律 ${cellNames(l.cell)}`;
+      case 'palindrome': return `非可逆リズム ${(l.rhythm && l.rhythm.length ? l.rhythm : [0.5, 0.25, 1.5]).join('・')}(逆から読んでも同じ)${l.group ? ` · ${l.group}音の和音` : ''}`;
+      case 'fractal': return `形 ${cellNames(l.cell)} · ${l.iterations || 3}つの尺度(×${l.ratio || 2}倍ずつ)`;
+      case 'aksak': return `アクサク ${(l.groups && l.groups.length ? l.groups : [2, 2, 3]).join('+')}(8分音符のまとまり)`;
       case 'ostinato': return `音型 ${cellNames(l.cell)}${l.accent ? ` · ${l.accent}音ごとのアクセント` : ''}`;
       case 'groove': {
         const B = window.LyraBeatbook;

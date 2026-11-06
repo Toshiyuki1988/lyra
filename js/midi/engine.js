@@ -399,6 +399,7 @@
             duration: Math.round(n.duration * 1000) / 1000,
             velocity: Math.round(clamp(n.velocity, 1, 127, 80)),
           };
+          if (Number.isFinite(n.cents) && Math.round(n.cents)) note.cents = Math.max(-50, Math.min(50, Math.round(n.cents))); // 微分音(平均律の音からの cents のずれ)
           notes.push(note);
           layerNotes.push(note);
         });

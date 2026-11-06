@@ -343,3 +343,9 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - **LYRAの決まりはこの線引きに沿っている**: コード進行の定番は可/ビートは参照曲の型を大いに取り入れてよい(1曲まるごと写すのは不可)/
   作曲家の技法は引用してよい/旋律だけは反芻で既存曲との類似を点検する(`ORIGINALITY_RULE`・`ruminateMelody()`)。新しいモデルも、
   Geminiに旋律を書かせるなら反芻の対象にする。商用で出す曲で気になる時は専門家に確かめる
+
+
+## 微分音(cents)と音楽史マップ 波6〜7(2026-11-06)
+- 生成器 `spectral` は倍音の音高を平均律の音+cents(±50)で持つ。音符の `cents` は engine.js が保持し、試聴(play.js)は周波数をずらし、.mid(export.js)はピッチベンドにする(詳細は `docs/midi-history-map.md` 8節)
+- 足した生成器: `spectral`(倍音の和音)・`micropoly`(細かいカノンの網)・`palindrome`(非可逆リズム)・`fractal`(時間の尺度を重ねる)・`aksak`(2+3の不均等な拍+黄金比の頂点)
+- プリセットとお手本: spectral・micropolyphony・fractal(生成モデル)、messiaen・bartok(作曲家様式)

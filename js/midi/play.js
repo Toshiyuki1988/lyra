@@ -233,7 +233,7 @@
       const gain = ROLE_GAIN[role] || 0.7;
       if ((voice && voice.synth) || vocabPart(m, n.part)) {
         const kind = vocabPart(m, n.part) ? 'mu' : voice.synth === 'mix' ? MIX_KIND[role] || 'bell' : voice.synth;
-        nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
+        nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch + (n.cents || 0) / 100), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
         return;
       }
       if (voice && voice.sampler) {
@@ -241,7 +241,7 @@
         if (smp) {
           const src = ctx.createBufferSource();
           src.buffer = smp.buffer;
-          src.playbackRate.value = smp.rate;
+          src.playbackRate.value = smp.rate * (n.cents ? Math.pow(2, n.cents / 1200) : 1);
           src.connect(env);
           env.connect(cutoff ? filter : out);
           // サンプルは読み込み時に -1dB にそろえてあるので、和音で重なっても割れないよう控えめに(6音の和音で -4dB 前後)
@@ -261,7 +261,7 @@
         const src = ctx.createBufferSource();
         src.buffer = sample;
         const shift = n.pitch - samplePitch(n.pitch);
-        if (shift) src.playbackRate.value = Math.pow(2, shift / 12);
+        if (shift || n.cents) src.playbackRate.value = Math.pow(2, (shift + (n.cents || 0) / 100) / 12);
         src.connect(env);
         env.connect(cutoff ? filter : out);
         const level = (n.velocity / 127) * 1.6 * gain;
@@ -275,7 +275,7 @@
       }
       const osc = ctx.createOscillator();
       osc.type = role === 'melody' ? 'sawtooth' : 'triangle';
-      osc.frequency.value = midiToFreq(n.pitch);
+      osc.frequency.value = midiToFreq(n.pitch + (n.cents || 0) / 100);
       osc.connect(env);
       env.connect(filter);
       const amp = (n.velocity / 127) * 0.5 * (role === 'bass' ? 1.1 : gain * 0.7);

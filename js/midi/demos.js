@@ -291,6 +291,58 @@
         { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'rim', steps: 'x..x..x...x..x..' }, { inst: 'shaker', steps: 'xoxoxoxoxoxoxoxo' }, { inst: 'kick', steps: 'x..xx..xx..xx..x' }] }] },
       ],
     },
+    /* ---- 音楽史マップ 波6〜7(2026-11-06) ---- */
+    spectral: {
+      listen: '低いEの倍音が、第1・2・3…と一つずつ積み上がって和音になる。倍音は平均律の音の間(微分音)に落ちていて、特に第7・11・13倍音がふつうのどの鍵盤の音ともずれる。区間ごとに基音が動き、響きの色が溶けるように変わる。高い倍音だけの層が、上できらめく',
+      bars: 8, tempo: 72,
+      pitch: { system: 'scale', root: 'E', scale: 'chromatic' },
+      arc: { sections: [sec('立ち上がり', 1, 4), sec('満ちる', 3, 7), sec('溶ける', 7, 3)] },
+      layers: [
+        { name: '倍音の和音', generator: 'spectral', partials: [1, 2, 3, 4, 5, 6, 7, 9, 11, 13], hold: 8, tuning: 'exact', spectrum: 'harmonic', step: 0.75 },
+        { name: 'きらめき', generator: 'spectral', partials: [8, 9, 10, 11, 12, 13, 14], hold: 4, tuning: 'exact', spectrum: 'stretched', step: 0.25 },
+      ],
+    },
+    micropolyphony: {
+      listen: 'ゆっくりした同じ旋律を14本の声が半拍ずつ遅れて入り、少しずつ違う速さで歌う。1本ずつは聞き取れず、全体が音の霧のようになり、緊張が高い中ほどで濃く厚くなる',
+      bars: 8, tempo: 80,
+      pitch: { system: 'scale', root: 'D', scale: 'chromatic' },
+      arc: { sections: [sec('霧のはじまり', 1, 3), sec('濃くなる', 3, 8), sec('晴れる', 7, 3)] },
+      layers: [
+        { name: '網', generator: 'micropoly', cell: 'D5:2 E5:1.5 F5:1.5 E5:2 D5:1.5 C#5:2 D5:2', strands: 14, delay: 0.5, speeds: [1, 1.03, 0.97, 1.06] },
+      ],
+    },
+    messiaen: {
+      listen: '「0.5・0.25・1.5・0.75・1.5・0.25・0.5」のように、逆から読んでも同じ長さの並びが繰り返される。移調の限られた旋法(第3番)の音が、色彩的な3音の和音とひとすじの旋律になり、周期の違う2つの層が少しずつずれて重なる。鐘が鳥のように鳴る',
+      bars: 8, tempo: 84,
+      pitch: { system: 'scale', root: 'C', scale: 'messiaen-3' },
+      layers: [
+        { name: '色彩の和音', generator: 'palindrome', rhythm: [0.5, 0.25, 1.5, 0.75], group: 3, register: 'mid' },
+        { name: '旋律', generator: 'palindrome', rhythm: [0.25, 0.75, 0.5], register: 'high' },
+        { name: '鐘', generator: 'gesture', gesture: 'bell', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    fractal: {
+      listen: '同じ5音の形が、×4(低く長い)・×2・×1(高く速い)の3つの尺度で同時に鳴る。遅い声の1音の間に、中くらいの声が形を2回、速い声が4回通る。大きさを変えた同じ形が入れ子のように重なる',
+      bars: 8, tempo: 96,
+      pitch: { system: 'scale', root: 'D', scale: 'major-pentatonic' },
+      layers: [
+        { name: '入れ子', generator: 'fractal', cell: 'D5:0.5 E5:0.5 A5:0.5 F#5:0.25 E5:0.25 D5:1', iterations: 3, ratio: 2 },
+        { name: '地', generator: 'gesture', gesture: 'sustained_open', occurrence: 'continuous', role: 'ground', register: 'low' },
+      ],
+    },
+    bartok: {
+      listen: '7/8拍子の脈動が「2+2+3」のまとまりで刻まれ、まとまりの頭に力が入る。民謡風の狭い旋律に、鏡のようにひっくり返した声が1小節遅れて追いかける。強さは全体の黄金比(約61.8%、10小節目あたり)に向けて高まって頂点になり、その後静まる',
+      bars: 16, tempo: 132,
+      meters: [{ bar: 1, num: 7, den: 8 }],
+      pitch: { system: 'scale', root: 'D', scale: 'mixolydian' },
+      arc: { form: '黄金比', climaxBar: 10, sections: [sec('提示', 1, 3), sec('展開', 6, 6), sec('頂点', 10, 9), sec('余韻', 13, 3)] },
+      layers: [
+        { name: '脈動', generator: 'aksak', groups: [2, 2, 3], register: 'low', role: 'bass' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: ['A4:1 B4:0.5 C5:1 B4:0.5 A4:0.5', 'C5:0.5 D5:1 C5:0.5 B4:1 A4:0.5', 'A4:1 B4:0.5 C5:1 B4:0.5 A4:0.5', 'E5:1.5 D5:0.5 C5:1 D5:0.5', 'C5:0.5 D5:1 C5:0.5 B4:1 A4:0.5', 'A4:2 G4:0.5 A4:1', 'A4:1 B4:0.5 C5:1 B4:0.5 A4:0.5', 'E5:1.5 D5:0.5 C5:1 D5:0.5', 'G4:1 A4:0.5 B4:1 A4:0.5 G4:0.5', 'E5:0.5 D5:1 E5:0.5 G5:1 E5:0.5', 'D5:1 C5:0.5 B4:1 A4:0.5 G4:0.5', 'A4:1 B4:0.5 C5:1 B4:0.5 A4:0.5', 'C5:0.5 D5:1 C5:0.5 B4:1 A4:0.5', 'A4:2 G4:0.5 A4:1', 'G4:1 A4:0.5 G4:1 E4:1', 'D4:3.5']
+          .flatMap((p, i) => seq(p, i * 3.5)) },
+        { name: '鏡', generator: 'imitate', against: '旋律', transform: 'inversion', delay: 3.5, transpose: [-7] },
+      ],
+    },
   };
 
   const cache = {};

@@ -161,10 +161,22 @@
     ];
     const noteTrack = (list, chOf, trackName, withCc) => {
       const events = [{ tick: 0, order: 0, bytes: metaEvent(0x03, textBytes(trackName)) }];
+      // 微分音(cents)の音は、1音ごとにピッチベンドを付ける。同時に鳴る微分音がぶつからないよう、使っていないチャンネルを順に回す
+      // (MPEに似た形。受け側のチャンネルは同じ音色・ベンド幅±2半音にする)。使っていないチャンネルが無ければそのパートのチャンネルを使う
+      const usedCh = new Set(Object.values(channels));
+      const pool = [...Array(16).keys()].filter((c) => c !== 9 && !usedCh.has(c));
+      let poolNext = 0;
       list.forEach((n) => {
-        const ch = chOf(n);
+        let ch = chOf(n);
+        const micro = n.cents && ch !== 9;
+        if (micro) {
+          if (pool.length) ch = pool[poolNext++ % pool.length];
+          const bend = Math.max(0, Math.min(16383, 8192 + Math.round(n.cents * 40.96)));
+          events.push({ tick: t(n.start), order: 1.5, bytes: [0xe0 | ch, bend & 127, (bend >> 7) & 127] });
+        }
         events.push({ tick: t(n.start), order: 2, bytes: [0x90 | ch, n.pitch, n.velocity] });
         events.push({ tick: t(n.start + n.duration), order: 1, bytes: [0x80 | ch, n.pitch, 0] });
+        if (micro) events.push({ tick: t(n.start + n.duration), order: 1.1, bytes: [0xe0 | ch, 0, 64] });
       });
       if (withCc) (m.cc || []).forEach((lane) => lane.points.forEach((p) => events.push({ tick: t(p.beat), order: 3, bytes: [0xb0, lane.controller, p.value] })));
       return events;

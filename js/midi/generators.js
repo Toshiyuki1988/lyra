@@ -1659,6 +1659,200 @@ ${vocabCatalogText()}`,
     },
   });
 
+  /* ================= 音楽史マップ 波6〜7(2026-11-06): スペクトル・ミクロポリフォニー・非可逆リズム・フラクタル・アクサク ================= */
+
+  /** 低い基音(ピッチクラスから C2〜B2 の間) */
+  const lowFundamental = (pc) => 36 + (pc > 11 ? 0 : pc);
+
+  /** スペクトル楽派: 基音の倍音の並びから和音を作る。倍音の音高は平均律の音に cents(±50)のずれを持つ(微分音)。 */
+  register('spectral', {
+    fixed: true, // 乱数を使わない(振り直しても同じ音)
+    label: 'スペクトル',
+    roles: ['harmony'],
+    text: '低い基音の倍音(第k倍音=基音の周波数のk倍)を、下から1つずつ積み上げて和音にする。倍音は平均律の音の間に落ちる微分音(cents のずれ)で、tuning が exact ならそのまま鳴らし、equal なら近い半音に丸める。区間ごとに基音が動き、spectrum で倍音を少し歪ませる(stretched=ピアノ風に広がる/inharmonic=鐘のように不揃い)',
+    params: ['partials', 'hold', 'spectrum', 'tuning', 'step'],
+    paramText: 'partials: 使う倍音の番号(1〜48の整数 4〜16個。例 [1,2,3,4,5,6,7,9,11,13])。hold: 1つのスペクトル(和音)の長さ(拍。4〜16が目安)。spectrum: harmonic(整数倍音)/ stretched(上ほど広がる)/ inharmonic(鐘のような不揃い)。tuning: exact(微分音のまま。ピッチベンドで鳴らす)/ equal(平均律に丸める)。step(倍音が1つずつ入ってくる間隔 拍。0なら同時)',
+    render(ctx, L) {
+      const partials = (L.partials && L.partials.length ? L.partials : [1, 2, 3, 4, 5, 6, 7, 9, 11, 13]).slice().sort((a, b) => a - b);
+      const hold = Math.max(2, Math.min(32, L.hold || 8));
+      const stagger = L.step != null ? Math.max(0, Math.min(hold / partials.length, L.step)) : 0.5;
+      const exact = L.tuning !== 'equal';
+      const spectrum = L.spectrum || 'harmonic';
+      const ratioOf = (k) => {
+        if (spectrum === 'stretched') return k * (1 + 0.012 * (k - 1));
+        if (spectrum === 'inharmonic') return k * (1 + 0.04 * (((k * 37) % 7) - 3) / 3);
+        return k;
+      };
+      // 基音は主音の低い音。区間ごとに [0,-2,3,-5] 半音ずつ動く(スペクトルの移り変わり)
+      let base = lowFundamental(ctx.src.rootAt(0));
+      while (base > 47) base -= 12;
+      const shifts = [0, -2, 3, -5];
+      const out = [];
+      for (let seg = 0, t = 0; t < ctx.total - EPS && seg < 64; seg++, t += hold) {
+        const f0 = base + shifts[seg % shifts.length];
+        const end = Math.min(ctx.total, t + hold);
+        const gain = 0.8 + 0.4 * ctx.tension(t);
+        partials.forEach((k, j) => {
+          const semi = f0 + 12 * Math.log2(ratioOf(k));
+          const pitch = Math.round(semi);
+          if (pitch > 108 || pitch < 24) return;
+          const start = t + j * stagger;
+          if (start >= end - 0.25) return;
+          const velocity = (90 - 11 * Math.log2(k)) * gain;
+          const n = note(pitch, start, end - start, Math.max(28, velocity));
+          if (exact) {
+            const cents = Math.round((semi - pitch) * 100);
+            if (cents) n.cents = cents;
+          }
+          out.push(n);
+        });
+      }
+      return out;
+    },
+  });
+
+  /** ミクロポリフォニー: 同じ緩やかな旋律を、少しずつ遅れ・速さ・オクターブを変えて何本も重ねる(細かいカノンの網) */
+  register('micropoly', {
+    fixed: true, // 乱数を使わない
+    label: 'ミクロポリフォニー',
+    roles: ['texture'],
+    text: '同じ緩やかな旋律(cell)を、strands 本の声が少しずつ遅れて入り、速さを少しずつ違え、オクターブを散らして重ねる。1本1本の旋律は聞き分けられず、細かいカノンの網が1つの塊の質感として聞こえる。声は上・中・下の3つのパートに分かれる',
+    params: ['cell', 'strands', 'delay', 'speeds'],
+    paramText: 'cell: 緩やかな旋律 [{note, duration}] 4〜10音(音価は1〜3拍の長めの音が基本)。strands: 重ねる声の数(3〜24。多いほど塊になる)。delay: 声が入ってくる間隔(拍。0.25〜2が目安)。speeds: 声ごとの速さの比(0.25〜4を4つまで。0.95〜1.08くらいの小さな差が基本)',
+    render(ctx, L) {
+      let cell = (L.cell || []).filter((n) => n.pitch != null);
+      if (cell.length < 2) {
+        const ladder = ctx.src.ladder(0, ctx.range);
+        const mid = Math.floor(ladder.length / 2);
+        cell = [0, 1, 2, 1, 0, -1, 0, 1].map((o, i) => ({ pitch: ladder[Math.max(0, Math.min(ladder.length - 1, mid + o))], duration: i % 3 === 0 ? 2 : 1.5 }));
+      }
+      const strands = Math.max(3, Math.min(24, L.strands || 8));
+      const delay = Math.max(0.25, Math.min(4, L.delay || 0.75));
+      const speeds = L.speeds && L.speeds.length ? L.speeds : [1, 1.03, 0.97, 1.06, 0.94];
+      const octaves = [0, 12, -12];
+      const voices = [[], [], []];
+      for (let s = 0; s < strands; s++) {
+        const speed = speeds[s % speeds.length];
+        const oct = octaves[s % octaves.length];
+        let t = s * delay;
+        for (let k = 0; t < ctx.total - EPS && k < 600; k++) {
+          const c = cell[k % cell.length];
+          const d = c.duration / speed;
+          const p = ctx.src.snap(c.pitch + oct, t);
+          if (p >= 24 && p <= 108) voices[s % 3].push(note(p, t, Math.min(d * 0.98, ctx.total - t), 46 + 14 * ctx.tension(t)));
+          t += d;
+        }
+      }
+      return { voices: voices.filter((v) => v.length), names: ['(上)', '(中)', '(下)'].map((x, i) => (voices[i].length ? x : null)).filter(Boolean) };
+    },
+  });
+
+  /** メシアン: 逆から読んでも同じ(非可逆)リズムに、移調の限られた旋法の音を乗せる */
+  register('palindrome', {
+    fixed: true, // 乱数を使わない
+    label: '非可逆リズム',
+    roles: ['melody'],
+    text: '逆から読んでも同じになる音価の並び(非可逆リズム)を繰り返し、その上に、旋法(移調の限られた旋法など)の音を、リズムとは違う周期で巡らせる。group を書くと、旋法の音を重ねた彩りの和音になる。中央の音に力を込める',
+    params: ['rhythm', 'cell', 'group'],
+    paramText: 'rhythm: 音価の並び(拍。例 [0.5,0.25,1.5]。アプリが逆の並びを後ろに足して、逆から読んでも同じにする)。cell: 巡らせる音(省略すると旋法の音を3度ずつ飛んで巡る)。group: 2〜4にすると、その数の音を旋法の上で重ねた和音で鳴らす',
+    render(ctx, L) {
+      const r = (L.rhythm && L.rhythm.length ? L.rhythm : [0.5, 0.25, 1.5]).map((d) => Math.max(0.125, d * ctx.grainScale));
+      const palin = r.concat(r.slice(0, -1).reverse()); // [a b c] → [a b c b a]
+      const mid = Math.floor(palin.length / 2);
+      const cell = (L.cell || []).filter((n) => n.pitch != null).map((n) => n.pitch);
+      const group = L.group ? Math.max(2, Math.min(4, L.group)) : 0;
+      const out = [];
+      let idx = 0;
+      let k = 0;
+      for (let t = 0; t < ctx.total - EPS && k < 4000; k++) {
+        const d = palin[k % palin.length];
+        const centre = k % palin.length === mid;
+        const ladder = ctx.src.ladder(t, ctx.range);
+        const base = cell.length ? cell[k % cell.length] : ladder[(idx * 3 + 2) % ladder.length];
+        idx += 1;
+        const start = Math.min(d * 0.95, ctx.total - t);
+        const velocity = centre ? 98 : 70 + (k % 3) * 4;
+        if (group) {
+          for (let g = 0; g < group; g++) out.push(note(ctx.src.step(base, g * 2, t), t, start, velocity - g * 4));
+        } else {
+          out.push(note(base, t, start, velocity));
+        }
+        t += d;
+      }
+      return out;
+    },
+  });
+
+  /** フラクタル: 同じ形を、大小いくつもの時間の尺度で重ねる(自己相似・メンスーラ・カノン) */
+  register('fractal', {
+    fixed: true, // 乱数を使わない
+    label: 'フラクタル',
+    roles: ['melody'],
+    text: '1つの形(cell)を、ratio 倍ずつ違う時間の尺度で同時に鳴らす。いちばん遅い声は長い音、いちばん速い声は細かい音で、同じ形が大きさを変えて入れ子のように重なる。遅い声ほど低く、速い声ほど高い。尺度の数は iterations(2〜4)',
+    params: ['cell', 'iterations', 'ratio'],
+    paramText: 'cell: 繰り返す形 [{note, duration}] 3〜8音(いちばん速い声の音価)。iterations: 重ねる尺度の数(2〜4)。ratio: 尺度の比(1.5〜4。2なら1声ごとに倍の長さ)',
+    render(ctx, L) {
+      let cell = (L.cell || []).filter((n) => n.pitch != null);
+      if (cell.length < 2) {
+        const ladder = ctx.src.ladder(0, ctx.range);
+        const mid = Math.floor(ladder.length / 2);
+        cell = [0, 2, 1, 3, 2].map((o) => ({ pitch: ladder[Math.min(ladder.length - 1, mid + o)], duration: 0.5 }));
+      }
+      const n = Math.max(2, Math.min(4, L.iterations || 3));
+      const ratio = Math.max(1.5, Math.min(4, L.ratio || 2));
+      const voices = [];
+      const names = [];
+      for (let j = 0; j < n; j++) {
+        const scale = Math.pow(ratio, n - 1 - j); // j=0 が最も遅い
+        const oct = 12 * (j - Math.floor(n / 2));
+        const voice = [];
+        let t = 0;
+        for (let k = 0; t < ctx.total - EPS && k < 2000; k++) {
+          const c = cell[k % cell.length];
+          const d = c.duration * scale;
+          const p = ctx.src.snap(c.pitch + oct, t);
+          if (p >= 24 && p <= 108) voice.push(note(p, t, Math.min(d * 0.92, ctx.total - t), 66 + 6 * j));
+          t += d;
+        }
+        voices.push(voice);
+        names.push(`(×${Math.round(scale * 100) / 100})`);
+      }
+      return { voices, names };
+    },
+  });
+
+  /** バルトーク: 2と3の不均等な拍(アクサク)の脈動。黄金比の位置(全体の61.8%)に向けて強くなる */
+  register('aksak', {
+    label: 'アクサク',
+    roles: ['figure'],
+    text: '8分音符を 2 と 3 のまとまり(例 2+2+3 の7拍子、3+2+2+3 の10拍子)に分け、まとまりの頭にアクセントを付ける不均等な拍の脈動。音は旋法の狭い範囲を民謡のように動く。強さは全体の黄金比の位置(約61.8%)に向けて高まり、そこが頂点になる',
+    params: ['groups', 'cell'],
+    paramText: 'groups: まとまりの長さ(8分音符の数。2〜4の整数を2〜8個。例 [2,2,3]、[3,2,2,3])。cell: 音の並び(省略すると旋法の中を民謡のように動く。あれば循環して使う)',
+    render(ctx, L) {
+      const groups = (L.groups && L.groups.length ? L.groups : [2, 2, 3]);
+      const cell = (L.cell || []).filter((n) => n.pitch != null).map((n) => n.pitch);
+      const golden = ctx.total * 0.618;
+      const ladder = ctx.src.ladder(0, ctx.range);
+      let pos = Math.floor(ladder.length / 2);
+      const out = [];
+      let t = 0;
+      let k = 0;
+      for (let gi = 0; t < ctx.total - EPS && gi < 2000; gi++) {
+        const g = groups[gi % groups.length];
+        for (let i = 0; i < g && t < ctx.total - EPS; i++, k++) {
+          const lad = ctx.src.ladder(t, ctx.range);
+          pos = Math.max(0, Math.min(lad.length - 1, pos + ctx.rng.pick([-2, -1, -1, 0, 1, 1, 2])));
+          const p = cell.length ? cell[k % cell.length] : lad[pos];
+          const bump = Math.max(0, 1 - Math.abs(t - golden) / (ctx.total * 0.14));
+          const velocity = (i === 0 ? 92 : 62) + 24 * bump;
+          out.push(note(p, t, 0.5 * 0.9, velocity));
+          t += 0.5;
+        }
+      }
+      return out;
+    },
+  });
+
   /* ================= ドラム(ビート。基本の楽典モデル由来) ================= */
 
   const DRUM_MAP = {
