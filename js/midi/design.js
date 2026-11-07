@@ -43,7 +43,7 @@
     partials: ARR(S('INTEGER')), spectrum: S('STRING'), tuning: S('STRING'), strands: S('INTEGER'), ratio: S('NUMBER'), groups: ARR(S('INTEGER')),
     phraseLen: S('NUMBER'), chromatic: S('NUMBER'), triplets: S('NUMBER'),
     speed: S('NUMBER'), drift: S('NUMBER'), swell: S('STRING'),
-    pulses: S('INTEGER'), span: S('INTEGER'), offset: S('INTEGER'), mutation: S('NUMBER'), target: S('STRING'), cohesion: S('NUMBER'), body: S('STRING'), damping: S('NUMBER'),
+    kind: S('STRING'), pulses: S('INTEGER'), span: S('INTEGER'), offset: S('INTEGER'), mutation: S('NUMBER'), target: S('STRING'), cohesion: S('NUMBER'), body: S('STRING'), damping: S('NUMBER'),
     stepsPerBeat: S('INTEGER'), swing: S('NUMBER'), patterns: ARR(OBJ({ section: S('STRING'), rows: DRUM_ROWS, fill: DRUM_ROWS }, ['rows'])),
   };
 
@@ -297,7 +297,7 @@
     if (has('tuning')) L.tuning = /equal|平均/i.test(String(raw.tuning)) ? 'equal' : 'exact';
     if (has('strands')) L.strands = int(raw.strands, 3, 24, 8);
     if (has('ratio')) L.ratio = num(raw.ratio, 1.5, 4, 2);
-    if (has('groups')) L.groups = nums(raw.groups, 2, 4, 8).map(Math.round);
+    if (has('groups')) L.groups = nums(raw.groups, 2, generator === 'tala' ? 7 : 4, generator === 'tala' ? 6 : 8).map(Math.round);
     // 音楽史マップ 近代・戦後の波(2026-11-07): コラージュ(アイヴズ)
     if (has('speed')) L.speed = num(raw.speed, 0.25, 4, 1);
     if (has('drift')) L.drift = num(raw.drift, -0.5, 0.5, 0);
@@ -311,6 +311,8 @@
     if (has('cohesion')) L.cohesion = num(raw.cohesion, 0, 1, 0.6);
     if (has('body')) L.body = pickWord(raw.body, ['pendulum', 'spring'], 'bounce');
     if (has('damping')) L.damping = num(raw.damping, 0, 1, 0.3);
+    // 音楽史マップ 伝統・民族の波(2026-11-08): 嚙み合わせ・ターラ・ラーガ・マカーム・テープの切り貼り(kind は生成器ごとの型の名前)
+    if (has('kind')) L.kind = str(raw.kind, 16).trim().toLowerCase();
     if (has('stepsPerBeat')) L.stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.stepsPerBeat))) ? Math.round(Number(raw.stepsPerBeat)) : 4;
     if (generator === 'drums') L.swing = (L.stepsPerBeat || 4) % 3 === 0 ? 0 : num(raw.swing, 0, 1, 0);
     if (has('patterns')) {

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>確認: 音楽史マップの完成(2026-11-08)</title>
+<style>
+  body { font: 13px/1.6 sans-serif; margin: 16px; }
+  iframe { width: 100%; height: 640px; border: 1px solid #ccc; }
+  pre { white-space: pre-wrap; background: #f6f3ec; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>音楽史マップの完成の確認</h1>
+<p>アプリ(index.html)を下に読み込み、最後の20件(プリセット15・ビート帳5)が、ピッカー・音楽史マップ・お手本の窓・層の説明の文に出るかを確かめる。
+サインイン・Drive・Gemini は使わない(読み込み前の state にだけ触れ、Drive には書かない)。</p>
+<pre id="out">実行中…</pre>
+<iframe id="app" src="../../index.html?check=history-complete"></iframe>
+<script>
+(async function () {
+  const NEW_PRESETS = ['heterophony', 'raga', 'tala', 'maqam', 'kotekan', 'bell_pattern', 'mbira', 'gagaku', 'highlife', 'hocket', 'division', 'rule_of_octave', 'partimento', 'galant_schemata', 'concrete'];
+  const NEW_BEATS = ['iqa', 'motown', 'son_clave', 'cumbia', 'amapiano'];
+  const out = document.getElementById('out');
+  const log = [];
+  const ok = (name, cond, extra) => log.push(`${cond ? 'OK ' : 'NG '} ${name}${extra != null ? ` (${extra})` : ''}`);
+  const frame = document.getElementById('app');
+  await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  const win = frame.contentWindow;
+  const errors = [];
+  win.addEventListener('error', (e) => errors.push(e.message));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 50 && !(win.LyraMidi && win.LyraMidi.pickModel); i++) await wait(100);
+  const doc = win.document;
+  const waitFor = async (fn) => { for (let i = 0; i < 50 && !fn(); i++) await wait(100); return fn(); };
+  try {
+    // 1. ピッカーに15件
+    win.localStorage.removeItem('lyra.modelFilter');
+    win.eval('state.prefs.pinnedModels = []');
+    win.LyraMidi.pickModel('確認');
+    await wait(80);
+    const modal = doc.querySelector('.model-picker');
+    ok('ピッカーが開く', Boolean(modal));
+    const inPicker = NEW_PRESETS.filter((id) => modal.querySelector(`[data-model="${id}"]`));
+    ok('新しいプリセット15件がピッカーに出る', inPicker.length === 15, `${inPicker.length} / 15`);
+    const kidsIcons = NEW_PRESETS.filter((id) => modal.querySelector(`[data-kids="${id}"]`));
+    ok('15件とも子どものアイコンがある', kidsIcons.length === 15, `${kidsIcons.length} / 15`);
+    const demoIcons = NEW_PRESETS.filter((id) => modal.querySelector(`[data-demo="${id}"]`));
+    ok('15件ともお手本のアイコンがある', demoIcons.length === 15, `${demoIcons.length} / 15`);
+
+    // 2. 音楽史マップ: 未作成が無い
+    modal.querySelector('[data-history-map]').click();
+    await waitFor(() => doc.querySelector('.history-map-overlay .history-map-row'));
+    const overlay = doc.querySelector('.history-map-overlay');
+    const rows = [...overlay.querySelectorAll('.history-map-row')];
+    const undone = rows.filter((r) => !r.querySelector('.history-map-done'));
+    ok('地図は212件', rows.length === 212, rows.length);
+    ok('未作成が0件', undone.length === 0, undone.map((r) => r.dataset.historyId).join(','));
+    const beatRows = NEW_BEATS.map((id) => overlay.querySelector(`[data-history-id="${id}"]`));
+    ok('ビート帳の5件が地図に出て、お手本のアイコンがある', beatRows.every((r) => r && r.querySelector('[data-demo]')));
+    overlay.querySelector('[data-history-close]').click();
+    await wait(50);
+    modal.remove();
+
+    // 3. お手本の窓: 全20件が開く・ピアノロールに音が出る・層の説明に「鳴らない生成器」が無い
+    const bad = [];
+    for (const id of [...NEW_PRESETS, ...NEW_BEATS]) {
+      win.LyraMidi.openDemo(id);
+      await wait(60);
+      const demo = doc.querySelector('.demo-overlay');
+      const rects = demo ? demo.querySelectorAll('.demo-roll svg rect').length : 0;
+      const title = demo ? demo.querySelector('h2').textContent : '';
+      const hasKids = demo ? Boolean(demo.querySelector('.demo-kids-text')) : false;
+      if (!demo || rects < 5 || !title || !hasKids) bad.push(`${id}(rect ${rects}, 解説 ${hasKids})`);
+      if (demo) demo.querySelector('[data-close]').click();
+      await wait(30);
+    }
+    ok('20件のお手本の窓が開き、ピアノロールと解説が出る', bad.length === 0, bad.join(' / '));
+    const summaries = [];
+    for (const id of NEW_PRESETS) {
+      const midi = win.LyraDemos.render(id);
+      (midi.design.layers || []).forEach((l) => { const t = win.LyraMidi.paramSummary(l); if (/鳴らない/.test(t) || !t) summaries.push(`${id}/${l.generator}: ${t}`); });
+    }
+    ok('層の説明の文がすべての生成器で出る(「鳴らない生成器」が無い)', summaries.length === 0, summaries.join(' / '));
+    const sample = ['raga', 'tala', 'maqam', 'kotekan', 'hocket', 'concrete'].map((id) => win.LyraMidi.paramSummary(win.LyraDemos.render(id).design.layers[0]));
+    log.push('層の説明の例: ' + sample.join(' // '));
+  } catch (err) {
+    log.push(`NG 例外: ${err.message}`);
+  }
+  ok('画面の読み込みエラーが無い', !errors.length, errors.join(' / '));
+  const ng = log.filter((x) => x.startsWith('NG')).length;
+  out.textContent = `結果: ${ng ? `NG ${ng} 件` : 'すべて OK'}\n` + log.join('\n');
+  out.dataset.done = '1';
+})();
+</script>
+</body>
+</html>

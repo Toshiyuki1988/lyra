@@ -1700,6 +1700,155 @@
         { name: '装飾', generator: 'gesture', gesture: 'grace_ornament', occurrence: 'sparse', role: 'figure', register: 'high' },
       ],
     },
+    /* ---- 音楽史マップ 伝統・民族の波(2026-11-08) ---- */
+    heterophony: {
+      listen: '骨格の旋律を、飾った版(経過音・前打音)と、オクターブ下で半拍遅れて追う声が同時になぞる。拍の頭では3つの声が同じ音に着地し、その間だけ揺れる。和音は無く、ずれと揺れだけで響きが分厚くなる',
+      bars: 8, tempo: 72,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: '骨格の旋律', generator: 'line', role: 'melody', notes: seq('D5:2 F5:1 E5:1 D5:2 A4:2 C5:1 D5:1 E5:2 F5:3 E5:1 D5:2 C5:1 D5:1 A4:2 G4:2 A4:4 D5:4') },
+        { name: '飾った版', generator: 'line', role: 'counter', notes: seq('D5:1.5 E5:0.5 F5:1 E5:0.5 D5:0.5 D5:1 C5:1 A4:1.5 B4:0.5 C5:1 D5:0.5 C5:0.5 E5:1.5 D5:0.5 F5:2 G5:1 F5:0.5 E5:0.5 D5:1.5 E5:0.5 C5:1 D5:1 A4:1 B4:1 G4:1.5 A4:0.5 A4:3 G4:1 A4:1 B4:1 D5:2') },
+        { name: '遅れて追う声', generator: 'imitate', against: '骨格の旋律', delay: 0.5, transpose: [-7] },
+        { name: '装飾', generator: 'gesture', gesture: 'grace_ornament', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    raga: {
+      listen: 'ヤマンの7音で、最初の約5秒は拍の無い長い音(アラープ)。使う高さの幅が少しずつ広がる。続いて一定の拍で上下し(ジョール)、ところどころで特徴句が入り、最後は速い刻みの間に高い主音が挟まる(ジャーラー)。下では主音のドローンが鳴り続け、音は純正律のずれ(微分音。ピッチベンド)',
+      bars: 12, tempo: 100,
+      pitch: { system: 'scale', root: 'D', scale: 'major' },
+      layers: [
+        { name: 'ヤマン', generator: 'raga', kind: 'yaman', tuning: 'exact', step: 0.5 },
+      ],
+    },
+    tala: {
+      listen: '16マートラー(4+4+4+4)の周期。低い声がサム(周期の頭)を強く、3つ目のグループ(カーリー)を弱く、ほかの頭を中くらいに打つ。旋律の句は周期ごとに置く位置が変わり、3周期目は句を上へ移す。4周期目の終わりは、同じ句を3回くり返して、最後の音がちょうど32拍目のサムに着地する(ティハイ)',
+      bars: 10, tempo: 100,
+      pitch: { system: 'scale', root: 'D', scale: 'mixolydian' },
+      layers: [
+        { name: 'ティーンタール', generator: 'tala', groups: [4, 4, 4, 4], step: 0.5, cell: 'D5:0.5 F#5:0.5 A5:0.25 G5:0.25 F#5:0.5' },
+        { name: '持続', generator: 'process', rule: 'drone', cell: 'D3:4', hold: 8, register: 'low' },
+      ],
+    },
+    maqam: {
+      listen: 'バヤーティ(2度が4分音高い旋法)。最初の約3割は主音の上の下のジンスで旋法を示し、5度のガンマーズへ上り、上のジンスで高く歌い、最後は主音へ降りて長い音で終わる。拍は無く、息ごとに休みが入る。4分音はピッチベンドで鳴り、下には主音と5度のドローン',
+      bars: 12, tempo: 100,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: 'バヤーティ', generator: 'maqam', kind: 'bayati', tuning: 'exact', step: 1 },
+      ],
+    },
+    kotekan: {
+      listen: '2人が1音おきに分け合って、1本の速い旋律(16分)を作る。単独で聞くと穴だらけだが、重なると途切れない。低めの層は8分で、周期の長さが違うので、重なり方が毎回ずれる。周期の頭で銅鑼が低く鳴る',
+      bars: 8, tempo: 112,
+      pitch: { system: 'scale', root: 'C', scale: 'slendro' },
+      layers: [
+        { name: '速いコテカン', generator: 'interlock', kind: 'complement', voices: 2, step: 0.25, cell: 'D5:1 F5:1 G5:1 A5:1 G5:1 F5:1 D5:1 C5:1' },
+        { name: '中のコテカン', generator: 'interlock', kind: 'complement', voices: 2, step: 0.5, cell: 'C4:1 D4:1 F4:1 G4:1 A4:1 G4:1' },
+        { name: '銅鑼', generator: 'gesture', gesture: 'bell', occurrence: 'periodic', role: 'ground', register: 'low' },
+      ],
+    },
+    bell_pattern: {
+      listen: '12の枠に7つ打つ標準パターンのベル(高い音)を土台に、3つずつ(4打点)の低い太鼓、4つずつ(3打点)の中くらいの太鼓、5打点の層が重なる。どれも同じ12の周期で走るので、拍が3つの数え方と4つの数え方の両方で聞こえる(3対2のクロスリズム)',
+      bars: 8, tempo: 120,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: 'ベル(7/12)', generator: 'euclid', pulses: 7, span: 12, step: 0.25, offset: 7, cell: 'A5:1 C6:1', register: 'high' },
+        { name: '3つずつ(4/12)', generator: 'euclid', pulses: 4, span: 12, step: 0.25, cell: 'D3:1', register: 'low' },
+        { name: '4つずつ(3/12)', generator: 'euclid', pulses: 3, span: 12, step: 0.25, cell: 'F4:1 A4:1', register: 'mid' },
+        { name: '合いの手(5/12)', generator: 'euclid', pulses: 5, span: 12, step: 0.25, offset: 2, cell: 'E5:1 G5:1 D5:1', register: 'high' },
+      ],
+    },
+    mbira: {
+      listen: '高い層は12音の反復を2人が1音おきに分け合い、低い層は6音の反復を分け合う。どちらも小節線(4拍)と合わない周期(3拍と1.5拍)で回り続けるので、同じ形に戻るまでにずれていく。合わさった時に、どちらも弾いていない旋律が浮かぶ',
+      bars: 8, tempo: 108,
+      pitch: { system: 'scale', root: 'D', scale: 'mixolydian' },
+      layers: [
+        { name: '高いムビラ', generator: 'interlock', kind: 'complement', voices: 2, step: 0.25, cell: 'D5:1 A4:1 F#5:1 A4:1 D5:1 G5:1 F#5:1 D5:1 E5:1 A4:1 C5:1 E5:1' },
+        { name: '低いムビラ', generator: 'interlock', kind: 'complement', voices: 2, step: 0.5, cell: 'D3:1 D3:1 A3:1 G3:1 A3:1 C4:1' },
+        { name: '持続', generator: 'process', rule: 'drone', cell: 'D2:4', hold: 8, register: 'low' },
+      ],
+    },
+    gagaku: {
+      listen: '笙の塊(隣り合う音を6つ重ねた持続和音)が序では細く、破・急へ進むほど厚くなる。篳篥の旋律は序で長く(4拍)、急で短く動き、龍笛が1拍遅れてオクターブ上でなぞる(ヘテロフォニー)。低い鉦鼓が周期で打つ。序破急で、だんだん流れが速くなる',
+      bars: 8, tempo: 66,
+      pitch: { system: 'scale', root: 'D', scale: 'ritsu' },
+      arc: { sections: [sec('序', 1, 2), sec('破', 4, 5), sec('急', 7, 8)] },
+      layers: [
+        { name: '笙', generator: 'cluster', width: 6, rhythm: [8], spread: 0.1, register: 'mid' },
+        { name: '篳篥', generator: 'line', role: 'melody', notes: seq('D5:4 B4:2 A4:2 G4:4 A4:2 B4:1 D5:1 E5:2 D5:1 B4:1 A4:2 G4:1 A4:1 D5:1 E5:0.5 D5:0.5 B4:1 A4:0.5 G4:0.5 A4:1 B4:1 D5:2') },
+        { name: '龍笛', generator: 'imitate', against: '篳篥', delay: 1, transpose: [7] },
+        { name: '鉦鼓', generator: 'gesture', gesture: 'bell', occurrence: 'periodic', role: 'ground', register: 'low' },
+      ],
+    },
+    highlife: {
+      listen: '2本のギターが、和音の構成音を上下する短い音型を1音ずつ受け渡して、きらきらした1本の線にする。下ではベースが根音と5度で跳ね、ドラムは軽快なスイング(キックが1・3拍、リムが3-3-2、ハットが8分)。ハ長調の I・IV・V7',
+      bars: 8, tempo: 116,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 C:4 F:4 F:4 G7:4 G7:4 C:4 C:4') },
+      layers: [
+        { name: '高いギター', generator: 'interlock', kind: 'complement', voices: 2, step: 0.5, cell: 'E5:1 G5:1 C6:1 G5:1 E5:1 A5:1 C6:1 A5:1' },
+        { name: '中のギター', generator: 'interlock', kind: 'complement', voices: 2, step: 0.5, cell: 'C5:1 E5:1 G5:1 E5:1' },
+        { name: 'ベース', generator: 'bass', pattern: 'root-fifth' },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'kick', steps: 'X.......X.......' }, { inst: 'rim', steps: '..x..x..x..x..x.' }, { inst: 'hat', steps: 'x.x.x.x.x.x.x.x.' }] }] },
+      ],
+    },
+    hocket: {
+      listen: '2つの声が、旋律の音を1つずつ交互に受け持つ(1つが歌う間、もう1つは休む)。1つの声だけを聞くと穴だらけの断片で、合わせるとひとつながりの旋律になる。16拍の旋律を2周して、下では D の長い持続音(テノール)が鳴り続ける',
+      bars: 8, tempo: 84,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: 'ホケトゥス', generator: 'interlock', kind: 'alternate', voices: 2, cell: 'D4:1 F4:1 E4:1 D4:1 A4:1 G4:1 F4:1 E4:1 D4:1 F4:1 A4:2 G4:1 F4:1 E4:1 D4:1' },
+        { name: 'テノール', generator: 'process', rule: 'drone', cell: 'D3:4', hold: 8, register: 'low' },
+      ],
+    },
+    division: {
+      listen: '低音(グラウンド)は D・A・Bm・F#m・G・D・A・D と4拍ずつ動く。旋律は、各小節の頭の長い音(骨格)から、16分・8分の順次進行のラン(階段のような音型)を経て、次の音へ着く。小節ごとに型が違い、最後は長い音で主音に着地',
+      bars: 8, tempo: 92,
+      pitch: { system: 'chords', root: 'D', scale: 'major', chords: prog('D:4 A:4 Bm:4 F#m:4 G:4 D:4 A:4 D:4') },
+      layers: [
+        { name: 'グラウンド', generator: 'line', role: 'bass', notes: seq('D3:4 A2:4 B2:4 F#2:4 G2:4 D3:4 A2:4 D3:4') },
+        { name: 'ディヴィジョン', generator: 'line', role: 'melody', notes: seq('A5:1 F#5:0.25 G5:0.25 A5:0.25 B5:0.25 A5:0.5 F#5:0.5 D5:1 C#6:1 B5:0.25 A5:0.25 B5:0.25 C#6:0.25 E6:0.5 C#6:0.5 A5:1 D6:1 C#6:0.25 B5:0.25 A5:0.25 B5:0.25 D6:0.5 B5:0.5 F#5:1 A5:0.5 C#6:0.5 F#6:1 E6:0.25 D6:0.25 C#6:0.25 B5:0.25 C#6:1 B5:1 A5:0.25 G5:0.25 A5:0.25 B5:0.25 D6:0.5 B5:0.5 G5:1 F#5:0.5 A5:0.5 D6:1 C#6:0.25 B5:0.25 A5:0.25 G5:0.25 F#5:1 A5:0.5 C#6:0.5 E6:1 D6:0.25 C#6:0.25 B5:0.25 A5:0.25 B5:1 F#5:2 D5:2') },
+      ],
+    },
+    rule_of_octave: {
+      listen: '低音が C 音階を1オクターヴ上り(C・D・E・F・G・A・B・C)、また下りる。上りの第2度は G7/D(6-4-3)、第4度は Dm7/F、下りの第4度は G7/F(4-2)など、上りと下りで同じ度に別の和音(転回形)が付く。低音がそのまま和音の最低音になる',
+      bars: 8, tempo: 84,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:2 G7/D:2 C/E:2 Dm7/F:2 G:2 F/A:2 G/B:2 C:2 C:2 G/B:2 F/A:2 G:2 G7/F:2 C/E:2 Bdim/D:2 C:2') },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+      ],
+    },
+    partimento: {
+      listen: '低音が5度ずつ下がる(Am7・Dm7・G7・Cmaj7・Fmaj7・Bm7b5・E7・Am)。旋律は、各小節で「3度・5度・7度」を弾き、その7度が次の小節の3度へ半音か全音下がって解決する(7-3の連鎖)。最後の小節で主音に着地',
+      bars: 8, tempo: 80,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am7:4 Dm7:4 G7:4 Cmaj7:4 Fmaj7:4 Bm7b5:4 E7:4 Am:4') },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'arpeggio', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '上の声', generator: 'line', role: 'melody', notes: seq('C5:1 E5:1 G5:2 F5:1 A5:1 C6:2 B4:1 D5:1 F5:2 E5:1 G5:1 B5:2 A4:1 C5:1 E5:2 D5:1 F5:1 A5:2 G#5:1 B5:1 D6:2 C6:1 B5:1 A5:2') },
+      ],
+    },
+    galant_schemata: {
+      listen: '8拍ずつ4つの型がつながる。プリンナー(旋律 A-G-F-E と低音 F-E-D-C の下行)→ フォンテ(A7→Dm、G7→C と2度ずつ下がる連鎖)→ モンテ(C7→F、D7→G と2度ずつ上がる連鎖)→ 終止(G7→C)。型の和声と、旋律と低音の組み合わせが聞こえる',
+      bars: 8, tempo: 100,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('F:2 C/E:2 G7/D:2 C:2 A7:2 Dm:2 G7:2 C:2 C7:2 F:2 D7:2 G:2 G7:4 C:4') },
+      layers: [
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('A5:2 G5:2 F5:2 E5:2 G5:2 F5:2 F5:2 E5:2 Bb5:2 A5:2 C6:2 B5:2 D6:4 C6:4') },
+        { name: '低音', generator: 'line', role: 'bass', notes: seq('F3:2 E3:2 D3:2 C3:2 A2:2 D3:2 G2:2 C3:2 C3:2 F3:2 D3:2 G3:2 G2:4 C3:4') },
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'mid' },
+      ],
+    },
+    concrete: {
+      listen: '6〜7音の短い素材(テープ)を、2人が別々に切り貼りする。断片は、前から・逆回し・先頭2音のループ・無音。再生の速度で音の高さと長さが一緒に変わる(×0.5=1オクターブ下で2倍の長さ、×2=1オクターブ上で半分、×0.9 や ×1.2 は微分音のずれ)。真ん中の区間ほど断片が短く細かい',
+      bars: 8, tempo: 100,
+      pitch: { system: 'free', root: 'C', scale: 'major' },
+      arc: { sections: [sec('導入', 1, 3), sec('切り貼り', 3, 8), sec('余韻', 7, 2)] },
+      layers: [
+        { name: 'テープA', generator: 'tapecut', voices: 2, step: 0.25, speeds: [1, 0.5, 2, 0.9], cell: 'C4:0.5 E4:0.5 G4:1 D4:0.5 F#4:0.5 A4:1 B3:1' },
+        { name: 'テープB', generator: 'tapecut', voices: 2, step: 0.25, speeds: [1, 1.2, 0.5], cell: 'G5:0.25 E5:0.25 C5:0.5 A5:0.25 F5:0.25 D5:0.5' },
+        { name: '異物', generator: 'gesture', gesture: 'chromatic_flourish', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
   };
 
   const cache = {};

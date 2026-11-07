@@ -2312,6 +2312,347 @@ ${vocabCatalogText()}`,
     },
   });
 
+  /* ================= 音楽史マップ 伝統・民族の波(2026-11-08): 嚙み合わせ・ターラ・ラーガ・マカーム・テープの切り貼り ================= */
+
+  /** 純正律の音程(Sa からの半音の数 → 平均律とのずれ cents)。短3度=6/5・長3度=5/4・完全4度=4/3・完全5度=3/2・長6度=5/3 など、整数比の音 */
+  const JUST_CENTS = [0, 12, 4, 16, -14, -2, -10, 2, 14, -16, -4, -12];
+  /** 4分音を含む音程(主音からの cents、例 350)→ { semi(最も近い半音), cents(そこからのずれ -50〜50) } */
+  const centsPitch = (c) => { const semi = Math.round(c / 100); return { semi, cents: Math.round(c - semi * 100) }; };
+
+  /**
+   * 嚙み合わせ(ホケトゥス・ガムランのコテカン・ムビラ・ハイライフのギター): 1本の線を複数の奏者で分け合い、1人ずつは休みだらけなのに、合わせると1本の線が聞こえる。
+   */
+  register('interlock', {
+    label: '嚙み合わせ',
+    roles: ['figure'],
+    text: '1本の旋律(cell)を、voices 人の奏者で分け合って弾く。kind が alternate なら、旋律の音を1音ずつ順番に奏者へ配る(ホケトゥス。1人は歌っては休み、休みの所を別の奏者が埋める)。complement なら、cell の音を step の速さで絶え間なく循環させ、奏者が1枠ずつ交代で弾く(ガムランのコテカン・ムビラ・ハイライフのギター)。奏者を単独で聞くと穴だらけだが、合わせると1本の線になり、周期の頭は強く鳴る',
+    params: ['cell', 'kind', 'voices', 'step'],
+    paramText: 'cell: 分け合う旋律 [{note, duration}] 4〜16音(alternate は長さをそのまま使う。complement は長さを使わず、音の並びだけを循環させる)。kind: alternate(順番に配る)/ complement(1枠ずつ交代)。voices: 奏者の数(2〜4)。step: complement の1枠の拍(0.125〜0.5。0.25 が基本)',
+    render(ctx, L) {
+      const cell = (L.cell || []).filter((n) => n.pitch != null);
+      if (cell.length < 2) return { voices: [] };
+      const players = Math.max(2, Math.min(4, L.voices || 2));
+      const alternate = L.kind === 'alternate';
+      const step = Math.max(0.125, Math.min(1, L.step || 0.25));
+      const out = Array.from({ length: players }, () => []);
+      let t = 0;
+      for (let k = 0; t < ctx.total - EPS && k < 8000; k++) {
+        const n = cell[k % cell.length];
+        const head = k % cell.length === 0;
+        const ten = ctx.tension(t);
+        const d = alternate ? n.duration : step;
+        const v = k % players;
+        out[v].push(note(ctx.src.snap(n.pitch, t), t, Math.min(alternate ? d * 0.92 : step * 1.25, ctx.total - t), (head ? 98 : 74) + 14 * (ten - 0.5) - v * 3));
+        t += d;
+      }
+      return { voices: out, names: out.map((x, i) => ` ${String.fromCharCode(65 + i)}`), markers: [{ beat: 0, label: alternate ? 'ホケトゥス' : '嚙み合わせ' }] };
+    },
+  });
+
+  /**
+   * ターラ(インドの拍の周期): 決まった数の拍(マートラー)が、グループに分かれて周期を作る。周期の頭(サム)へ着地する。
+   * 4周期ごとの最後には、同じ句を3回くり返してサムにちょうど着地するティハイを置く。
+   */
+  register('tala', {
+    fixed: true, // 乱数を使わない(周期と着地の決まり)
+    label: 'ターラ',
+    roles: ['figure'],
+    text: 'groups の数ずつ拍(マートラー)を区切った周期(例 [4,4,4,4]=ティーンタール16拍、[2,3,2,3]=ジャプタール10拍、[3,2,2]=ルーパク7拍)を繰り返す。2つの声: 拍の声(周期の頭=サムは強く、中ほどのグループ=カーリーは弱く、ほかの頭は中くらい。マートラーごとに小さな点)と、旋律の声(cell の句を周期ごとに置く)。周期ごとに句の位置を変え、3周期目は句を上へ移して変奏し、4周期ごとの最後にティハイ(句を3回くり返して、最後の音がちょうど次のサムに着地する)を置く',
+    params: ['cell', 'groups', 'step'],
+    paramText: 'cell: 旋律の句 [{note, duration}] 3〜8音(合計の長さが周期の半分以下)。groups: 周期のグループの拍の数の並び(2〜7の整数 2〜6個。例 [4,4,4,4]・[2,3,2,3]・[3,2,2]・[3,3])。step: 1マートラー(拍)の長さ(0.25〜2。0.5 が基本)',
+    render(ctx, L) {
+      const groups = (L.groups && L.groups.length ? L.groups : [4, 4, 4, 4]).slice(0, 6);
+      const step = Math.max(0.25, Math.min(2, L.step || 0.5));
+      const matras = groups.reduce((a, b) => a + b, 0);
+      const cycle = matras * step;
+      const khali = groups.length > 2 ? Math.floor(groups.length / 2) : -1;
+      const keep0 = 36 + mod12(ctx.src.rootAt(0) - 36);
+      const phrase = (L.cell || []).filter((n) => n.pitch != null);
+      const P = phrase.reduce((a, n) => a + n.duration, 0);
+      const lastDur = phrase.length ? phrase[phrase.length - 1].duration : 0;
+      const keep = [];
+      const melody = [];
+      const markers = [];
+      const cycles = Math.ceil(ctx.total / cycle);
+      for (let c = 0; c < cycles; c++) {
+        const t0 = c * cycle;
+        let m = 0;
+        groups.forEach((g, gi) => {
+          for (let j = 0; j < g; j++, m++) {
+            const t = t0 + m * step;
+            if (t >= ctx.total - EPS) continue;
+            if (j === 0) keep.push(note(gi === 0 ? keep0 : gi === khali ? keep0 + 7 : keep0 + 12, t, step * 0.9, gi === 0 ? 108 : gi === khali ? 40 : 82));
+            else keep.push(note(keep0 + 19, t, step * 0.5, 34));
+          }
+        });
+        if (c < 8) markers.push({ beat: t0, label: 'サム' });
+        if (!phrase.length) continue;
+        const nextSam = t0 + cycle;
+        const place = (start, from, vel0) => {
+          let u = start;
+          phrase.forEach((n, i) => {
+            if (u < ctx.total - EPS) melody.push(note(ctx.src.snap(n.pitch + from, u), u, Math.min(n.duration * 0.92, ctx.total - u), (i === 0 ? vel0 + 8 : vel0) + 10 * (ctx.tension(u) - 0.5)));
+            u += n.duration;
+          });
+        };
+        if (c % 4 === 3) {
+          // ティハイ: 句を3回くり返し、3回目の最後の音が次のサムに着地する
+          let gap = step;
+          let begin = nextSam - (3 * P + 2 * gap - lastDur);
+          if (begin < t0) { gap = 0; begin = nextSam - (3 * P - lastDur); }
+          if (begin >= t0 - EPS) {
+            for (let r = 0; r < 3; r++) place(begin + r * (P + gap), 0, 86);
+            markers.push({ beat: begin, label: 'ティハイ' });
+            continue;
+          }
+        }
+        const offsets = [0, groups[0] * step, 0, (groups[0] + (groups[1] || 0)) * step];
+        let off = offsets[c % 4];
+        if (off + P > cycle) off = 0;
+        place(t0 + off, c % 4 === 2 ? 5 : 0, 78); // 3周期目は、句を5半音上へ移して(音階の近い音に)変奏する
+        if (off + cycle / 2 + P <= cycle + EPS) place(t0 + off + cycle / 2, 0, 66); // 周期の後半(カーリーの先)にも、もう1回
+      }
+      return { voices: [keep, melody], names: ['(拍)', '(旋律)'], markers };
+    },
+  });
+
+  /** ラーガ(Hindustani)の表: scale は Sa からの半音の数(7音)。vadi は主役の音(半音の数)。pakad はそのラーガらしい特徴句の目安(半音の数。負は Sa の下)。伝統の厳密な定義ではなく、この生成器が使う目安の型 */
+  const RAGAS = {
+    yaman: { label: 'ヤマン', scale: [0, 2, 4, 6, 7, 9, 11], vadi: 4, pakad: [-1, 2, 4, 2, 0] },
+    bhairav: { label: 'バイラヴ', scale: [0, 1, 4, 5, 7, 8, 11], vadi: 8, pakad: [4, 5, 4, 1, 0] },
+    bhairavi: { label: 'バイラヴィ', scale: [0, 1, 3, 5, 7, 8, 10], vadi: 5, pakad: [3, 5, 3, 1, 0] },
+    todi: { label: 'トーディー', scale: [0, 1, 3, 6, 7, 8, 11], vadi: 8, pakad: [3, 1, 3, 0] },
+    darbari: { label: 'ダルバーリー', scale: [0, 2, 3, 5, 7, 8, 10], vadi: 2, pakad: [3, 2, 0, -2, 0] },
+  };
+
+  /**
+   * ラーガ: ゆっくりした導入(アラープ。拍が無く、音を1つずつ足していく)→ 一定の拍で動く(ジョール)→ 速い刻みと主音の往復(ジャーラー)。
+   * 主音(Sa)のドローン(タンプーラ)を下に置く。音は純正律(整数比の音程)で、平均律からわずかにずれる(微分音。cents)。
+   */
+  register('raga', {
+    label: 'ラーガ',
+    roles: ['melody'],
+    text: 'kind のラーガの7音で、時間の流れに沿って3つの局面を歩む。アラープ(最初の約4割。拍が無く、長い音を1つずつ、使う高さの幅を少しずつ広げる)→ ジョール(次の約3.5割。一定の拍で、主役の音(ヴァーディ)に重心を置いて上下し、ところどころでそのラーガの特徴句(cell)を置く)→ ジャーラー(最後。速い刻みで、音の間に高い主音を挟み続ける)。下にはタンプーラ(Pa・Sa・Sa・低いSa)のドローン。tuning が exact なら音程を純正律のずれ(cents)で鳴らす(ピッチベンド)。最後は主音に着地する',
+    params: ['kind', 'cell', 'tuning', 'step'],
+    paramText: 'kind: yaman / bhairav / bhairavi / todi / darbari のいずれか(Sa を主音とする7音)。cell: 特徴句 [{note, duration}] 3〜6音(省略するとラーガごとの目安の句)。tuning: exact(純正律の微分音。ピッチベンドで鳴らす)/ equal(平均律)。step: ジョールの1拍の長さ(0.25〜1。0.5 が基本)',
+    render(ctx, L) {
+      const raga = RAGAS[L.kind] || RAGAS.yaman;
+      const exact = L.tuning !== 'equal';
+      const sa = 48 + mod12(ctx.src.rootAt(0) - 48); // 主音(C3〜B3の間)
+      const base = sa + 12;
+      const offs = [];
+      [-12, 0, 12, 24].forEach((o) => raga.scale.forEach((d) => offs.push(o + d)));
+      const idx0 = offs.indexOf(0);
+      const at = (i) => offs[Math.max(0, Math.min(offs.length - 1, i))];
+      const mk = (off, t, d, v) => {
+        const n = note(base + off, t, d, v);
+        const c = exact ? JUST_CENTS[mod12(off)] : 0;
+        if (c) n.cents = c;
+        return n;
+      };
+      const own = (L.cell || []).filter((n) => n.pitch != null);
+      const pakad = own.length >= 3
+        ? own.map((n) => ({ off: n.pitch - base, d: n.duration }))
+        : raga.pakad.map((o, i, a) => ({ off: o, d: i === a.length - 1 ? 1.5 : 0.5 }));
+      const rng = ctx.rng;
+      const out = [];
+      const markers = [{ beat: 0, label: `${raga.label}:アラープ` }];
+      const step = Math.max(0.25, Math.min(1, L.step || 0.5));
+      const alapEnd = ctx.total * 0.4;
+      const jorEnd = ctx.total * 0.75;
+      const vadiIdx = offs.indexOf(raga.vadi);
+      // アラープ: 使う幅を少しずつ広げる。長い音を1つずつ
+      let i = idx0;
+      let t = 0;
+      let k = 0;
+      while (t < alapEnd - EPS && k < 200) {
+        const progress = t / alapEnd;
+        const reach = idx0 + 1 + Math.floor(progress * 7);
+        const target = rng.chance(0.3) ? idx0 : rng.chance(0.35) ? vadiIdx : null;
+        if (target != null && target <= reach) i = target;
+        else i = Math.max(idx0 - 1, Math.min(reach, i + rng.pick([-2, -1, -1, 1, 1, 2])));
+        const d = rng.pick([2, 3, 4, 6]);
+        out.push(mk(at(i), t, d * 0.97, 60 + 14 * progress + (at(i) === raga.vadi ? 8 : 0)));
+        t += d;
+        k++;
+      }
+      markers.push({ beat: t, label: 'ジョール' });
+      // ジョール: 拍の中で上下する。8音ごとに特徴句
+      let run = 0;
+      while (t < jorEnd - EPS && k < 2000) {
+        if (run >= 8) {
+          pakad.forEach((p, j) => {
+            if (t < jorEnd - EPS) out.push(mk(p.off, t, p.d * 0.9, 88 + (j === 0 ? 6 : 0)));
+            t += p.d;
+          });
+          run = 0;
+          i = idx0 + rng.pick([0, 1, 2]);
+          continue;
+        }
+        const pull = rng.chance(0.3) ? Math.sign(vadiIdx - i) : 0;
+        i = Math.max(idx0 - 2, Math.min(idx0 + 9, i + (pull || rng.pick([-1, -1, 1, 1, 2, -2]))));
+        out.push(mk(at(i), t, step * 0.92, 74 + (run % 4 === 0 ? 8 : 0) + 10 * (ctx.tension(t) - 0.5)));
+        t += step;
+        run++;
+        k++;
+      }
+      markers.push({ beat: t, label: 'ジャーラー' });
+      // ジャーラー: 速い刻みで、間に高い主音(チカリ)を挟む
+      const fast = step / 2;
+      let toggle = 0;
+      while (t < ctx.total - 3 - EPS && k < 4000) {
+        if (toggle % 2 === 1) out.push(mk(12, t, fast * 0.9, 96));
+        else {
+          i = Math.max(idx0, Math.min(idx0 + 11, i + rng.pick([-1, 1, 1, 2])));
+          out.push(mk(at(i), t, fast * 0.92, 86 + (toggle % 8 === 0 ? 10 : 0)));
+        }
+        toggle++;
+        t += fast;
+        k++;
+      }
+      out.push(mk(0, t, Math.max(0.5, ctx.total - t), 100)); // 主音への着地
+      // タンプーラ: Pa・Sa・Sa・低いSa(4拍ごと)
+      const drone = [];
+      for (let u = 0; u < ctx.total - EPS; u += 4) {
+        [[7, 0], [12, 1], [12, 2], [0, 3]].forEach(([semi, at1]) => {
+          if (u + at1 < ctx.total - EPS) {
+            const n = note(sa - 12 + semi, u + at1, 3.6, 42);
+            const c = exact ? JUST_CENTS[mod12(semi)] : 0;
+            if (c) n.cents = c;
+            drone.push(n);
+          }
+        });
+      }
+      return { voices: [out, drone], names: ['(旋律)', '(タンプーラ)'], markers };
+    },
+  });
+
+  /** マカームの表: cents は主音からの音程(100=半音。350 のように半音の間に落ちる音=4分音を持つ)。 */
+  const MAQAMS = {
+    rast: { label: 'ラスト', cents: [0, 200, 350, 500, 700, 900, 1050] },
+    bayati: { label: 'バヤーティ', cents: [0, 150, 300, 500, 700, 800, 1000] },
+    hijaz: { label: 'ヒジャーズ', cents: [0, 100, 400, 500, 700, 800, 1000] },
+    nahawand: { label: 'ナハーワンド', cents: [0, 200, 300, 500, 700, 800, 1000] },
+  };
+
+  /**
+   * マカーム: 音階を上り下りするのではなく、短い音の連なり(ジンス)をつないで歩む。主音の上のジンスから始め、5度の音(ガンマーズ)へ上り、
+   * 上のジンスで高く歌い、主音へ降りて終わる。4分音(半音と全音の間)は、cents のずれで鳴る(ピッチベンド)。拍は決まっておらず、息の長さで区切る(タクスィーム)。
+   */
+  register('maqam', {
+    label: 'マカーム',
+    roles: ['melody'],
+    text: 'kind のマカームの音(主音の上の7音)を歩く、拍の決まっていない旋律(タクスィーム)。主音を含む下のジンス(4音)を歌って旋法を示し(最初の約3割)、5度のガンマーズへ上って重心を移し、上のジンスで高く歌い(次の約3割)、ガンマーズから主音へ降りて(最後の約3割)、主音の長い音で終わる。音ごとに、息の長さで区切る休みが入る。4分音は cents のずれで鳴る(tuning が equal なら近い半音に丸める)。下にドローン(主音と5度)',
+    params: ['kind', 'tuning', 'step'],
+    paramText: 'kind: rast / bayati / hijaz / nahawand のいずれか(主音からの7音)。tuning: exact(4分音のまま。ピッチベンドで鳴らす)/ equal(近い半音に丸める)。step: 音の長さの基準(拍。0.5〜2。1 が基本。実際は 0.5〜2 倍でゆらぐ)',
+    render(ctx, L) {
+      const maqam = MAQAMS[L.kind] || MAQAMS.rast;
+      const exact = L.tuning !== 'equal';
+      const tonic = 48 + mod12(ctx.src.rootAt(0) - 48);
+      const base = tonic + 12;
+      const deg = [];
+      [-1, 0, 1].forEach((o) => maqam.cents.forEach((c) => deg.push(c + o * 1200)));
+      const idx0 = maqam.cents.length; // 主音(0 cents)の添字
+      const unit = Math.max(0.5, Math.min(2, L.step || 1));
+      const rng = ctx.rng;
+      const mk = (i, t, d, v) => {
+        const c = deg[Math.max(0, Math.min(deg.length - 1, i))];
+        const p = centsPitch(c);
+        const n = note(base + p.semi, t, d, v);
+        if (exact && p.cents) n.cents = p.cents;
+        return n;
+      };
+      const out = [];
+      const markers = [{ beat: 0, label: `${maqam.label}:下のジンス` }];
+      const phases = [
+        { until: 0.3, lo: idx0 - 1, hi: idx0 + 3, goal: idx0 + 2, label: null },
+        { until: 0.6, lo: idx0 + 1, hi: idx0 + 5, goal: idx0 + 4, label: '上へ' },
+        { until: 0.9, lo: idx0 + 2, hi: idx0 + 7, goal: idx0 + 5, label: '上のジンス' },
+        { until: 1.01, lo: idx0, hi: idx0 + 4, goal: idx0, label: '降りる' },
+      ];
+      let i = idx0;
+      let t = 0;
+      let k = 0;
+      let last = -1;
+      while (t < ctx.total - 3 - EPS && k < 800) {
+        const p = t / ctx.total;
+        const pi = phases.findIndex((x) => p < x.until);
+        const ph = phases[pi < 0 ? phases.length - 1 : pi];
+        if (pi !== last) {
+          if (ph.label) markers.push({ beat: t, label: ph.label });
+          last = pi;
+        }
+        const down = pi === 3 ? -1 : 1;
+        i = Math.max(ph.lo, Math.min(ph.hi, i + (rng.chance(0.4) ? Math.sign(ph.goal - i) : rng.pick([-1, 1, 1, -1, down]))));
+        const d = unit * rng.pick([0.5, 0.5, 1, 1, 1.5, 2]);
+        out.push(mk(i, t, d * 0.95, 68 + (i === ph.goal ? 14 : 0) + 8 * (ctx.tension(t) - 0.5)));
+        t += d + (rng.chance(0.18) ? unit * rng.pick([0.5, 1, 2]) : 0); // 息つぎ
+        k++;
+      }
+      out.push(mk(idx0, t, Math.max(1, ctx.total - t), 96)); // 主音の長い音で終わる
+      const drone = [];
+      for (let u = 0; u < ctx.total - EPS; u += 6) {
+        drone.push(note(tonic - 12, u, 5.8, 40));
+        drone.push(note(tonic - 5, u, 5.8, 32));
+      }
+      return { voices: [out, drone], names: ['(旋律)', '(ドローン)'], markers };
+    },
+  });
+
+  /**
+   * テープの切り貼り(ミュジーク・コンクレート): 短い音の素材(テープ)から、はさみで切った断片を、前から・逆から・速度を変えて・くり返して、次々につなぐ。
+   * テープの速度を変えると音の高さも長さも一緒に変わる(速度を2倍にすると1オクターブ上がり、長さは半分になる)。
+   */
+  register('tapecut', {
+    label: 'テープの切り貼り',
+    roles: ['figure'],
+    text: '短い音の素材(cell。テープ)を、はさみで切った断片(2音以上)にして、順に貼り合わせる。断片は、前からそのまま・逆から(逆回し)・先頭の2音を3回くり返す(ループ)・無音(切って捨てる)のどれか。断片ごとに再生の速度(speeds から選ぶ)が変わり、速度に応じて音の高さと長さが一緒に変わる(×2=1オクターブ上で半分の長さ、×0.5=1オクターブ下で2倍。2倍や半分でない速度は微分音のずれ=cents になる)。緊張が高い所ほど断片が短く、切り貼りが細かくなる。voices 人がそれぞれ別の切り方で同じテープを使う',
+    params: ['cell', 'speeds', 'voices', 'step'],
+    paramText: 'cell: テープ(素材)の音 [{note, duration}] 4〜8音。speeds: 使う再生速度の並び(0.25〜4の数 2〜4個。例 [1, 0.5, 2, 0.75])。voices: 同じテープを切り貼りする人の数(2〜3)。step: 断片の間の切れ目の目安(拍。0〜1。0.25 が基本)',
+    render(ctx, L) {
+      const tape = (L.cell || []).filter((n) => n.pitch != null);
+      if (tape.length < 3) return { voices: [] };
+      const speeds = L.speeds && L.speeds.length ? L.speeds : [1, 0.5, 2, 0.75];
+      const players = Math.max(1, Math.min(3, L.voices || 2));
+      const gapMax = Math.max(0, Math.min(1, L.step != null ? L.step : 0.25));
+      const out = [];
+      for (let v = 0; v < players; v++) {
+        const rng = T.rng(T.mixSeed(ctx.rng.int(1, 1e9), v));
+        const notes = [];
+        let t = v === 0 ? 0 : rng.pick([0.5, 1, 1.5]);
+        for (let k = 0; t < ctx.total - EPS && k < 400; k++) {
+          const ten = ctx.tension(t);
+          const op = rng.pick(['forward', 'forward', 'reverse', 'loop', 'silence']);
+          if (op === 'silence') { t += rng.pick([0.5, 1, 1.5]); continue; }
+          const len = Math.max(2, Math.min(tape.length, Math.round(rng.between(2, tape.length - 0.5 * ten * tape.length))));
+          const from = rng.int(0, tape.length - len);
+          let slice = tape.slice(from, from + len);
+          if (op === 'reverse') slice = slice.slice().reverse();
+          if (op === 'loop') slice = [...slice.slice(0, 2), ...slice.slice(0, 2), ...slice.slice(0, 2)];
+          const speed = speeds[rng.int(0, speeds.length - 1)];
+          const semitones = 12 * Math.log2(speed);
+          const shift = Math.round(semitones);
+          const cents = Math.round((semitones - shift) * 100);
+          slice.forEach((n, j) => {
+            let p = n.pitch + shift;
+            while (p > 100) p -= 12;
+            while (p < 30) p += 12;
+            const d = n.duration / speed;
+            if (t < ctx.total - EPS) {
+              const nn = note(p, t, Math.min(d * 0.95, ctx.total - t), (j === 0 ? 90 : 72) + 14 * (ten - 0.5) + (op === 'reverse' ? -6 : 0));
+              if (cents) nn.cents = cents;
+              notes.push(nn);
+            }
+            t += d;
+          });
+          t += gapMax ? rng.pick([0, gapMax, gapMax * 2]) : 0;
+        }
+        out.push(notes);
+      }
+      return { voices: out, names: out.map((x, i) => ` ${i + 1}`), markers: [{ beat: 0, label: 'テープ' }] };
+    },
+  });
+
   /* ================= ドラム(ビート。基本の楽典モデル由来) ================= */
 
   const DRUM_MAP = {

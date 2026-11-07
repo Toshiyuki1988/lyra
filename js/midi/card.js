@@ -67,6 +67,16 @@
       case 'genetic': return `動機 ${cellNames(l.cell)} を進化させる · 目標 ${{ smooth: '滑らか', leaping: '跳躍', arch: '山型', wave: 'うねり' }[l.target || 'smooth']} · 突然変異 ${Math.round((l.mutation != null ? l.mutation : 0.2) * 100)}%`;
       case 'boids': return `${l.strands || 5}羽の群れ · まとまり ${Math.round((l.cohesion != null ? l.cohesion : 0.6) * 100)}% · ${l.step || 0.25}拍ごと`;
       case 'physics': return `${{ bounce: '弾むボール', pendulum: '振り子', spring: 'バネ' }[l.body || 'bounce']} · 減衰 ${Math.round((l.damping != null ? l.damping : 0.3) * 100)}%`;
+      case 'imitate': return `${l.against ? `「${l.against}」を` : '元の旋律を'}${l.delay || 0}拍遅れで追う${(l.transpose || []).length ? ` · 音階で ${l.transpose.join('/')} 段` : ''}${l.transform && l.transform !== 'none' ? ` · ${{ inversion: '反行', retrograde: '逆行', augmentation: '拡大', diminution: '縮小' }[l.transform] || l.transform}` : ''}`;
+      case 'fluct': return `${{ white: '白色(ばらばら)', pink: '1/fゆらぎ(ピンク)', brown: 'ブラウン(なめらか)' }[l.noise || 'pink'] || '1/fゆらぎ'}ノイズ · 休み ${Math.round((l.rests != null ? l.rests : 0.2) * 100)}% · 1音${l.step || 0.5}拍`;
+      case 'interlock': return `${l.voices || 2}人で${l.kind === 'alternate' ? '1音ずつ交代(ホケトゥス)' : `1枠${l.step || 0.25}拍ずつ交代`} · 旋律 ${cellNames(l.cell)}`;
+      case 'tala': {
+        const g = l.groups && l.groups.length ? l.groups : [4, 4, 4, 4];
+        return `ターラ ${g.join('+')}(${g.reduce((a, b) => a + b, 0)}マートラー) · 1拍${l.step || 0.5} · 句 ${cellNames(l.cell)}`;
+      }
+      case 'raga': return `ラーガ「${l.kind || 'yaman'}」· アラープ→ジョール→ジャーラー · ${l.tuning === 'equal' ? '平均律' : '純正律の微分音'}`;
+      case 'maqam': return `マカーム「${l.kind || 'rast'}」· 拍の無いタクスィーム · ${l.tuning === 'equal' ? '近い半音に丸める' : '4分音(微分音)'}`;
+      case 'tapecut': return `テープ ${cellNames(l.cell)} を切り貼り · 速さ ×${(l.speeds && l.speeds.length ? l.speeds : [1, 0.5, 2, 0.75]).join('/')} · ${l.voices || 2}人`;
       case 'groove': {
         const B = window.LyraBeatbook;
         const mdl = B && B.byId(l.model);
