@@ -411,6 +411,18 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - 旋律・主題・動機はすべてお手本の中で新しく書いた。参照曲は Claude Code が記憶から書いたもので、未監修(`worksChecked` なし)
 - 確かめたこと(Node): 12件のお手本の層がすべて鳴る・旋律が小節数ぴったり・今までのお手本99件の音符が変わらない(ハッシュ一致)。耳での確認・ブラウザーでの確認は未確認
 
+## 音楽史マップ 残りの P の35件(2026-11-07)
+- ユーザー依頼「残りのPの波も続けて作って、pushまで」。地図で tier が P の未作成プリセット35件を、生成器を足さずに作った
+  (伝統・中世〜バロック: call_response・organum_melismatic・rhythmic_modes・madrigalism・pavane_galliard・monody・ritornello・dance_suite・toccata・french_overture / 日本: shomyo・shakuhachi_honkyoku /
+  ジャズ: new_orleans・big_band・hard_bop・free_jazz・fusion・ecm / ポピュラー: gospel・aaba・rocknroll・power_ballad・folk・prog・metal・shoegaze・post_rock /
+  ラテン・アフロ: tango・salsa・dub / 電子音楽: eno_loops・acid・synthwave・vaporwave・hyperpop)。ピッカーの見出しに「ラテン・アフロ」が増えた
+- 使った生成器は line・chords・bass・drums・imitate・ostinato・gesture のみ。層の `active`(区間ごとの出入り)は、ダブ(楽器の抜き差し)・パワーバラード(高まりから楽器が増える)・ポストロック(漸増)で使った
+- 試聴の音色(`voice`)は play.js の VOICES にあるもの(flute・piano・epiano・vibes・guitar・strings・pad・synth)だけを使う。ハープシコード・合唱・オルガン・尺八は無いので、それぞれ piano・pad・pad・flute で代用した
+- 地図の「ダブ」の説明にあった「エコー」(ディレイ)は、MIDI では作れないので入れていない(楽器の抜き差しとワン・ドロップだけ)。AABA は32小節を4小節単位の16小節に縮めた。サルサのクラーベは1小節に収まる3側だけ(3-2 の2小節の型ではない)。声明・尺八の「揺れ」(ユリ・メリ)は、ピッチ・ベンドを使わず、隣の音への短い飾りで近似した
+- 地図の P 分類のうち、kind が `beat`(ビート帳。iqa・son_clave・cumbia・amapiano・motown など)は、プリセットではなくビート帳に足すものなので、この波には含めていない
+- 旋律・主題・リフはすべてお手本の中で新しく書いた。参照曲は Claude Code が記憶から書いたもので、未監修(`worksChecked` なし)
+- 確かめたこと(Node): 35件のお手本の層がすべて鳴る(`active` の層は指定した区間だけ鳴る)・旋律が小節数ぴったり(変拍子は 34 拍・52 拍など)・今までのお手本111件の音符が前のコミットと完全に同じ。耳での確認・ブラウザーでの画面確認は未確認
+
 ## モデルのピン留めと絞り込み(2026-11-07)
 - ユーザー要望「モデルにピン留め機能をつけて、フィルタリングしたい」。モデルのピッカー(js/midi/compose.js の `pickModel()`)の各モデルの右に、お手本・解説と並べてピンのボタン
 - ピン留めは `state.prefs.pinnedModels`(id の配列。Drive に保存されるので、端末をまたいで同じ)。「すべて」の時は先頭の「ピン留め」の見出しにも集める(元の見出しにも残る)

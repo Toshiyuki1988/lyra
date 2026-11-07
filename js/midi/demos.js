@@ -926,6 +926,458 @@
         { name: '下の声', generator: 'line', role: 'counter', notes: (() => { const u = 'R:0.5 G3:0.667 D4:0.333 Bb3:0.5 F#4:0.5 C3:0.25 E4:0.25 A3:0.5 R:0.5 Eb4:0.333 B3:0.333 G#3:0.333 D3:1 F4:0.25 C#4:0.25 A3:0.25 E3:0.25 Bb3:0.667 F3:0.333 B4:0.5 G3:0.5 R:1 C#3:0.333 G4:0.333 D#4:0.333'; return seq([u, u.split(' ').reverse().join(' '), u].join(' ')); })().map((n, i) => ({ ...n, velocity: [92, 48, 110, 56, 80, 36][i % 6] })) },
       ],
     },
+    /* ---- 音楽史マップ 残りの P の波A(2026-11-07) ---- */
+    call_response: {
+      listen: '呼びかけ(1〜2小節・5〜6小節)は D のマイナーペンタトニックの句で、2回目は終わりだけ少し変わる。応答(3〜4小節・7〜8小節)は、少し低い音域で、ほぼ同じ形で返る。2つの声は重ならず、コンガとシェイカーの一定の拍が支える',
+      bars: 8, tempo: 100,
+      pitch: { system: 'scale', root: 'D', scale: 'minor-pentatonic' },
+      layers: [
+        { name: '呼びかけ', generator: 'line', role: 'melody', notes: seq('D5:1 F5:0.5 G5:0.5 A5:1.5 G5:0.5 F5:2 R:2 R:8 D5:1 F5:0.5 G5:0.5 C6:1.5 A5:0.5 G5:2 R:2 R:8') },
+        { name: '応答', generator: 'line', role: 'counter', notes: seq('R:8 A4:1 G4:0.5 F4:0.5 D4:1.5 F4:0.5 D4:2 R:2 R:8 A4:1 G4:0.5 F4:0.5 D4:1.5 F4:0.5 C4:2 R:2') },
+        { name: '打楽器', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'conga', steps: 'o.xo.x.o' }, { inst: 'shaker', steps: 'x.x.x.x.' }] }] },
+      ],
+    },
+    organum_melismatic: {
+      listen: '下の声は、D・F・E・D の音を、それぞれ2小節(8拍)ずつ引き伸ばす定旋律。上の声は、その1つの音のあいだに、8分音符の流れるような音(メリスマ)をたくさん歌い、下の声の音が変わる所で、5度や4度の完全な響きに落ち着く',
+      bars: 8, tempo: 60,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: '定旋律', generator: 'line', role: 'bass', notes: seq('D3:8 F3:8 E3:8 D3:8') },
+        { name: 'メリスマ', generator: 'line', role: 'melody', notes: seq('A4:1 D5:0.5 E5:0.5 F5:0.5 E5:0.5 D5:0.5 C5:0.5 D5:0.5 E5:0.5 F5:1 D5:2 C5:1 A4:0.5 B4:0.5 C5:0.5 D5:0.5 E5:0.5 F5:0.5 G5:0.5 F5:0.5 E5:1 C5:2 B4:1 G4:0.5 A4:0.5 B4:0.5 C5:0.5 D5:0.5 E5:0.5 D5:0.5 C5:0.5 B4:1 B4:2 A4:1 D5:0.5 E5:0.5 F5:0.5 G5:0.5 F5:0.5 E5:0.5 D5:0.5 C5:0.5 A4:1 D5:2') },
+      ],
+    },
+    rhythmic_modes: {
+      listen: '3拍子。上の声は、前半4小節は「長・短」(2拍+1拍)の第1モードを小節ごとに反復し、後半4小節は「短・長」(1拍+2拍)の第2モードへ変わる。下の声は、1小節ぜんぶの長い音(第5モード)でゆっくり歩く',
+      bars: 8, tempo: 100,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: 'モードの声', generator: 'line', role: 'melody', notes: seq('D5:2 E5:1 F5:2 E5:1 D5:2 C5:1 D5:2 A4:1 A4:1 D5:2 C5:1 F5:2 E5:1 D5:2 E5:1 D5:2') },
+        { name: '長い声', generator: 'line', role: 'bass', notes: seq('D4:3 A3:3 D4:3 C4:3 D4:3 F4:3 E4:3 D4:3') },
+      ],
+    },
+    madrigalism: {
+      listen: '1〜2小節は「昇る」: 音階が1音ずつ上へ。3〜4小節は「涙」: 半音ずつ下へ落ちる。5〜6小節は「ため息」: 音と休みを交互に置く。7〜8小節は「笑い」: 軽い速い音のあと、最後は主音の長い音',
+      bars: 8, tempo: 72,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:4 Am:4 F:4 E:4 Dm:4 Am:4 E:4 Am:4') },
+      arc: { sections: [sec('昇る', 1, 4), sec('涙', 3, 6), sec('ため息', 5, 3), sec('笑い', 7, 5)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '歌', generator: 'line', role: 'melody', notes: seq('A4:1 B4:1 C5:1 D5:1 E5:1 F5:1 G5:1 A5:1 A5:1 G#5:1 G5:1 F#5:1 F5:1 E5:1 D#5:1 E5:1 R:1 F5:1 R:1 E5:1 R:1 D5:1 R:1 C5:1 E5:0.5 G#5:0.5 B5:1 A5:0.5 G#5:0.5 E5:1 A4:4') },
+      ],
+    },
+    pavane_galliard: {
+      listen: '前半4小節のパヴァーヌは4拍子で、2分音符中心のゆっくりした荘重な句。5小節目から3拍子のガリアルドになり、同じ調(ニ短調)で、跳ねる4分・8分の軽い旋律に変わる。最後は主音',
+      bars: 10, tempo: 72,
+      meters: [{ bar: 1, num: 4, den: 4 }, { bar: 5, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'D', scale: 'minor', chords: prog('Dm:4 C:4 Dm:4 A:4 Dm:3 Gm:3 A:3 Dm:3 A:3 Dm:3') },
+      arc: { sections: [sec('パヴァーヌ', 1, 3), sec('ガリアルド', 5, 6)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('D5:2 F5:2 E5:2 D5:2 C5:2 E5:2 A4:4 D5:1 F5:1 A5:1 G5:1.5 F5:0.5 D5:1 E5:1 C#5:1 E5:1 F5:2 D5:1 E5:1 C#5:1 A4:1 D5:3') },
+      ],
+    },
+    monody: {
+      listen: '低音とリュートのような和音が静かに支える上で、ひとりの声が、語るように歌う。音の長さは2分・4分・付点・8分とばらばらで、息継ぎの休みがあり、7小節目の F の上で高い C へ上がってから、イ短調の主音に落ち着く',
+      bars: 8, tempo: 60,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:4 E:4 Am:4 Dm:4 E:4 Am:4 F:4 E:2 Am:2') },
+      layers: [
+        { name: '通奏低音の和音', generator: 'chords', comping: 'arpeggio', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '独唱', generator: 'line', role: 'melody', notes: seq('E5:1 E5:0.5 D5:0.5 C5:1 B4:1 C5:1.5 B4:0.5 A4:2 R:1 A4:1 B4:1 C5:1 D5:2 C5:1 B4:1 C5:1 B4:1 A4:1 G#4:1 A4:3 R:1 C6:2 A5:1 F5:1 E5:1.5 G#5:0.5 A5:2') },
+      ],
+    },
+    ritornello: {
+      listen: '総奏の主題(力強いド・ミ・ソ…)が、1〜4小節に出て、5〜8小節は独奏の16分(8分音符の速い走句)で飛び出す。9〜12小節の総奏はト長調に移って主題を戻し、最後の13〜16小節で、元のハ長調の主題が完全な形で戻ってくる',
+      bars: 16, tempo: 120,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 G:4 C:4 G7:4 C:4 Am:4 D:4 G:4 G:4 D7:4 G:4 C:4 C:4 F:4 G7:4 C:4') },
+      arc: { sections: [sec('総奏', 1, 6), sec('独奏', 5, 4), sec('総奏(属調)', 9, 6), sec('終わりの総奏', 13, 7)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'offbeat', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: (() => {
+          const tutti = 'C5:1 E5:1 G5:2 C6:1 B5:1 A5:2 G5:1 E5:1 F5:1 D5:1 C5:4';
+          const solo = 'G5 A5 B5 A5 G5 F#5 G5 D5 E5 F#5 G5 F#5 E5 D5 E5 B4 C5 D5 E5 D5 C5 B4 C5 A4 B4 C5 D5 B4 G4 A4 B4 G4'.split(' ').map((n) => `${n}:0.5`).join(' ');
+          const tuttiG = 'G5:1 B5:1 D6:2 G6:1 F#6:1 E6:2 D6:1 B5:1 C6:1 A5:1 G5:4';
+          return seq([tutti, solo, tuttiG, tutti].join(' '));
+        })() },
+      ],
+    },
+    dance_suite: {
+      listen: '同じニ短調で、4つの舞曲を通す。アルマンド(1〜4小節、4拍子の流れる16分)→ クーラント(5〜8小節、3拍子のはずむ8分)→ サラバンド(9〜12小節、2拍目が長いゆっくりの3拍子)→ ジーグ(13〜16小節、6/8の跳ねる8分)',
+      bars: 16, tempo: 100,
+      meters: [{ bar: 1, num: 4, den: 4 }, { bar: 5, num: 3, den: 4 }, { bar: 9, num: 3, den: 4 }, { bar: 13, num: 6, den: 8 }],
+      pitch: { system: 'chords', root: 'D', scale: 'minor', chords: prog('Dm:4 Gm:4 A:4 Dm:4 Dm:3 Gm:3 A:3 Dm:3 Dm:3 A:3 Bb:3 A:3 Dm:3 C:3 A:3 Dm:3') },
+      arc: { sections: [sec('アルマンド', 1, 4), sec('クーラント', 5, 6), sec('サラバンド', 9, 3), sec('ジーグ', 13, 7)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq([
+          'A4:0.5 D5:0.5 F5:1 E5:0.5 D5:0.5 C#5:1 D5:0.5 E5:0.5 F5:1 G5:0.5 F5:0.5 E5:1 D5:0.5 E5:0.5 F5:0.5 G5:0.5 A5:2 G5:0.5 F5:0.5 E5:0.5 F5:0.5 D5:1 C#5:1 D5:2',
+          'F5:0.5 A5:0.5 D6:1 C6:0.5 Bb5:0.5 A5:1 G5:0.5 A5:0.5 Bb5:1 A5:0.5 G5:0.5 F5:1 E5:0.5 F5:0.5 G5:0.5 A5:0.5 G5:0.5 E5:0.5 D5:3',
+          'D5:1 F5:2 E5:1.5 G5:1.5 A5:2 F5:1 D5:1 E5:2 D5:3',
+          'D5:0.5 F5:0.5 A5:0.5 G5:0.5 F5:0.5 E5:0.5 F5:0.5 A5:0.5 C6:0.5 A5:0.5 G5:0.5 F5:0.5 E5:0.5 G5:0.5 A5:0.5 G5:0.5 F5:0.5 E5:0.5 D5:1.5 R:0.5 D5:1',
+        ].join(' ')) },
+      ],
+    },
+    toccata: {
+      listen: '1小節に16分音符が16個ずつ、和音の音を駆け上がり・駆け下りる走句がつながる。小節の頭と3拍目に、低い重い和音が打ち込まれる。Dm → Gm → A → Dm → B♭ → A と和音ごとに走句の形が移り、最後は D の長い音',
+      bars: 8, tempo: 96,
+      pitch: { system: 'chords', root: 'D', scale: 'minor', chords: prog('Dm:4 Dm:4 Gm:4 A:4 Dm:4 Bb:4 A:4 Dm:4') },
+      layers: [
+        { name: '打撃の和音', generator: 'chords', hits: 'X.......o.......', hitSteps: 4, voicing: 'open', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'octave' },
+        { name: '走句', generator: 'line', role: 'melody', notes: (() => {
+          const r = (s) => s.split(' ').map((n) => `${n}:0.25`).join(' ');
+          return seq([
+            r('D5 E5 F5 G5 A5 G5 F5 E5 D5 E5 F5 A5 D6 A5 F5 D5'),
+            r('D6 C6 Bb5 A5 G5 A5 Bb5 A5 G5 F5 E5 F5 G5 A5 Bb5 C#6'),
+            r('D6 Bb5 G5 Bb5 D6 G6 D6 Bb5 A5 F#5 D5 F#5 A5 D6 A5 F#5'),
+            r('E5 A5 C#6 E6 C#6 A5 E5 A5 C#6 A5 E5 C#5 E5 A5 E6 A5'),
+            r('F5 A5 D6 F6 D6 A5 F5 D5 E5 G5 Bb5 E6 Bb5 G5 E5 C#5'),
+            r('D6 Bb5 F5 Bb5 D6 F6 D6 Bb5 C6 A5 F5 A5 C6 F6 C6 A5'),
+            r('C#6 E6 A6 E6 C#6 A5 C#6 E6 G6 E6 C#6 A5 G5 E5 C#5 E5'),
+            'D6:1 A5:1 F5:1 D5:1',
+          ].join(' '));
+        })() },
+      ],
+    },
+    french_overture: {
+      listen: '前半4小節は、付点(長い音+短い音)のリズムをくり返す荘重な部分。5小節目から速い8分音符の主題が高い声で出て、4拍遅れて、オクターブ下の声が同じ主題で追いかけてくる(模倣)。ト短調',
+      bars: 8, tempo: 84,
+      pitch: { system: 'chords', root: 'G', scale: 'minor', chords: prog('Gm:4 D:4 Gm:4 D:4 Gm:4 Cm:4 D:4 Gm:4') },
+      arc: { sections: [sec('荘重な部分', 1, 5), sec('速い部分', 5, 7)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '高い声', generator: 'line', role: 'melody', notes: (() => {
+          const dotted = 'G5:1.5 G5:0.5 D6:1.5 C6:0.5 Bb5:1.5 A5:0.5 A5:1 F#5:1 G5:1.5 G5:0.5 D6:1.5 C6:0.5 Bb5:1.5 A5:0.5 A5:2';
+          const subject = 'D5:0.5 G5:0.5 F#5:0.5 G5:0.5 A5:0.5 Bb5:0.5 C6:0.5 D6:0.5 Bb5:1 G5:1 A5:1 D5:1';
+          const cont = 'Eb6:1 D6:1 C6:1 Bb5:1 A5:1 Bb5:1 G5:2';
+          return seq([dotted, 'A4:2', subject, cont].join(' ')).filter(() => true);
+        })() },
+        { name: '低い声', generator: 'line', role: 'counter', notes: (() => {
+          const subject = 'D5:0.5 G5:0.5 F#5:0.5 G5:0.5 A5:0.5 Bb5:0.5 C6:0.5 D6:0.5 Bb5:1 G5:1 A5:1 D5:1';
+          const low = subject.replace(/(\d)(?=:)/g, (d) => String(d - 1));
+          return seq(`R:20 ${low} G3:4`);
+        })() },
+      ],
+    },
+    shomyo: {
+      listen: 'ひとつの旋律だけが、とてもゆっくり、息の長さで歌われる。2.5〜3.5拍の長い音に、隣の音への小さな揺れ(ユリ)が付き、句の終わりに2拍の息の休みが入る。D・E・G・A・B の五音だけで動き、最後の句で D の主音へ戻る。低いところで D のドローンが静かに続く',
+      bars: 8, tempo: 44,
+      pitch: { system: 'scale', root: 'D', scale: 'ritsu' },
+      layers: [
+        { name: '声', generator: 'line', role: 'melody', notes: seq('D4:2.5 E4:0.25 D4:0.25 G4:3 R:2 G4:2 A4:0.25 G4:0.25 A4:3.5 R:2 A4:2.5 B4:0.25 A4:0.25 D5:3 R:2 G4:2 E4:0.25 D4:0.25 E4:1.5 D4:4') },
+        { name: 'ドローン', generator: 'line', role: 'bass', notes: seq('D3:16 D3:16').map((n) => ({ ...n, velocity: 40 })) },
+      ],
+    },
+    shakuhachi_honkyoku: {
+      listen: '陰音階(D・E♭・G・A・B♭)の少ない音だけで、3〜5拍の長い音を、息の長さで区切る。長い音の終わりにE♭へメリ(半音下がる)し、そのあと1〜2拍の休み。ときどき息のかすれのような音が、遠くに混じる',
+      bars: 8, tempo: 40,
+      pitch: { system: 'scale', root: 'D', scale: 'miyako-bushi' },
+      layers: [
+        { name: '尺八', generator: 'line', role: 'melody', notes: seq('D4:3 R:1 G4:3 Eb4:0.5 D4:0.5 A4:4 G4:1.5 Eb4:0.5 R:2 D5:2 Bb4:1 A4:1 G4:3 R:1 Eb4:1 D4:5 R:2') },
+        { name: '息', generator: 'gesture', gesture: 'breath_swell', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    /* ---- 音楽史マップ 残りの P の波B(2026-11-07) ---- */
+    new_orleans: {
+      listen: 'ヘ長調で、トランペット(2〜4分の歌う主旋律)、クラリネット(高い音域の8分の速い走句)、トロンボーン(低い音域の4分・2分)の3つが同時に絡む。バンジョーが和音を刻み、チューバのような低音とドラムが2拍子で支える',
+      bars: 8, tempo: 120,
+      pitch: { system: 'chords', root: 'F', scale: 'major', chords: prog('F:4 F:4 C7:4 C7:4 F7:4 Bb:4 F:4 C7:2 F:2') },
+      layers: [
+        { name: 'バンジョー', generator: 'chords', comping: 'stabs', voicing: 'close', register: 'mid' },
+        { name: 'チューバ', generator: 'bass', pattern: 'root-fifth' },
+        { name: 'トランペット', generator: 'line', role: 'melody', notes: seq('C5:1 F5:1 A5:1.5 G5:0.5 F5:2 R:2 G5:1 Bb5:1 G5:1.5 E5:0.5 C5:2 R:2 A5:1 C6:1 A5:1.5 F5:0.5 D5:1 F5:1 Bb5:2 A5:1.5 G5:0.5 F5:1 E5:1 F5:4') },
+        { name: 'クラリネット', generator: 'line', role: 'counter', notes: seq('R:2 A5:0.5 C6:0.5 F6:0.5 E6:0.5 D6:0.5 C6:0.5 A5:0.5 C6:0.5 F6:1 R:1 R:2 G5:0.5 Bb5:0.5 E6:0.5 D6:0.5 C6:0.5 Bb5:0.5 G5:0.5 Bb5:0.5 E6:1 R:1 R:1 A5:0.5 C6:0.5 F6:0.5 A6:0.5 G6:0.5 F6:0.5 D6:0.5 F6:0.5 D6:1 Bb5:1 R:1 F6:1 E6:0.5 D6:0.5 C6:1 A5:1 C6:0.5 D6:0.5 C6:0.5 Bb5:0.5 A5:2') },
+        { name: 'トロンボーン', generator: 'line', role: 'counter', notes: seq('F3:2 A3:1 C4:1 F4:2 C4:1 A3:1 G3:2 Bb3:1 C4:1 E4:2 C4:1 G3:1 A3:2 C4:1 F4:1 D4:2 Bb3:1 D4:1 F3:1 A3:1 C4:1 A3:1 C4:1 G3:1 F3:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...X...' }, { inst: 'snare', steps: '..x...x.' }, { inst: 'hat', steps: 'x.x.x.x.' }] }] },
+      ],
+    },
+    big_band: {
+      listen: '2小節ごとに、サックスのセクションが前半4拍で短い8分のリフを言い、ブラスのセクションが後半4拍で短い打撃と長い音で答える。和音(B♭7・E♭7・G7・Cm7・F7)が変わるたびに、リフは同じ形で高さだけが変わる。ウォーキング・ベースとスウィングのドラムが支える',
+      bars: 8, tempo: 132,
+      pitch: { system: 'chords', root: 'Bb', scale: 'major', chords: prog('Bb7:4 Eb7:4 Bb7:4 G7:4 Cm7:4 F7:4 Bb7:4 F7:4') },
+      layers: [
+        { name: 'ピアノ', generator: 'chords', comping: 'charleston', voicing: 'rootless', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'walking' },
+        { name: 'サックス', generator: 'line', role: 'melody', notes: seq('F5:0.5 D5:0.5 F5:1 Bb5:1 A5:0.5 F5:0.5 R:4 F5:0.5 D5:0.5 F5:1 Bb5:1 A5:0.5 F5:0.5 R:4 D5:0.5 B4:0.5 D5:1 G5:1 F5:0.5 D5:0.5 R:4 G5:0.5 Eb5:0.5 G5:1 C6:1 Bb5:0.5 G5:0.5 R:4') },
+        { name: 'ブラス', generator: 'line', role: 'counter', notes: seq('R:4 Bb5:0.5 R:0.5 Bb5:0.5 R:0.5 D6:2 R:4 Bb5:0.5 R:0.5 Bb5:0.5 R:0.5 D6:2 R:4 Bb5:0.5 R:0.5 Bb5:0.5 R:0.5 B5:2 R:4 C6:0.5 R:0.5 C6:0.5 R:0.5 Eb6:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 3, patterns: [{ rows: [{ inst: 'ride', steps: 'X..X.xX..X.x' }, { inst: 'pedalhat', steps: '...x.....x..' }, { inst: 'kick', steps: 'o..........o' }] }] },
+      ],
+    },
+    hard_bop: {
+      listen: 'ハ短調。旋律は、♭3(E♭)・♭7(B♭)・5度のブルーノートを使った2小節の句と休みを4回、後半で F・A♭ の高さへ熱く上がる。ピアノはルートレスの力強い和音、ベースはウォーキング、ドラムはスネアの合いの手が入る',
+      bars: 8, tempo: 150,
+      pitch: { system: 'chords', root: 'C', scale: 'blues', chords: prog('Cm7:4 Cm7:4 Fm7:4 Fm7:4 Dm7b5:4 G7:4 Cm7:4 G7:4') },
+      layers: [
+        { name: 'ピアノ', generator: 'chords', comping: 'jazz', voicing: 'rootless', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'walking' },
+        { name: 'テーマ', generator: 'line', role: 'melody', notes: seq('G4:0.5 Bb4:0.5 C5:1 Eb5:1 D5:0.5 C5:0.5 Bb4:1 G4:1 R:2 Ab4:0.5 C5:0.5 Eb5:1 F5:1 Eb5:0.5 C5:0.5 Ab4:1 F4:1 R:2 F5:1 Ab5:1 G5:1 F5:1 D5:1 B4:1 G4:1 R:1 Eb5:1 C5:1 D5:1 Bb4:1 C5:2 R:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 3, patterns: [{ rows: [{ inst: 'ride', steps: 'X..X.xX..X.x' }, { inst: 'pedalhat', steps: '...x.....x..' }, { inst: 'snare', steps: '.....o.....o' }] }] },
+      ],
+    },
+    free_jazz: {
+      listen: '拍も和音も調性も決めない。高い声は跳躍の大きい叫びと速い細かい音、低い声は長いうなり、ベースは拍に合わせない不規則な低い音、ドラムも不規則に叩く。区間ごとに密度が上がり、また散る',
+      bars: 8, tempo: 140,
+      pitch: { system: 'free' },
+      arc: { sections: [sec('散らばる', 1, 3), sec('白熱', 3, 9), sec('ほどける', 7, 4)] },
+      layers: [
+        { name: '高い声', generator: 'line', role: 'melody', notes: seq('E5:0.5 Bb5:0.25 F#4:0.25 C6:1.5 R:0.75 G#4:0.25 D5:0.125 A6:0.125 F5:0.5 R:1 B5:0.25 C#6:0.25 Eb5:0.25 A5:0.25 F#6:1 R:0.5 G4:0.5 D6:0.25 Ab5:0.25 E6:0.5 B4:1.5 R:1 C7:0.25 F5:0.25 Bb5:0.5 E5:0.125 G#5:0.125 D6:0.25 R:2 A5:1 F#5:0.5 C6:0.25 Eb6:0.25 G5:0.5 B5:0.5 F6:2 R:1.5 D5:0.25 A#5:0.25 E6:0.5 C5:3 R:2 G6:0.25 D#5:0.25 B5:0.5 F5:0.5 A6:1') },
+        { name: '低い声', generator: 'line', role: 'counter', notes: seq('R:2 C3:3 Eb3:0.5 F#3:0.5 R:1.5 A3:2.5 G#3:0.25 B3:0.25 R:3 D4:0.5 F3:1 Bb3:0.5 E3:4 R:1 C#3:0.5 G3:0.5 F4:1 R:2 Ab3:3 B2:2 R:1 D3:0.5 A3:0.5 F#3:1') },
+        { name: 'ベース', generator: 'line', role: 'bass', notes: seq('F2:0.5 R:0.75 C3:0.25 Ab2:1 R:0.5 B2:0.5 E2:0.5 G2:1 R:1.25 D3:0.25 Bb2:0.5 F#2:0.5 R:1 C3:1 E2:0.25 A2:0.25 G2:0.5 R:2 B2:0.5 D2:1.5 F3:0.25 R:0.5 Ab2:0.5 C3:1 R:3 E3:0.5 G#2:0.5 B2:1 D2:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'snare', steps: 'x..xx.x...x.xx..' }, { inst: 'ride', steps: 'X.x.xx..x.x.X..x' }, { inst: 'kick', steps: 'o....o..x.....o.' }, { inst: 'lowtom', steps: '..x.....x..x....' }] }] },
+      ],
+    },
+    fusion: {
+      listen: 'ニ・ドリアンの Dm9 と G13 を行き来し(5〜6小節目だけ Em9 → A13)、エレピがルートレスの和音を刻む。ベースは16分のシンコペーションの型を、和音ごとに根音を変えてくり返す。ドラムは16分のファンク。旋律は休みをはさんだ短い句',
+      bars: 8, tempo: 100,
+      pitch: { system: 'chords', root: 'D', scale: 'dorian', chords: prog('Dm9:4 G13:4 Dm9:4 G13:4 Em9:4 A13:4 Dm9:4 G13:4') },
+      layers: [
+        { name: 'エレピ', generator: 'chords', comping: 'stabs', voicing: 'rootless', register: 'mid' },
+        { name: 'ベース', generator: 'line', role: 'bass', notes: (() => {
+          const bar = (a, b, c, d) => `${a}:0.75 ${a}:0.25 R:0.5 ${b}:0.5 R:0.5 ${c}:0.5 ${a}:0.5 R:0.25 ${d}:0.25`;
+          return seq([bar('D2', 'D3', 'C3', 'A2'), bar('G2', 'G3', 'F3', 'D3'), bar('D2', 'D3', 'C3', 'A2'), bar('G2', 'G3', 'F3', 'D3'),
+            bar('E2', 'E3', 'D3', 'B2'), bar('A2', 'A3', 'G3', 'E3'), bar('D2', 'D3', 'C3', 'A2'), bar('G2', 'G3', 'F3', 'D3')].join(' '));
+        })() },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('A4:1 D5:0.5 F5:0.5 E5:1 D5:1 R:1 G5:1.5 F5:0.5 R:1 C5:1 E5:0.5 G5:0.5 F5:1 E5:1 R:1 A5:1.5 G5:0.5 R:1 B4:1 E5:0.5 G5:0.5 F#5:1 E5:1 R:1 C#6:1.5 B5:0.5 R:1 D5:0.5 F5:0.5 A5:1 G5:1 F5:1 E5:1 D5:3') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'hat', steps: 'x.xxx.xxx.xxx.xx' }, { inst: 'snare', steps: '....X.......X...' }, { inst: 'kick', steps: 'X..x..x...x..x..' }] }] },
+      ],
+    },
+    ecm: {
+      listen: '2小節ごとにゆっくり変わる透き通った和音(Dmaj9・Bm9・Gmaj7#11)の上で、旋律は1小節に1〜3音。長い休みが2拍以上あり、音と音のあいだの静けさが長い。ベースは長い持続、遠くで鐘がまれに鳴る',
+      bars: 8, tempo: 60,
+      pitch: { system: 'chords', root: 'D', scale: 'lydian', chords: prog('Dmaj9:8 Bm9:8 Gmaj7#11:8 Dmaj9:8') },
+      layers: [
+        { name: 'ピアノの和音', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+        { name: 'ベース', generator: 'line', role: 'bass', notes: seq('D2:8 B1:8 G2:8 D2:8').map((n) => ({ ...n, velocity: 56 })) },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('A5:3 R:2 F#5:2 E5:1 D5:2 R:1 B4:3 R:2 C#6:3 R:2 B5:2 A5:1 A5:2 F#5:1 D5:5').map((n) => ({ ...n, velocity: 70 })) },
+        { name: '遠い鐘', generator: 'gesture', gesture: 'bell', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    gospel: {
+      listen: 'リードが2小節の呼びかけを前半4拍で歌い、聖歌隊が後半4拍で少し低く応える。この掛け合いが、G → G7/B → C → Cm6(切ない借用)→ G/D → E7 → Am7 → D7sus4 → D7 → G と、分数コードと経過和音をたどりながら続き、最後の句で両方が一緒に歌って終わる。ピアノは流れる分散和音',
+      bars: 8, tempo: 76,
+      pitch: { system: 'chords', root: 'G', scale: 'major', chords: prog('G:4 G7/B:4 C:4 Cm6:4 G/D:4 E7:2 Am7:2 D7sus4:2 D7:2 G:4') },
+      layers: [
+        { name: 'ピアノ', generator: 'chords', comping: 'broken', voicing: 'open', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'root' },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('B4:1 D5:1 G5:2 R:4 C5:1 E5:1 A5:2 R:4 D5:1 G5:1 B5:2 R:4 A5:1 F#5:1 D5:2 G5:4') },
+        { name: '聖歌隊', generator: 'line', role: 'counter', notes: seq('R:4 D5:1 B4:1 G4:2 R:4 E5:1 C5:1 G4:2 R:4 B4:1 G4:1 E5:2 R:4 B4:2 D5:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...x...' }, { inst: 'snare', steps: '..X...X.' }, { inst: 'hat', steps: 'x.x.x.x.' }] }] },
+      ],
+    },
+    aaba: {
+      listen: '最初の4小節 A(F → Dm7 → Gm7 → C7)を2回くり返し、ブリッジ B(D7 → G7 → C7)で音域を上げて気分を変え、最後の A に戻って、F の主音で終わる。A の旋律は3回とも同じで、最後だけ終わりが変わる',
+      bars: 16, tempo: 132,
+      pitch: { system: 'chords', root: 'F', scale: 'major', chords: prog('F:4 Dm7:4 Gm7:4 C7:4 F:4 Dm7:4 Gm7:4 C7:4 D7:4 D7:4 G7:4 C7:4 F:4 Dm7:4 Gm7:2 C7:2 F:4') },
+      arc: { sections: [sec('A', 1, 4), sec('A(くり返し)', 5, 4), sec('B(ブリッジ)', 9, 7), sec('A(最後)', 13, 5)] },
+      layers: [
+        { name: 'ピアノ', generator: 'chords', comping: 'jazz', voicing: 'shell', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'walking' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: (() => {
+          const a = 'C5:1 A4:1 F5:2 E5:1 D5:1 C5:2 Bb4:1 D5:1 G5:2 E5:1 G5:1 Bb5:2';
+          const b = 'F#5:2 A5:2 D6:4 C6:2 B5:2 G5:4';
+          const a3 = 'C5:1 A4:1 F5:2 E5:1 D5:1 C5:2 Bb4:1 D5:1 E5:1 G5:1 F5:4';
+          return seq([a, a, b, a3].join(' '));
+        })() },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 3, patterns: [{ rows: [{ inst: 'ride', steps: 'X..X.xX..X.x' }, { inst: 'pedalhat', steps: '...x.....x..' }] }] },
+      ],
+    },
+    rocknroll: {
+      listen: 'イ長調の3コード(A・D・E7)で進み、ベースは8分のオクターブを休まず刻み、ギターもパワーコードを8分で刻む。旋律は2小節ごとの明るいリフで、C(♭3)と C♯(長3度)を行き来するブルースの音が混じる。2・4拍のスネアが強い',
+      bars: 8, tempo: 160,
+      pitch: { system: 'chords', root: 'A', scale: 'major', chords: prog('A:4 A:4 D:4 A:4 E7:4 D:4 A:4 E7:4') },
+      layers: [
+        { name: 'ギターの刻み', generator: 'chords', comping: 'pulse', voicing: 'power', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'octave' },
+        { name: 'リフ', generator: 'line', role: 'melody', notes: seq('A4:1 C5:0.5 C#5:0.5 E5:1 A5:1 G5:0.5 E5:0.5 C#5:1 A4:2 D5:1 F#5:0.5 A5:0.5 D6:1 C#6:1 A5:2 E5:1 R:1 E5:1 G#5:1 B5:1 D6:1 C#6:1 A5:1 F#5:1 D5:1 A4:1 C#5:1 E5:1 A5:1 G#5:1 E5:1 A5:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...x...' }, { inst: 'snare', steps: '..X...X.' }, { inst: 'hat', steps: 'xxxxxxxx' }] }] },
+      ],
+    },
+    power_ballad: {
+      listen: '1〜4小節は、ピアノの分散和音とひとりの声だけの静かな始まり。5〜8小節の高まりで弦のパッドが入り、旋律の音域が上がる。9〜12小節の大サビでドラムとベースが入って全員で鳴る。最後の13〜16小節は、全音上(G・A・F♯m7・Bm)へ転調して、同じ旋律をさらに高く歌い上げる',
+      bars: 16, tempo: 66,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 G/B:4 Am7:4 F:4 C:4 G/B:4 Am7:4 F:2 G:2 F:4 G:4 Em7:4 Am:4 G:4 A:4 F#m7:4 Bm:4') },
+      arc: { sections: [sec('静かな始まり', 1, 2), sec('高まり', 5, 5), sec('大サビ', 9, 8), sec('転調して最後の大サビ', 13, 10)] },
+      layers: [
+        { name: 'ピアノ', generator: 'chords', comping: 'broken', voicing: 'open', register: 'mid' },
+        { name: '弦のパッド', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'high', active: ['高まり', '大サビ', '転調して最後の大サビ'] },
+        { name: 'ベース', generator: 'bass', pattern: 'root', active: ['高まり', '大サビ', '転調して最後の大サビ'] },
+        { name: '歌', generator: 'line', role: 'melody', notes: seq('E5:2 G5:1 E5:1 D5:2 B4:2 C5:1 E5:1 A5:2 G5:2 R:2 E5:1 G5:1 C6:2 D6:1 C6:1 B5:2 C6:1 E6:1 D6:2 C6:2 B5:1 A5:1 A5:2 C6:2 G5:2 B5:2 G5:2 E6:2 C6:4 B5:2 D6:2 A5:2 C#6:2 A5:2 F#6:2 D6:4') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...x...' }, { inst: 'snare', steps: '..X...X.' }, { inst: 'hat', steps: 'x.x.x.x.' }] }], active: ['大サビ', '転調して最後の大サビ'] },
+      ],
+    },
+    folk: {
+      listen: '指弾きのギターが、低い音と高い音を交互に弾く分散和音を休まず続ける(G・Em・C・D)。旋律は1オクターブ以内の、4分と2分の素朴な句。最後の句で、G の主音に落ち着く',
+      bars: 8, tempo: 92,
+      pitch: { system: 'chords', root: 'G', scale: 'major', chords: prog('G:4 Em:4 C:4 D:4 G:4 Em:4 C:4 G:4') },
+      layers: [
+        { name: '指弾き', generator: 'chords', comping: 'arpeggio', voicing: 'close', register: 'low' },
+        { name: '親指の低音', generator: 'bass', pattern: 'root-fifth' },
+        { name: '歌', generator: 'line', role: 'melody', notes: seq('D5:1 B4:1 G4:2 E5:1.5 D5:0.5 B4:2 C5:1 E5:1 G5:2 A4:2 D5:2 B4:1 D5:1 G5:2 E5:1.5 D5:0.5 B4:2 C5:1 D5:1 E5:2 D5:2 G4:2') },
+      ],
+    },
+    prog: {
+      listen: '前半4小節は 7/8(2+2+3 のまとまり。8分で数えて「1・2、1・2、1・2・3」)、5小節目から 5/4(3+2 のまとまり)に変わる。第1部は A のマイナーで細かく、第2部は D・B♭・C・A と和音が広がる。拍子と雰囲気が途中で変わる、組曲のはじまり',
+      bars: 8, tempo: 132,
+      meters: [{ bar: 1, num: 7, den: 8 }, { bar: 5, num: 5, den: 4 }],
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:3.5 F:3.5 G:3.5 Am:3.5 Dm:5 Bb:5 C:5 Am:5') },
+      arc: { sections: [sec('第1部(7/8)', 1, 4), sec('第2部(5/4)', 5, 8)] },
+      layers: [
+        { name: 'シンセの刻み', generator: 'chords', comping: 'pulse', voicing: 'close', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'root' },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('A4:1 C5:1 E5:1.5 A4:1 C5:1 F5:1.5 B4:1 D5:1 G5:1.5 C5:1 E5:1 A5:1.5 D5:1.5 F5:1.5 A5:2 Bb5:1.5 A5:1.5 F5:2 G5:1.5 E5:1.5 C6:2 A5:1.5 E5:1.5 A4:2') },
+      ],
+    },
+    /* ---- 音楽史マップ 残りの P の波C(2026-11-07) ---- */
+    metal: {
+      listen: '低い E のパワーコードを、16分の「ダダ・ダ」と駆ける型で叩き続け、和音は Em → C → D → B と進む。リードは E の短調の鋭い句を2小節ごとに弾き、最後は B(属)で止まる。キックも同じ駆ける型で連打し、スネアは2・4拍',
+      bars: 8, tempo: 180,
+      pitch: { system: 'chords', root: 'E', scale: 'harmonic-minor', chords: prog('Em:4 Em:4 C:4 D:4 Em:4 Em:4 C:4 B:4') },
+      layers: [
+        { name: 'リフ', generator: 'chords', hits: 'X.xxX.xxX.xxX.xx', hitSteps: 4, voicing: 'power', register: 'low' },
+        { name: 'ベース', generator: 'bass', pattern: 'octave' },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('B5:1 E6:1 D6:0.5 C6:0.5 B5:1 G5:1 B5:1 E5:2 C6:1 G5:1 E6:2 D6:1 A5:1 F#5:2 B5:1 E6:1 G6:1 F#6:0.5 E6:0.5 D6:1 B5:1 G5:1 E5:1 C6:2 G5:2 D#6:2 B5:2') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'kick', steps: 'X.xxX.xxX.xxX.xx' }, { inst: 'snare', steps: '....X.......X...' }, { inst: 'crash', steps: 'X...............' }] }] },
+      ],
+    },
+    shoegaze: {
+      listen: '2小節ずつゆっくり変わる Amaj7・Fmaj7・C・Gmaj7 の和音を、2本のギター(長い持続と、高いきらめく刻み)が壁のように重ねる。その中で、小さな声(音量をおさえた旋律)が、長い音を中心に歌い、壁に埋もれる。ドラムは遠くで淡々と',
+      bars: 8, tempo: 100,
+      pitch: { system: 'chords', root: 'A', scale: 'major', chords: prog('Amaj7:8 Fmaj7:8 C:8 Gmaj7:8') },
+      layers: [
+        { name: 'ギターの壁', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+        { name: 'きらめく刻み', generator: 'chords', comping: 'pulse', voicing: 'open', register: 'high' },
+        { name: '埋もれる声', generator: 'line', role: 'melody', notes: seq('C#5:3 E5:1 B4:2 A4:2 A4:3 C5:1 G4:2 F4:2 E5:3 G5:1 D5:2 C5:2 D5:3 F#5:1 B4:2 G4:2').map((n) => ({ ...n, velocity: 48 })) },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...x...' }, { inst: 'snare', steps: '..X...X.' }] }] },
+      ],
+    },
+    post_rock: {
+      listen: '1〜4小節は、ギターの8音のアルペジオだけが静かに反復する。5小節目から持続の和音・ベース・ドラムが順に入り、音量が増していく。11〜14小節の爆発で、高い長い音のリードが加わって全員が鳴り、15小節目から静かな余韻へ',
+      bars: 16, tempo: 100,
+      pitch: { system: 'chords', root: 'E', scale: 'minor', chords: prog('Em:8 C:8 G:8 D:8 Em:8 C:8 G:8 D:8') },
+      arc: { sections: [sec('静かな反復', 1, 2), sec('積み上げ', 5, 5), sec('爆発', 11, 10), sec('余韻', 15, 3)] },
+      layers: [
+        { name: 'アルペジオ', generator: 'ostinato', register: 'mid', cell: 'E4:0.5 B4:0.5 G4:0.5 B4:0.5 E5:0.5 B4:0.5 G4:0.5 B4:0.5' },
+        { name: '持続の和音', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid', active: ['積み上げ', '爆発', '余韻'] },
+        { name: 'ベース', generator: 'bass', pattern: 'root', active: ['積み上げ', '爆発', '余韻'] },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('R:40 B5:4 G5:2 A5:2 B5:4 D6:4 E6:8') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X...x...' }, { inst: 'snare', steps: '..X...X.' }, { inst: 'hat', steps: 'x.x.x.x.' }] }], active: ['積み上げ', '爆発'] },
+      ],
+    },
+    tango: {
+      listen: '1小節が 3+3+2(付点4分・付点4分・4分)に分かれ、低音と和音が拍の頭を強くはっきり刻む。旋律も同じ 3+3+2 を基本に、イ短調の哀愁の句。Dm → E7 で緊張し、最後は A の主音の長い音',
+      bars: 8, tempo: 120,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:4 Am:4 Dm:4 E7:4 Am:4 Dm:4 E7:4 Am:4') },
+      layers: [
+        { name: 'マルカートの和音', generator: 'chords', hits: 'X..X..X.', hitSteps: 2, voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root-fifth' },
+        { name: 'バイオリン', generator: 'line', role: 'melody', notes: seq('A5:1.5 G5:1.5 E5:1 C6:1.5 B5:1.5 A5:1 F5:1.5 E5:1.5 D5:1 G#5:1.5 B5:1.5 E5:1 A5:1.5 C6:1.5 E6:1 D6:1.5 C6:1.5 A5:1 B5:1.5 G#5:1.5 E5:1 A5:4') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X..X..X.' }, { inst: 'rim', steps: '..x..x..' }] }] },
+      ],
+    },
+    salsa: {
+      listen: 'ベースは「2拍目の裏と、4拍」を突くトゥンバオを、和音ごとの根音と5度でくり返す。ピアノは16分のシンコペーションの和音(モントゥーノ)を休まず刻み、クラーベ・コンガ・カウベルが基準を作る。トランペットが2小節ごとに短い句を歌う',
+      bars: 8, tempo: 180,
+      pitch: { system: 'chords', root: 'D', scale: 'minor', chords: prog('Dm:4 G7:4 C:4 A7:4 Dm:4 G7:4 C:4 C:4') },
+      layers: [
+        { name: 'モントゥーノ', generator: 'chords', hits: '.x..x.x...x.x.x.', hitSteps: 4, voicing: 'close', register: 'mid' },
+        { name: 'トゥンバオ', generator: 'line', role: 'bass', notes: (() => {
+          const bar = (a, b) => `R:1.5 ${a}:0.5 R:1 ${b}:1`;
+          return seq([bar('D2', 'A2'), bar('G2', 'D3'), bar('C3', 'G3'), bar('A2', 'E3'), bar('D2', 'A2'), bar('G2', 'D3'), bar('C3', 'G3'), bar('C3', 'G3')].join(' '));
+        })() },
+        { name: 'トランペット', generator: 'line', role: 'melody', notes: seq('A5:1 D6:0.5 C6:0.5 A5:1 F5:1 G5:1 B5:1 D6:2 E6:1 C6:1 G5:2 C#6:1 E6:1 A5:2 F6:1 E6:0.5 D6:0.5 C6:1 A5:1 B5:1 D6:1 G5:2 E6:2 C6:2 G5:2 C6:2') },
+        { name: '打楽器', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'clave', steps: 'X.....X.....X...' }, { inst: 'conga', steps: '..x.x...x.x.x...' }, { inst: 'cowbell', steps: 'X...x...X...x...' }] }] },
+      ],
+    },
+    dub: {
+      listen: '最初の2小節は、重いベースとワン・ドロップ(3拍目だけキックとリム)のドラムだけ。3小節目から裏拍のギター(スカンク)が入り、5小節目にメロディカ風の旋律が入る。7小節目に、ベースもスカンクも旋律も一斉に抜けて(ドラムだけ)空白を作り、8小節目に全員が戻る',
+      bars: 8, tempo: 70,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:4 Am:4 Am:4 Am:4 Dm:4 Dm:4 Am:4 Am:4') },
+      arc: { sections: [sec('土台', 1, 3), sec('刻みが入る', 3, 5), sec('旋律が入る', 5, 6), sec('抜く', 7, 2), sec('戻る', 8, 7)] },
+      layers: [
+        { name: '重いベース', generator: 'line', role: 'bass', notes: (() => {
+          const bar = (a, b, c) => `${a}:1.5 R:0.5 ${a}:0.5 ${b}:0.5 ${c}:1`;
+          return seq([bar('A2', 'C3', 'D3'), bar('A2', 'C3', 'D3'), bar('A2', 'C3', 'D3'), bar('A2', 'C3', 'D3'), bar('D2', 'F2', 'G2'), bar('D2', 'F2', 'G2'), bar('A2', 'C3', 'D3'), bar('A2', 'C3', 'D3')].join(' '));
+        })(), active: ['土台', '刻みが入る', '旋律が入る', '戻る'] },
+        { name: 'スカンク', generator: 'chords', comping: 'offbeat', voicing: 'close', register: 'mid', active: ['刻みが入る', '旋律が入る', '戻る'] },
+        { name: 'メロディカ', generator: 'line', role: 'melody', notes: seq('R:16 A5:2 G5:1 E5:1 D5:2 R:2 R:4 A5:1 C6:1 B5:1 A5:1'), active: ['旋律が入る', '戻る'] },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: '....X...' }, { inst: 'rim', steps: '....x...' }, { inst: 'hat', steps: 'x.x.x.x.' }] }] },
+      ],
+    },
+    eno_loops: {
+      listen: '7拍・9拍・11拍と、長さの違う3つのゆっくりしたループ(高・中・低)が、休まず回り続ける。ループの長さが違うので、3つの重なり方が毎回変わり、同じ組み合わせは12小節のあいだ二度と来ない。下では、持続の和音が静かに支える',
+      bars: 12, tempo: 60,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('Cmaj7:16 Fmaj7:16 Cmaj7:16') },
+      layers: [
+        { name: '高いループ(7拍)', generator: 'ostinato', register: 'high', cell: 'E5:3 G5:1 B5:3' },
+        { name: '中のループ(9拍)', generator: 'ostinato', register: 'mid', cell: 'C5:4 A4:3 D5:2' },
+        { name: '低いループ(11拍)', generator: 'ostinato', register: 'low', cell: 'G3:5 F3:3 E3:3' },
+        { name: 'パッド', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+      ],
+    },
+    acid: {
+      listen: '低い A を根音にした16分音符の型(オクターブ上と C・D・E・G を混ぜる)を、休まずくり返す。強い音と弱い音が不規則に並ぶアクセントで、うねりが生まれる。5小節目からは F を根音にした少し高い型。四つ打ちのキックとクラップが土台',
+      bars: 8, tempo: 128,
+      pitch: { system: 'scale', root: 'A', scale: 'minor' },
+      layers: [
+        { name: '303', generator: 'line', role: 'bass', notes: (() => {
+          const a = 'A2 A2 R A3 A2 C3 R A2 D3 A2 A3 R E3 A2 C3 G2';
+          const f = 'F2 F2 R F3 F2 Ab2 R F2 Bb2 F2 F3 R C3 F2 Ab2 Eb2';
+          const bars = [a, a, a, a, f, f, a, a].map((b) => b.split(' ').map((n) => (n === 'R' ? 'R:0.25' : `${n}:0.25`)).join(' '));
+          return seq(bars.join(' ')).map((n, i) => ({ ...n, velocity: [118, 64, 72, 112, 66, 110, 62, 70][i % 8] }));
+        })() },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'kick', steps: 'X...X...X...X...' }, { inst: 'hat', steps: '..x...x...x...x.' }, { inst: 'clap', steps: '....x.......x...' }] }] },
+      ],
+    },
+    synthwave: {
+      listen: 'イ短調の Am → F → C → G を、8分のアルペジオとパッド、オクターブのベースが支える。ゲートスネアと四つ打ちのドラム。リードは前半で C6・B を行き来する伸びやかな句、後半は上へ登る句で、最後は G の B・D で止まる',
+      bars: 8, tempo: 100,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:4 F:4 C:4 G:4 Am:4 F:4 C:4 G:4') },
+      layers: [
+        { name: 'アルペジオ', generator: 'chords', comping: 'arpeggio', voicing: 'open', register: 'mid' },
+        { name: 'パッド', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'high' },
+        { name: 'ベース', generator: 'bass', pattern: 'octave' },
+        { name: 'リード', generator: 'line', role: 'melody', notes: seq('E5:2 C6:1 B5:1 A5:2 C6:2 G5:2 E5:1 D5:1 D5:2 G5:2 E5:1 A5:1 C6:2 F5:1 A5:1 C6:2 E5:1 G5:1 C6:2 B5:2 D6:1 G5:1') },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'kick', steps: 'X...X...X...X...' }, { inst: 'snare', steps: '....X.......X...' }, { inst: 'hat', steps: 'x.x.x.x.x.x.x.x.' }] }] },
+      ],
+    },
+    vaporwave: {
+      listen: '甘い拡張和音(Fmaj7 → Em7 → Dm9 → Cmaj7)の4小節を、遅いテンポでそのまま2回くり返す。旋律もまったく同じ形で2回。ゆったりしたキックとスネアが、ぼやけた時間を刻む',
+      bars: 8, tempo: 70,
+      pitch: { system: 'chords', root: 'F', scale: 'major', chords: prog('Fmaj7:4 Em7:4 Dm9:4 Cmaj7:4 Fmaj7:4 Em7:4 Dm9:4 Cmaj7:4') },
+      layers: [
+        { name: 'エレピ', generator: 'chords', comping: 'sustain', voicing: 'rootless', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: (() => {
+          const loop = 'A5:2 G5:1 E5:1 G5:2 E5:2 F5:3 D5:1 E5:4';
+          return seq(`${loop} ${loop}`);
+        })() },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 2, patterns: [{ rows: [{ inst: 'kick', steps: 'X.....x.' }, { inst: 'snare', steps: '....X...' }, { inst: 'hat', steps: 'x.x.x.x.' }] }] },
+      ],
+    },
+    hyperpop: {
+      listen: 'ハ長調の C・G・Am・F が2拍ずつ速く変わる、ふつうのポップスの和音。その上で、リードが16分音符を詰め込み、G4 から C7 まで、オクターブをまたぐ大きな跳躍でつなぐ。ひずんだオクターブのベースと、速いハイハット・キックが押す',
+      bars: 8, tempo: 160,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:2 G:2 Am:2 F:2 C:2 G:2 Am:2 F:2 C:2 G:2 Am:2 F:2 F:2 G:2 C:4') },
+      layers: [
+        { name: 'ひずんだ和音', generator: 'chords', comping: 'stabs', voicing: 'power', register: 'mid' },
+        { name: 'ベース', generator: 'bass', pattern: 'octave' },
+        { name: 'リード', generator: 'line', role: 'melody', notes: (() => {
+          const C = 'C6 C7 G5 E6 C7 G6 E5 C7';
+          const G = 'G6 D7 B5 G6 D7 B6 G5 D7';
+          const Am = 'A5 A6 C6 E7 A6 C7 E5 A6';
+          const F = 'F5 F6 A5 C7 F7 A5 C6 F6';
+          const g = (s) => s.split(' ').map((n) => `${n}:0.25`).join(' ');
+          return seq([g(C), g(G), g(Am), g(F), g(C), g(G), g(Am), g(F), g(C), g(G), g(Am), g(F), g(F), g(G), g(C), 'C7:2'].join(' '));
+        })() },
+        { name: 'ドラム', generator: 'drums', stepsPerBeat: 4, patterns: [{ rows: [{ inst: 'kick', steps: 'X.x.X.x.X.x.X.x.' }, { inst: 'hat', steps: 'xxxxxxxxxxxxxxxx' }, { inst: 'clap', steps: '....X.......X...' }] }] },
+      ],
+    },
     /* ---- 音楽史マップ 30件の波(2026-11-07) ---- */
     chant: {
       listen: '伴奏のない1本の旋律が、D のドリア旋法の中を、順次進行を中心に上り下りする。拍子を刻まず、句の終わりで長く伸ばして息をつぎ、最後は終止音の D に静かに帰る',
