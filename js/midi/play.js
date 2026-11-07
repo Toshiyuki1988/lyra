@@ -22,6 +22,24 @@
     { id: 'guitar', label: 'ナイロンギター', gm: 'acoustic_guitar_nylon' },
     { id: 'strings', label: 'ストリングス', gm: 'string_ensemble_1' },
     { id: 'pad', label: 'シンセパッド', gm: 'pad_2_warm' },
+    // VSCO-2 CE(CC0 の実録。js/midi/vsco.js)。パックを読み込めない時は fallback の GM 音色で鳴る
+    { id: 'vsco_flute', label: 'フルート(VSCO)', vsco: 'flute', fallback: 'flute' },
+    { id: 'vsco_oboe', label: 'オーボエ(VSCO)', vsco: 'oboe', fallback: 'flute' },
+    { id: 'vsco_clarinet', label: 'クラリネット(VSCO)', vsco: 'clarinet', fallback: 'flute' },
+    { id: 'vsco_bassoon', label: 'ファゴット(VSCO)', vsco: 'bassoon', fallback: 'flute' },
+    { id: 'vsco_horn', label: 'ホルン(VSCO)', vsco: 'horn', fallback: 'strings' },
+    { id: 'vsco_trumpet', label: 'トランペット(VSCO)', vsco: 'trumpet', fallback: 'strings' },
+    { id: 'vsco_trombone', label: 'トロンボーン(VSCO)', vsco: 'trombone', fallback: 'strings' },
+    { id: 'vsco_tuba', label: 'チューバ(VSCO)', vsco: 'tuba', fallback: 'strings' },
+    { id: 'vsco_strings', label: 'ストリングス(VSCO。低音から高音へ コントラバス・チェロ・ヴィオラ・ヴァイオリン)', fallback: 'strings',
+      vsco: [{ inst: 'contrabass', max: 43 }, { inst: 'cello', max: 57 }, { inst: 'viola', max: 67 }, { inst: 'violin' }] },
+    { id: 'vsco_violin', label: 'ヴァイオリン(VSCO)', vsco: 'violin', fallback: 'strings' },
+    { id: 'vsco_cello', label: 'チェロ(VSCO)', vsco: 'cello', fallback: 'strings' },
+    { id: 'vsco_harp', label: 'ハープ(VSCO)', vsco: 'harp', fallback: 'guitar' },
+    { id: 'vsco_piano', label: 'アップライトピアノ(VSCO)', vsco: 'piano', fallback: 'piano' },
+    { id: 'vsco_marimba', label: 'マリンバ(VSCO)', vsco: 'marimba', fallback: 'vibes' },
+    { id: 'vsco_glock', label: 'グロッケンシュピール(VSCO)', vsco: 'glock', fallback: 'vibes' },
+    { id: 'vsco_xylo', label: 'シロフォン(VSCO)', vsco: 'xylo', fallback: 'vibes' },
     { id: 'lyra_mix', label: '合成アンサンブル(旋律ベル・和音パッド・ベースドローン)', gm: null, synth: 'mix' },
     { id: 'lyra_bell', label: '合成ベル', gm: null, synth: 'bell' },
     { id: 'lyra_pad', label: '合成パッド', gm: null, synth: 'pad' },
@@ -37,8 +55,15 @@
   const ROLE_GAIN = { melody: 1, counter: 0.75, cantus: 0.7, harmony: 0.55, bass: 0.9, ground: 0.6, figure: 0.7, texture: 0.6 };
   const sampleCache = new Map(); // `${gm}/${pitch}` → AudioBuffer | Promise | null(読み込めなかった)
 
-  const voiceOf = (card) => VOICES.find((v) => v.id === (card && card.voice)) ||
+  // 設定の「プレビュー音源: VSCO」(state.prefs.previewEngine === 'vsco')の時、GM の音色を同じ種類の VSCO に読み替える(対応が無い音色は GM のまま)
+  const VSCO_OF_GM = { flute: 'vsco_flute', piano: 'vsco_piano', vibes: 'vsco_marimba', strings: 'vsco_strings' };
+  const voiceById = (card) => VOICES.find((v) => v.id === (card && card.voice)) ||
     VOICES.find((v) => v.id === (typeof state !== 'undefined' && state.prefs && state.prefs.defaultVoice)) || VOICES.find((v) => v.id === DEFAULT_VOICE);
+  const voiceOf = (card) => {
+    const v = voiceById(card);
+    const vsco = typeof state !== 'undefined' && state.prefs && state.prefs.previewEngine === 'vsco' && VSCO_OF_GM[v.id];
+    return (vsco && VOICES.find((x) => x.id === vsco)) || v;
+  };
   const samplePitch = (p) => Math.min(108, Math.max(21, p));
   const sampleName = (p) => `${['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'][p % 12]}${Math.floor(p / 12) - 1}`;
   const midiToFreq = (p) => 440 * Math.pow(2, (p - 69) / 12);
@@ -159,7 +184,23 @@
 
   /** 音色の読み込みを待ってから予約する(試聴・WAVの入口)。card は { voice, midi } の形でよい */
   async function scheduleVoiced(ctxOrMake, card, startAt) {
-    const voice = voiceOf(card);
+    let voice = voiceOf(card);
+    if (voice.vsco) {
+      // VSCO の音色: 鳴らす音に要るサンプルだけを読む(2 回目からはブラウザに残したものを使う)。読めなければ GM(fallback)で
+      const V = window.LyraVsco;
+      const notes = card.midi.notes.filter((n) => !isDrumNote(card.midi, n) && !vocabPart(card.midi, n.part));
+      const pending = V && notes.some((n) => !V.pick(voice.vsco, n.pitch, n.velocity));
+      if (pending) setStatus(`音色(${voice.label})を読み込んでいます…`, { busy: true });
+      const ok = V ? await V.prepare(voice.vsco, notes).catch(() => false) : false;
+      if (ok) {
+        if (pending) setStatus(`音色(${voice.label})を読み込みました`);
+        const ctx0 = typeof ctxOrMake === 'function' ? ctxOrMake() : ctxOrMake;
+        return scheduleSynth(ctx0, card, typeof startAt === 'function' ? startAt(ctx0) : startAt, voice);
+      }
+      voice = VOICES.find((v) => v.id === voice.fallback) || VOICES.find((v) => v.id === DEFAULT_VOICE);
+      setStatus(`VSCO の音色を読み込めなかったので、${voice.label}で鳴らします`, { important: true });
+      card = { ...card, voice: voice.id };
+    }
     if (voice.sampler) {
       // 自作の音色: 鳴らす音に要るサンプルだけを端末の保存場所から読む。読めなければ簡易シンセで
       const S = window.LyraSampler;
@@ -236,8 +277,9 @@
         nodes.push(...synthNote(ctx, kind, midiToFreq(n.pitch + (n.cents || 0) / 100), t0, t1, (n.velocity / 127) * gain, env, cutoff ? filter : out));
         return;
       }
-      if (voice && voice.sampler) {
-        const smp = window.LyraSampler && window.LyraSampler.pick(voice.sampler, n.pitch, n.velocity);
+      if (voice && (voice.sampler || voice.vsco)) {
+        const smp = voice.vsco ? (window.LyraVsco && window.LyraVsco.pick(voice.vsco, n.pitch, n.velocity))
+          : (window.LyraSampler && window.LyraSampler.pick(voice.sampler, n.pitch, n.velocity));
         if (smp) {
           const src = ctx.createBufferSource();
           src.buffer = smp.buffer;
@@ -245,7 +287,7 @@
           src.connect(env);
           env.connect(cutoff ? filter : out);
           // サンプルは読み込み時に -1dB にそろえてあるので、和音で重なっても割れないよう控えめに(6音の和音で -4dB 前後)
-          const level = smp.gain * 0.6 * (role === 'melody' ? 1 : 0.85);
+          const level = smp.gain * (voice.vsco ? 0.5 : 0.6) * (role === 'melody' ? 1 : 0.85);
           const end = Math.max(t0 + 0.02, t1);
           env.gain.linearRampToValueAtTime(level, t0 + 0.003);
           env.gain.setValueAtTime(level, end);
@@ -288,7 +330,7 @@
       nodes.push(osc);
     });
     const end = m.notes.reduce((e, n) => Math.max(e, n.start + n.duration), 0);
-    const duration = Math.max(muEnd, toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : voice && voice.sampler ? 1.4 : 0.6)); // 語彙の余韻も含める
+    const duration = Math.max(muEnd, toSec(Math.max(end, 0.5)) + (voice && voice.synth ? 1.6 : voice && (voice.sampler || voice.vsco) ? 1.4 : 0.6)); // 語彙の余韻も含める
     const toBeat = secondsToBeat(m);
     return {
       duration,

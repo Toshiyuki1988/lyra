@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>確認: VSCO-2 CE のプレビュー音源</title>
+<style>
+  body { font: 13px/1.6 sans-serif; margin: 16px; }
+  iframe { width: 100%; height: 300px; border: 1px solid #ccc; }
+  pre { white-space: pre-wrap; background: #f6f3ec; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>VSCO-2 CE のプレビュー音源(2026-11-08)</h1>
+<p>アプリ(index.html)を下に読み込み、VSCO のパックから音を読み込んで鳴らせるか(オフラインで書き出した波形の大きさ)、
+GM との読み替え、パックが無い時の GM への切り替えを確かめる。パックは <code>?base=</code> で置き場所を渡す
+(既定は <code>../../mockups/vsco-pack/</code>。tools/build-vsco-pack.py で作ったもの)。サインイン・Drive・Gemini は使わない。</p>
+<pre id="out">実行中…</pre>
+<iframe id="app" src="../../index.html?check=vsco"></iframe>
+<script>
+(async function () {
+  const out = document.getElementById('out');
+  const log = [];
+  const show = () => { out.textContent = '途中の経過' + String.fromCharCode(10) + log.join(String.fromCharCode(10)); };
+  const ok = (name, cond, extra) => { log.push(`${cond ? 'OK ' : 'NG '} ${name}${extra != null ? ` (${extra})` : ''}`); show(); };
+  const frame = document.getElementById('app');
+  await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+  const win = frame.contentWindow;
+  const errors = [];
+  win.addEventListener('error', (e) => errors.push(e.message));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 50 && !(win.LyraMidi && win.LyraMidi.renderBuffer && win.LyraVsco); i++) await wait(100);
+  const M = win.LyraMidi;
+  const base = new URL(new URLSearchParams(location.search).get('base') || '../../mockups/vsco-pack/', location.href).href;
+  const stats = (buf) => {
+    let peak = 0; let sum = 0; let n = 0;
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < d.length; i += 7) { const a = Math.abs(d[i]); if (a > peak) peak = a; sum += d[i] * d[i]; n++; }
+    }
+    return { peak, rms: Math.sqrt(sum / Math.max(1, n)), sec: buf.duration };
+  };
+  try {
+    win.eval(`state.prefs.vscoBase = ${JSON.stringify(base)}; state.prefs.vscoNoCache = true`); // ヘッドレスでは Cache Storage が固まる
+    ok('パックの目録が読める', await win.LyraVsco.available(), base);
+    ok('VSCO の音色が16個、ピッカーの音色一覧にある', M.VOICES.filter((v) => v.vsco).length === 16, M.VOICES.filter((v) => v.vsco).length);
+
+    const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' が ' + ms + 'ms で終わらない')), ms))]);
+    const t0 = await withTimeout(win.LyraVsco.prepare('flute', [{ pitch: 72 }, { pitch: 79 }]), 20000, 'prepare');
+    ok('flute のサンプルを読み込める', t0 === true, String(t0));
+    // 楽器ごとに、その楽器らしい音域のお手本を鳴らして、無音でも歪みでもないこと
+    const cases = [['vsco_flute', 'heterophony'], ['vsco_strings', 'partimento'], ['vsco_piano', 'galant_schemata'], ['vsco_marimba', 'kotekan'], ['vsco_harp', 'division'], ['vsco_horn', 'hocket'], ['vsco_cello', 'rule_of_octave']];
+    for (const [voice, demo] of cases) {
+      const midi = win.LyraDemos.render(demo);
+      const buf = await withTimeout(M.renderBuffer({ voice, midi }), 30000, 'renderBuffer');
+      const s = stats(buf);
+      ok(`${voice} で ${demo} を鳴らせる`, s.rms > 0.003 && s.peak < 1.0, `rms ${s.rms.toFixed(3)} / peak ${s.peak.toFixed(2)} / ${s.sec.toFixed(1)}秒`);
+    }
+    // ストリングスは音域で楽器が変わる
+    const pick = (p) => win.LyraVsco.pick(M.VOICES.find((v) => v.id === 'vsco_strings').vsco, p, 90);
+    ok('ストリングスの音域の切り替え(低い音と高い音で別のサンプル)', pick(36) && pick(80) && pick(36).buffer !== pick(80).buffer);
+
+    // 設定「プレビュー音源」: GM の音色の読み替え
+    win.eval("state.prefs.previewEngine = 'vsco'");
+    ok('VSCO にすると flute→vsco_flute', M.voiceOf({ voice: 'flute' }).id === 'vsco_flute');
+    ok('VSCO にすると strings→vsco_strings・vibes→vsco_marimba・piano→vsco_piano', ['strings', 'vibes', 'piano'].map((v) => M.voiceOf({ voice: v }).id).join() === 'vsco_strings,vsco_marimba,vsco_piano');
+    ok('対応しない音色(guitar・pad)は GM のまま', M.voiceOf({ voice: 'guitar' }).id === 'guitar' && M.voiceOf({ voice: 'pad' }).id === 'pad');
+    win.eval("state.prefs.previewEngine = 'gm'");
+    ok('GM に戻すと読み替えない', M.voiceOf({ voice: 'flute' }).id === 'flute');
+
+    // パックが無い時: GM(か簡易シンセ)に切り替わって、音は出る
+    win.eval("state.prefs.vscoBase = 'http://localhost:9/nothing/'");
+    const mid2 = win.LyraDemos.render('heterophony');
+    const fb = await M.renderBuffer({ voice: 'vsco_flute', midi: mid2 });
+    const fs = stats(fb);
+    ok('パックが無くても落ちず、代わりの音で鳴る', fs.rms > 0.003, `rms ${fs.rms.toFixed(3)}`);
+
+    // 2回目からは通信しない(Cache Storage に残る)
+    const keys = await Promise.race([win.caches.open('lyra-vsco-v1').then((c) => c.keys()), new Promise((r) => setTimeout(() => r(null), 3000))]);
+    log.push(keys ? `${keys.length >= 5 ? 'OK ' : 'NG '} 読み込んだサンプルがこの端末(Cache Storage)に残る (${keys.length})` : '(Cache Storage が使えない環境(ヘッドレスなど)なので、残る確認は省略)');
+  } catch (err) {
+    log.push(`NG 例外: ${err.message}`);
+  }
+  ok('画面の読み込みエラーが無い', !errors.length, errors.join(' / '));
+  const ng = log.filter((x) => x.startsWith('NG')).length;
+  out.textContent = `結果: ${ng ? `NG ${ng} 件` : 'すべて OK'}\n` + log.join('\n');
+  out.dataset.done = '1';
+})();
+</script>
+</body>
+</html>

@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   els.settingsSaveBtn = document.getElementById('settings-save-btn');
   els.settingsCancelBtn = document.getElementById('settings-cancel-btn');
   els.settingsDaily = document.getElementById('settings-daily');
+  els.settingsPreviewEngine = document.getElementById('settings-preview-engine');
   els.settingsDailyRow = document.getElementById('settings-daily-row');
   els.settingsExportName = document.getElementById('settings-export-name');
   els.settingsExportBtn = document.getElementById('settings-export-btn');
@@ -143,6 +144,9 @@ function openSettings() {
   // 日次課題のオン/オフはDriveのデータ(state.prefs)に保存するため、読み込み後だけ出す
   els.settingsDailyRow.hidden = !dataLoaded;
   els.settingsDaily.checked = Boolean(state.prefs.dailyTask);
+  // プレビュー音源も state.prefs(Drive のデータ)に保存するので、読み込み後だけ変えられる
+  els.settingsPreviewEngine.value = state.prefs.previewEngine === 'vsco' ? 'vsco' : 'gm';
+  els.settingsPreviewEngine.disabled = !dataLoaded;
   refreshExportDirName();
   els.settingsModal.classList.add('visible');
 }
@@ -186,6 +190,10 @@ function handleSaveSettings() {
   }
   saveUserConfig({ clientId, apiKey, pixabayKey: els.settingsPixabayKey.value });
   closeSettings();
+  if (dataLoaded && (state.prefs.previewEngine === 'vsco' ? 'vsco' : 'gm') !== els.settingsPreviewEngine.value) {
+    state.prefs.previewEngine = els.settingsPreviewEngine.value === 'vsco' ? 'vsco' : 'gm';
+    scheduleAutoSave();
+  }
   if (dataLoaded && state.prefs.dailyTask !== els.settingsDaily.checked) {
     state.prefs.dailyTask = els.settingsDaily.checked;
     scheduleAutoSave();

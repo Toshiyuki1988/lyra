@@ -194,6 +194,7 @@ CONSTELLATION(美術鑑賞記録アプリ)の姉妹アプリ。DTMプラグイ�
 | `js/screens/premix.js` | プレミックス画面(4つ目の画面、`#/premix`。フォルダカード=プレミックスエリアとオーディオカード。簡易版) |
 | `js/screens/ensemble.js` | アンサンブル画面(カード各種、自動招集、「アンサンブルを聴く」、効いた/効かなかったの書き戻し) |
 | `js/decompose.js` | 資料パネルと解体パイプライン、共通語彙の変換表、スクショからのパラメータ読み取り |
+| `js/midi/vsco.js` | プレビュー音源 VSCO-2 CE(別の公開リポジトリ `lyra-vsco` の音源パックを初回に取得。設定「プレビュー音源」。`docs/midi.md`「VSCO-2 CE のプレビュー音源」。作り方は `tools/build-vsco-pack.py`) |
 | `js/midi/` | MIDI生成一式(2026-09-26に作り直し。`models/README.md`)。theory(音名・コード・拍子)/ engine(軸と合成)/ generators(層の生成器15種)/ design(設計図のスキーマと整え方・旧形式の変換)/ presets(モデルと〇〇風)/ play(試聴・WAV)/ export(.mid・範囲・フォルダへの保存)/ compose(Geminiとの流れ)/ editor(canvasの編集画面)/ card(カード・パネル) |
 | `js/audio.js` | オーディオカード(Opus/Oggへの圧縮+peaks、Drive保存、Web Audioで再生) |
 | `js/daily.js` | 日次課題(1日1回、未確認パラメータから選んでコンサートホールのアンサンブルへ) |

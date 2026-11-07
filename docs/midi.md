@@ -442,6 +442,22 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - **未確認**: 耳での確認(特にラーガ・マカームの微分音、ティハイの着地、コテカンの嚙み合わせ)、Cubase でのピッチベンドの受けられ方、本物の Gemini が書いた設計図での動作、参照曲の監修。
   なお、既存のお手本のうち 11件(fluct・variations・leitmotif・transformation・symphonic_climax・drone_music・shomyo・shakuhachi_honkyoku・power_ballad・post_rock・eno_loops)は、前から 10〜32 秒を超えている(35〜58 秒)。テンポを上げるかお手本を短くするかは未対応
 
+## VSCO-2 CE のプレビュー音源(2026-11-08)
+- ユーザー依頼「MIDIプレビュー音源をGMから差し替えたい」(LYRA Host 側の仮音源集の情報を受けて)。**実装済み・未公開**(パックの置き場の公開リポジトリを作る許可待ち。下の「公開の手順」)
+- 仕組み: VSCO-2 Community Edition(CC0。固定コミット 440300901dfe9275fd84e0b7763af1f8443ae62e)の実録サンプルを、**楽器ごとの小さな音源パック**にして LYRA のリポジトリの外(別の公開リポジトリ `lyra-vsco` の GitHub Pages)に置き、鳴らす楽器の・鳴らす高さに近いサンプルだけを初回に取得する。
+  取得したものはブラウザの Cache Storage に残る(2 回目からは通信しない。Cache Storage が固まる環境でも 2 秒で諦めて通信する)。サンプルは LYRA のリポジトリに入れない
+- パックの作り方: `python tools/build-vsco-pack.py OUTDIR [RAWDIR]`(numpy と lameenc が要る)。音名ごとに中くらいの強さを1本選び、頭の無音を落とし、5〜1.5秒に切ってフェード、楽器ごとに音量をそろえ、**モノラル mp3 96kbps**。
+  ファイル名の音の高さは楽器ごとにオクターブの書き方が違うので、自己相関で測って楽器ごとのずれを直す(ほとんどの楽器が名前より +12。ハープ・ピアノは 0。グロッケンは測れないので +12 に固定=スペクトルの山で確認)。
+  17楽器(フルート・オーボエ・クラリネット・ファゴット・ホルン・トランペット・トロンボーン・チューバ・ヴァイオリン・ヴィオラ・チェロ・コントラバス・ハープ・アップライトピアノ・マリンバ・グロッケン・シロフォン)195本で **10.5 MB**(元は数百 MB)
+- 音色: `play.js` の `VOICES` に `{ vsco }` の音色16個(ストリングスは音域で コントラバス→チェロ→ヴィオラ→ヴァイオリン と切り替える1つ)。カードごとの音色の選択肢にも出る。読み込みは `js/midi/vsco.js`(`LyraVsco`)。鳴らし方は自作の音色(sampler)と同じ(近いサンプルの再生速度を変える。cents も反映)。音は今まで通り `safeOut` を通る(WAV 書き出しには入らない)
+- **設定の「プレビュー音源」**(GM / VSCO。`state.prefs.previewEngine`。Drive の `prefs` に入る。保存形式の version は変えていない=無ければ GM): VSCO にすると、GM の flute→フルート・piano→ピアノ・vibes→マリンバ・strings→ストリングス を VSCO に読み替える(`voiceOf()`)。guitar・epiano・pad・ドラムは対応が無いので GM・簡易シンセのまま
+- 失敗したら: VSCO のパックを読み込めない時は、音色ごとの `fallback`(GM の音色)で鳴り、それも読めなければ簡易シンセ。状態欄に出る
+- パックの置き場は `state.prefs.vscoBase` で変えられる(既定 `https://toshiyuki1988.github.io/lyra-vsco/`。開発中は `http://localhost:8000/mockups/vsco-pack/` などに置く)
+- 公開の手順(ユーザー): GitHub で公開リポジトリ `lyra-vsco` を作る → `C:\Users\Toshiyuki\Desktop\lyra-vsco`(パックを入れて git init・コミット済み)で `git remote add origin https://github.com/Toshiyuki1988/lyra-vsco.git` と `git push -u origin main` → リポジトリの Settings → Pages で main / root を公開
+- 確かめたこと(Node。`node docs/duo/test-vsco.cjs パックのフォルダ`): パックの目録・全195ファイル・mp3 の頭・17楽器・合計 25MB 未満/音域の切り替え・近いサンプルと再生速度・全楽器の読み込み/パックが無い時に落ちない。play.js は Node で、音色の読み替えと「パックがある時はサンプルで、無い時は GM を経て簡易シンセで」の経路を確認した
+- **未確認**: 実ブラウザーでの再生(耳)。ヘッドレス Edge ではこの環境の音声デコードが止まって確認できなかった(`docs/duo/check-vsco.html` は実ブラウザーで開く用。通った記録は無い)。実際の鳴り方・音量のバランス・サンプルの切れ目(5秒より長い音は途切れる)・パックを GitHub Pages に置いた後の取得。
+  既知の限り: サンプルは強さが1段なので、強弱の表現が単調。長い音は 5 秒で終わる。Philharmonia はライセンス未確認なので使っていない
+
 ## モデルのピン留めと絞り込み(2026-11-07)
 - ユーザー要望「モデルにピン留め機能をつけて、フィルタリングしたい」。モデルのピッカー(js/midi/compose.js の `pickModel()`)の各モデルの右に、お手本・解説と並べてピンのボタン
 - ピン留めは `state.prefs.pinnedModels`(id の配列。Drive に保存されるので、端末をまたいで同じ)。「すべて」の時は先頭の「ピン留め」の見出しにも集める(元の見出しにも残る)
