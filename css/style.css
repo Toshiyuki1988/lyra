@@ -1767,6 +1767,9 @@ a.btn-secondary { display: block; }
 .model-item-label { font-size: 13px; font-weight: 600; }
 .model-item-label em { font-style: normal; font-size: 10px; font-weight: 500; color: #fff; background: var(--accent); border-radius: 3px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
 .model-item-text { font-size: 11px; line-height: 1.6; color: var(--muted); }
+/* 参照曲(2026-11-07) */
+.model-item-works { font-size: 10.5px; line-height: 1.5; color: var(--accent-deep); }
+.demo-works b { background: var(--accent-deep); }
 
 /* ---------- MIDIの編集画面(js/midi/editor.js、canvas版) ---------- */
 .modal.midi-editor { width: min(1280px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); display: flex; flex-direction: column; overflow: hidden; }

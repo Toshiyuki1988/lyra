@@ -226,6 +226,7 @@
       (preset.kids ? `<div class="demo-kids-box"><div class="demo-kids">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` +
         `<p class="demo-kids-text">${escapeHtml(preset.kids.text)}</p></div>` : '') +
       `<p class="demo-listen"><b>聴きどころ</b>${escapeHtml(window.LyraDemos.listen(presetId))}</p>` +
+      (preset.works && preset.works.length ? `<p class="demo-listen demo-works"><b>参照曲</b>${escapeHtml(P.worksText(preset))}</p>` : '') +
       `<div class="demo-roll">${M.pianoRollSvg(midi, 720, 240)}<div class="demo-head" hidden></div></div>` +
       `<div class="roll-legend demo-legend">${parts.map((p) => `<span><i style="background:${M.partColor(midi, p)}"></i>${escapeHtml(M.partLabel(midi, p))}</span>`).join('')}</div>` +
       `<div class="demo-controls">` +
@@ -361,6 +362,7 @@
         return `<button type="button" class="model-item model-item--icons${icons}${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}${pinned ? ' model-item--pinned' : ''}" data-model="${p.id}">` +
           `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
           `<span class="model-item-text">${escapeHtml(p.text)}</span>` +
+          (p.works && p.works.length ? `<span class="model-item-works">参照曲: ${escapeHtml(p.works.join('、'))}</span>` : '') +
           `<span class="model-side">` +
             `<span class="model-pin${pinned ? ' is-pinned' : ''}" data-pin="${p.id}" role="button" tabindex="0" aria-pressed="${pinned}" title="${pinLabel}" aria-label="${pinLabel}">${PIN_ICON}</span>` +
             (hasDemo(p.id) ? `<span class="model-demo" data-demo="${p.id}" role="button" tabindex="0" title="お手本の演奏を聴く" aria-label="お手本の演奏を聴く">${DEMO_ICON}</span>` : '') +
@@ -382,7 +384,7 @@
         const pins = pinnedModels();
         const query = search.value.trim().toLowerCase();
         const match = (p) => (!filter.group || p.group === filter.group) &&
-          (!query || `${p.label} ${p.short || ''} ${p.text} ${p.group} ${p.id}`.toLowerCase().includes(query));
+          (!query || `${p.label} ${p.short || ''} ${p.text} ${p.group} ${p.id} ${(p.works || []).join(' ')}`.toLowerCase().includes(query));
         const pinnedList = pins.map((id) => visible.find((p) => p.id === id)).filter((p) => p && match(p));
         let html = groupHtml(`${PIN_ICON}ピン留め`, pinnedList, pins, 'model-group--pinned');
         if (filter.view === 'all') {

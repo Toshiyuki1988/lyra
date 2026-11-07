@@ -32,7 +32,8 @@
       ${src ? `<div>アプリでの名前 <b>${esc(src.label)}</b></div>
       ${src.text ? `<div>説明 ${esc(src.text)}</div>` : ''}
       <div>子どもの解説 ${kids ? `<b>${esc(kids.title)}</b> — ${esc(kids.text)}` : '(まだ無い)'}</div>
-      <div>お手本の聴きどころ ${demo ? esc(window.LyraDemos.listen(id)) : '(まだ無い)'}</div>` : ''}
+      <div>お手本の聴きどころ ${demo ? esc(window.LyraDemos.listen(id)) : '(まだ無い)'}</div>
+      ${Array.isArray(src.works) ? `<div>参照曲 ${esc(window.LyraPresets.worksText(src))}</div>` : ''}` : ''}
       ${reason ? `<div>${esc(reason)}</div>` :
         '<button type="button" class="primary" data-history-pick>このモデルで作る</button>'}
     </div>`;
@@ -104,7 +105,7 @@
       const matches = filters[filter][1];
       sections.forEach(({ section, rows }) => {
         rows.forEach(({ el, item }) => {
-          el.hidden = !matches(item) || !(item.label + item.text + item.id).toLowerCase().includes(query);
+          el.hidden = !matches(item) || !(item.label + item.text + item.id + (item.src?.works || []).join(' ')).toLowerCase().includes(query);
         });
         section.hidden = rows.every(({ el }) => el.hidden);
       });
