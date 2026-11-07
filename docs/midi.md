@@ -392,6 +392,16 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - 参照曲: アルゴリズムの4件(euclidean・lsystem・boids・physics)は、元になる特定の曲が無いので `[]`(画面は「なし(元になる特定の曲が無いモデル)」)。genetic は即興のプログラム GenJam
 - お手本の長さは 11〜32 秒(無限旋律はテンポ60、群れは92にして32秒以内に収めた)。今までのお手本59件の音が変わっていないことを、前のコミットと音符を比べて確かめた
 
+## 音楽史マップ 30件の波(2026-11-07)
+- ユーザー依頼「ちょっと1時間くらい出かけてくるので30件ほどモデル作っておいて。Pushまでお願い」(無人の作業)。生成器を足さずに作れる P(プリセットだけ)から、時代とジャンルが偏らないように30件を選んだ:
+  中世・ルネサンス・バロック8(chant・isorhythm・estampie・cori_spezzati・fugue・sequence・arpeggio_prelude・basso_continuo)/ 古典派4(alberti・minuet・period・rondo)/
+  ロマン派3(lied・song_without_words・chromatic_harmony)/ ポピュラー6(blues12・royal_road・komuro・canon_prog・doowop・andalusian)/ ジャズ4(ragtime・boogie・stride・coltrane)/
+  日本2(japanese_modes・takemitsu)/ 電子音楽1(berlin_school)/ 伝統・民族2(drone_melody・wusheng)。ピッカーの見出しに「古典派」「ポピュラー」「日本」「電子音楽」「伝統・民族」が増えた
+- すべて今ある生成器(line・chords・bass・imitate・process・ostinato・drums・bebop・gesture)の組み合わせ。仕組みは変えていない
+- 旋律・主題・リフはすべてお手本の中で新しく書いた。カノン進行はパッヘルベルの旋律(高い声の下行の線)をなぞらないよう、プリセットの guide と style にも書いた。日本の旋法は箏の手のような記号的な飾りを使わない(見立て蔵と同じ方針)
+- 確かめたこと(Node): 30件のお手本が 12〜32 秒の音を出す・層がすべて鳴る・コード進行の拍の合計が小節数と合う・旋律が小節からはみ出さない・使ったコードネームがすべて読める・
+  フーガの応答が4度下・オクターブ下で入る・ブギウギの左手が和音の区間ごとに移る。今までのお手本59件の音符が前のコミットと同じ。耳での確認は未確認
+
 ## モデルのピン留めと絞り込み(2026-11-07)
 - ユーザー要望「モデルにピン留め機能をつけて、フィルタリングしたい」。モデルのピッカー(js/midi/compose.js の `pickModel()`)の各モデルの右に、お手本・解説と並べてピンのボタン
 - ピン留めは `state.prefs.pinnedModels`(id の配列。Drive に保存されるので、端末をまたいで同じ)。「すべて」の時は先頭の「ピン留め」の見出しにも集める(元の見出しにも残る)
