@@ -262,7 +262,7 @@
     if (has('axiom')) L.axiom = str(raw.axiom, 32);
     if (has('productions')) L.productions = strs(raw.productions, 48, 6);
     if (has('iterations')) L.iterations = int(raw.iterations, 1, 6, 3);
-    if (has('phrases')) L.phrases = (raw.phrases || []).slice(0, 8).map((p) => parseCell(p, true)).filter((p) => p.length >= 2);
+    if (has('phrases')) L.phrases = (raw.phrases || []).slice(0, generator === 'fragments' ? 16 : 8).map((p) => parseCell(p, true)).filter((p) => p.length >= (generator === 'fragments' ? 1 : 2) && p.some((n) => n.pitch != null)); // 断片の自由反復は1音の断片(長い音)も使う
     if (has('order')) L.order = raw.order === 2 ? 2 : 1;
     if (has('against')) L.against = str(raw.against, 20).trim();
     if (has('species')) L.species = [1, 2, 4].includes(Number(raw.species)) ? Number(raw.species) : 1;

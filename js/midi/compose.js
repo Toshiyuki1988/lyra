@@ -172,26 +172,30 @@
       pop.style.left = `${left}px`;
       pop.style.top = `${top}px`;
     };
-    overlay.querySelectorAll('[data-kids]').forEach((icon) => {
-      icon.addEventListener('pointerenter', (event) => {
-        if (event.pointerType === 'mouse') show(icon);
-      });
-      icon.addEventListener('pointerleave', (event) => {
-        if (event.pointerType === 'mouse' && current === icon) hide();
-      });
-      icon.addEventListener('click', (event) => {
-        // アイコンを押してもモデルは選ばない(タッチでは開閉)
-        event.stopPropagation();
-        event.preventDefault();
-        if (current === icon && !pop.hidden) hide();
-        else show(icon);
-      });
+    // 2026-11-07: アイコンごとではなく窓で受ける(ピッカーの一覧を、絞り込み・ピン留めのたびに描き直しても効くように)
+    overlay.addEventListener('pointerover', (event) => {
+      const icon = event.target.closest('[data-kids]');
+      if (event.pointerType === 'mouse' && icon && icon !== current) show(icon);
     });
+    overlay.addEventListener('pointerout', (event) => {
+      const icon = event.target.closest('[data-kids]');
+      if (event.pointerType === 'mouse' && icon && current === icon && !icon.contains(event.relatedTarget)) hide();
+    });
+    // 捕獲の段階で受けて止める: アイコンを押してもモデルは選ばない(タッチでは開閉)
+    overlay.addEventListener('click', (event) => {
+      const icon = event.target.closest('[data-kids]');
+      if (!icon) return;
+      event.stopPropagation();
+      event.preventDefault();
+      if (current === icon && !pop.hidden) hide();
+      else show(icon);
+    }, true);
     const modal = overlay.querySelector('.modal');
     if (modal) modal.addEventListener('scroll', hide, { passive: true });
     overlay.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('[data-kids], .kids-pop')) hide();
     });
+    return { hide };
   }
 
   /* お手本の演奏(2026-10-01、ユーザー要望「各MIDI生成モデルの、イメージを掴みやすい実例MIDI演奏みたいな画面を子どもの解説の横あたりからポップアップ」)。
@@ -302,32 +306,98 @@
     play(); // 押した操作の中なので、そのまま鳴らし始める
   }
 
-  /** モデルのピッカー(見出しごとに並べ、説明つき)。やめたら null */
+  /* モデルのピン留めと絞り込み(2026-11-07、ユーザー要望「モデルにピン留め機能をつけて、フィルタリングしたい」)。
+   * ピン留めは state.prefs.pinnedModels(id の配列。Drive に保存されるので、スマホとPCで同じ)。絞り込みの状態(すべて/ピン留め・見出し)は
+   * この端末の localStorage に覚える(検索の文字は覚えない) */
+  const PIN_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 2.5h6l-1.2 6.2 3.4 3.3v2H13v6.5L12 21.5l-1-1V14H6.8v-2l3.4-3.3z" fill="currentColor"/></svg>';
+  const FILTER_KEY = 'lyra.modelFilter';
+  const pinnedModels = () => (state.prefs && Array.isArray(state.prefs.pinnedModels) ? state.prefs.pinnedModels.filter((id) => P.byId(id)) : []);
+  function togglePin(id) {
+    const list = pinnedModels();
+    state.prefs.pinnedModels = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+    if (typeof scheduleAutoSave === 'function') scheduleAutoSave();
+  }
+  function loadFilter() {
+    try {
+      const f = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}');
+      return { view: f.view === 'pinned' ? 'pinned' : 'all', group: typeof f.group === 'string' ? f.group : '' };
+    } catch (err) {
+      return { view: 'all', group: '' };
+    }
+  }
+  function saveFilter(f) {
+    try { localStorage.setItem(FILTER_KEY, JSON.stringify({ view: f.view, group: f.group })); } catch (err) { /* 覚えられなくても動く */ }
+  }
+
+  /** モデルのピッカー(見出しごとに並べ、説明つき。ピン留め・絞り込みつき)。やめたら null */
   function pickModel(title, recommended) {
     return new Promise((resolve) => {
       const last = lastModel();
       const stats = M.modelStats ? M.modelStats() : {};
-      const groups = [];
-      P.PRESETS.filter((p) => !p.hidden).forEach((p) => {
-        let g = groups.find((x) => x.name === p.group);
-        if (!g) groups.push((g = { name: p.group, list: [] }));
-        g.list.push(p);
-      });
+      const visible = P.PRESETS.filter((p) => !p.hidden);
+      const groupNames = [...new Set(visible.map((p) => p.group))];
+      const filter = loadFilter();
+      if (filter.group && !groupNames.includes(filter.group)) filter.group = '';
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay visible';
       overlay.innerHTML = `<div class="modal model-picker"><div class="history-map-heading"><h2>${escapeHtml(title || 'どのモデルで作りますか?')}</h2>` +
         `<button type="button" class="secondary" data-history-map>音楽史マップ</button></div>` +
         `<p class="modal-desc">モデルは「音高・拍子・時間の設計・層の作り方」の組み合わせです。Geminiは設計図を1回だけ書き、音はアプリが作ります(主旋律をGeminiが書くモデルは、反芻でもう1回)。</p>` +
-        groups.map((g) => `<div class="model-group"><div class="model-group-name">${escapeHtml(g.name)}</div>` +
-          g.list.map((p) => `<button type="button" class="model-item${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}" data-model="${p.id}">` +
-            `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
-            `<span class="model-item-text">${escapeHtml(p.text)}</span>` +
-            (p.kids || hasDemo(p.id) ? `<span class="model-side">` +
-              (hasDemo(p.id) ? `<span class="model-demo" data-demo="${p.id}" role="button" tabindex="0" title="お手本の演奏を聴く" aria-label="お手本の演奏を聴く">${DEMO_ICON}</span>` : '') +
-              (p.kids ? `<span class="model-kids" data-kids="${p.id}" role="img" aria-label="小学生向けの解説">${KIDS_ICON}</span>` : '') +
-              `</span>` : '') +
-            `</button>`).join('') + `</div>`).join('') +
+        `<div class="history-map-controls model-filters">` +
+          `<button type="button" class="secondary" data-model-view="all">すべて</button>` +
+          `<button type="button" class="secondary" data-model-view="pinned">${PIN_ICON}ピン留め(<span data-pin-count>0</span>)</button>` +
+          `<select data-model-group aria-label="見出しで絞り込む"><option value="">すべての見出し</option>` +
+            groupNames.map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('') + `</select>` +
+          `<input type="search" data-model-search aria-label="名前・説明で絞り込む" placeholder="名前・説明で絞り込む">` +
+        `</div>` +
+        `<div class="model-list"></div>` +
+        `<p class="model-empty" hidden></p>` +
         `<div class="modal-actions"><button type="button" class="secondary" data-cancel>やめる</button></div></div>`;
+
+      const item = (p, pins) => {
+        const pinned = pins.includes(p.id);
+        const icons = 1 + (hasDemo(p.id) ? 1 : 0) + (p.kids ? 1 : 0);
+        const pinLabel = pinned ? 'ピン留めを外す' : 'ピン留めする';
+        return `<button type="button" class="model-item model-item--icons${icons}${p.id === last ? ' model-item--last' : ''}${p.id === recommended ? ' model-item--recommended' : ''}${pinned ? ' model-item--pinned' : ''}" data-model="${p.id}">` +
+          `<span class="model-item-label">${escapeHtml(p.label)}${p.id === recommended ? '<em class="model-item-rec">おすすめ</em>' : ''}${p.id === last ? '<em>前回</em>' : ''}${stats[p.id] ? `<span class="model-item-stars" title="このモデルで作ったMIDIへの評価の平均">★${stats[p.id].avg}(${stats[p.id].n}件)</span>` : ''}</span>` +
+          `<span class="model-item-text">${escapeHtml(p.text)}</span>` +
+          `<span class="model-side">` +
+            `<span class="model-pin${pinned ? ' is-pinned' : ''}" data-pin="${p.id}" role="button" tabindex="0" aria-pressed="${pinned}" title="${pinLabel}" aria-label="${pinLabel}">${PIN_ICON}</span>` +
+            (hasDemo(p.id) ? `<span class="model-demo" data-demo="${p.id}" role="button" tabindex="0" title="お手本の演奏を聴く" aria-label="お手本の演奏を聴く">${DEMO_ICON}</span>` : '') +
+            (p.kids ? `<span class="model-kids" data-kids="${p.id}" role="img" aria-label="小学生向けの解説">${KIDS_ICON}</span>` : '') +
+          `</span></button>`;
+      };
+      const groupHtml = (name, list, pins, extra) => (list.length
+        ? `<div class="model-group${extra ? ` ${extra}` : ''}"><div class="model-group-name">${name}</div>${list.map((p) => item(p, pins)).join('')}</div>` : '');
+
+      const modal = overlay.querySelector('.modal');
+      const listEl = overlay.querySelector('.model-list');
+      const empty = overlay.querySelector('.model-empty');
+      const search = overlay.querySelector('[data-model-search]');
+      const groupSel = overlay.querySelector('[data-model-group]');
+      const viewBtns = [...overlay.querySelectorAll('[data-model-view]')];
+      let kids = null;
+      const render = () => {
+        if (kids) kids.hide();
+        const pins = pinnedModels();
+        const query = search.value.trim().toLowerCase();
+        const match = (p) => (!filter.group || p.group === filter.group) &&
+          (!query || `${p.label} ${p.short || ''} ${p.text} ${p.group} ${p.id}`.toLowerCase().includes(query));
+        const pinnedList = pins.map((id) => visible.find((p) => p.id === id)).filter((p) => p && match(p));
+        let html = groupHtml(`${PIN_ICON}ピン留め`, pinnedList, pins, 'model-group--pinned');
+        if (filter.view === 'all') {
+          html += groupNames.map((g) => groupHtml(escapeHtml(g), visible.filter((p) => p.group === g && match(p)), pins)).join('');
+        }
+        listEl.innerHTML = html;
+        overlay.querySelector('[data-pin-count]').textContent = String(pins.length);
+        viewBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.modelView === filter.view)));
+        groupSel.value = filter.group;
+        empty.hidden = Boolean(html);
+        empty.textContent = filter.view === 'pinned' && !pins.length
+          ? 'まだピン留めしたモデルはありません。モデルの右のピンを押すと、ここに集まります'
+          : '該当するモデルがありません';
+      };
+
       const finish = (id) => {
         overlay.remove();
         if (id) {
@@ -338,16 +408,48 @@
       overlay.querySelector('[data-history-map]').addEventListener('click', () => {
         window.LyraHistoryMap.open({ onPick: finish });
       });
-      overlay.querySelectorAll('[data-model]').forEach((b) => b.addEventListener('click', () => finish(b.dataset.model)));
-      bindKidsPopups(overlay);
-      overlay.querySelectorAll('[data-demo]').forEach((icon) => icon.addEventListener('click', (event) => {
-        // アイコンを押してもモデルは選ばない
+      viewBtns.forEach((b) => b.addEventListener('click', () => {
+        filter.view = b.dataset.modelView;
+        saveFilter(filter);
+        render();
+      }));
+      groupSel.addEventListener('change', () => {
+        filter.group = groupSel.value;
+        saveFilter(filter);
+        render();
+      });
+      search.addEventListener('input', render);
+      const onPin = (pin) => {
+        togglePin(pin.dataset.pin);
+        const top = modal.scrollTop; // 描き直しても、見ていた場所から動かさない
+        render();
+        modal.scrollTop = top;
+      };
+      listEl.addEventListener('click', (event) => {
+        const pin = event.target.closest('[data-pin]');
+        const demo = event.target.closest('[data-demo]');
+        if (pin || demo) {
+          // アイコンを押してもモデルは選ばない
+          event.stopPropagation();
+          event.preventDefault();
+          if (pin) onPin(pin);
+          else openDemo(demo.dataset.demo);
+          return;
+        }
+        const b = event.target.closest('[data-model]');
+        if (b) finish(b.dataset.model);
+      });
+      listEl.addEventListener('keydown', (event) => {
+        const pin = event.target.closest('[data-pin]');
+        if (!pin || (event.key !== 'Enter' && event.key !== ' ')) return;
         event.stopPropagation();
         event.preventDefault();
-        openDemo(icon.dataset.demo);
-      }));
+        onPin(pin);
+      });
+      kids = bindKidsPopups(overlay);
       overlay.querySelector('[data-cancel]').addEventListener('click', () => finish(null));
       attachBackgroundTapToClose(overlay, () => finish(null));
+      render();
       document.body.appendChild(overlay);
     });
   }

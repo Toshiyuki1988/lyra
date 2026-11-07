@@ -557,6 +557,117 @@
         { name: '旋律', generator: 'line', role: 'melody', notes: seq('R:3 R:1 A5:1 G5:1 C6:1 B5:1 G5:1 E5:3 R:1 A5:1 G5:1 B5:1 A5:1 G5:1 Eb5:3 E5:3 R:1 C6:1 B5:1 A5:1 G5:1 E5:1 F5:2 C5:1 E5:3').map((n) => ({ ...n, velocity: 80 })) },
       ],
     },
+    /* ---- 音楽史マップ 近代・戦後の波2(2026-11-07) ---- */
+    ravel: {
+      listen: '低い伴奏の型は最初から最後まで同じ。3小節目から拡張和音(Dm9・Em11・Fmaj7#11)が、同じ小節から旋律が加わり、7小節目で旋律に5度上の平行の声と分散の彩りが重なる。展開も転調もせず、層が1つずつ増えることだけで厚く・強くなる',
+      bars: 8, tempo: 76,
+      pitch: { system: 'chords', root: 'D', scale: 'dorian', chords: prog('Dm9:4 Em11:4 Fmaj7#11:4 Em11:4 Dm9:4 Em11:4 Fmaj7#11:4 Dm9:4') },
+      arc: { sections: [sec('1', 1, 2), sec('2', 3, 4), sec('3', 5, 6), sec('4', 7, 9)] },
+      layers: [
+        { name: '伴奏の型', generator: 'ostinato', cell: 'D3:0.75 D3:0.25 A3:0.5 D3:0.5 F3:1 E3:1', register: 'low' },
+        { name: '拡張和音', generator: 'chords', comping: 'sustain', voicing: 'open', active: ['2', '3', '4'] },
+        { name: '旋律', generator: 'line', role: 'melody', active: ['2', '3', '4'], notes: seq('R:8 A4:1.5 C5:0.5 D5:1 E5:1 F5:2 E5:1 D5:1 C5:1.5 D5:0.5 E5:1 G5:1 A5:3 R:1 A4:1.5 C5:0.5 D5:1 E5:1 F5:2 G5:1 A5:1 C6:1.5 B5:0.5 A5:1 G5:1 D5:4') },
+        { name: '平行の声', generator: 'imitate', against: '旋律', delay: 0, transpose: [4], active: ['4'] },
+        { name: '彩り', generator: 'gesture', gesture: 'arpeggio_flow', occurrence: 'continuous', role: 'figure', register: 'high', active: ['4'] },
+      ],
+    },
+    scriabin: {
+      listen: '4度を積んだ6音の神秘和音(C・F#・B♭・E・A・D)が2小節ずつ伸び、F# → C → A と和音ごと移る。旋律はその時の和音の音だけで上へうねり、主音に帰らないまま、トレモロのきらめきの中で終わる',
+      bars: 8, tempo: 66,
+      pitch: { system: 'scale', root: 'C', scale: 'prometheus' },
+      arc: { sections: [sec('光', 1, 4), sec('高まる', 3, 7), sec('昇る', 5, 9), sec('溶ける', 7, 5)] },
+      layers: [
+        { name: '神秘和音', generator: 'line', role: 'counter', notes: [
+          ...chord(0, 'C3 F#3 Bb3 E4 A4 D5', 8, 50), ...chord(8, 'F#2 C3 E3 Bb3 D#4 G#4', 8, 52),
+          ...chord(16, 'C3 F#3 Bb3 E4 A4 D5', 8, 56), ...chord(24, 'A2 D#3 G3 C#4 F#4 B4', 8, 50),
+        ] },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('R:1 E5:1.5 F#5:0.5 A5:2 Bb5:1.5 A5:0.5 D6:1 C6:2 A#5:1 G#5:1 E5:3 D#5:1 F#5:1 A5:1 D6:1 E6:1 Bb5:2 A5:2 G5:1.5 F#5:0.5 D#5:2 C#5:1 B4:1 A4:2') },
+        { name: 'きらめき', generator: 'gesture', gesture: 'tremolo', occurrence: 'sparse', role: 'figure', register: 'high' },
+      ],
+    },
+    free_atonal: {
+      listen: '短2度・三全音を含む4音の動機(B・C・F#・F)が、移高・反行・逆行・断片・拡大と形を変えて何度も現れ、高い声と低い声の2つが網のように絡む。調の中心が無く、静かな所と叫ぶ所の差が大きい',
+      bars: 8, tempo: 72,
+      pitch: { system: 'free' },
+      arc: { sections: [sec('ささやき', 1, 2), sec('高まり', 3, 6), sec('叫び', 5, 10), sec('消えいる', 7, 1)] },
+      layers: [
+        { name: '動機', generator: 'motif', cell: 'B4:0.5 C5:0.5 F#5:1 F5:1.5', chain: ['ORIG', 'T+3', 'I', 'FRAG', 'FRAG', 'T+7', 'AUG', 'R', 'DIM', 'DIM', 'ORIG'], gap: 0.5, register: 'mid' },
+        { name: '反行の声', generator: 'motif', cell: 'F5:1 E5:0.5 Bb4:0.5 B4:2', chain: ['ORIG', 'R', 'T-4', 'FRAG', 'I', 'AUG', 'ORIG'], gap: 1, register: 'low' },
+        { name: '閃き', generator: 'gesture', gesture: 'chromatic_flourish', occurrence: 'once', role: 'figure', register: 'high' },
+      ],
+    },
+    berg: {
+      listen: '音列「G Eb C | E G# B | C# A F# | Bb D F」は、3音ずつ区切るとハ短調・ホ長調・嬰ヘ短調・変ロ長調の和音になる。低い声はその和音を順に鳴らし、高い声は同じ列で歌う。十二音の決まりの中に、ロマン派の和音の影が浮かぶ',
+      bars: 8, tempo: 63,
+      pitch: { system: 'row' },
+      layers: [
+        { name: '和音', generator: 'serial', texture: 'chords', group: 3, row: ['G', 'Eb', 'C', 'E', 'G#', 'B', 'C#', 'A', 'F#', 'Bb', 'D', 'F'], forms: ['P0', 'I7'], rhythm: [3, 1], register: 'low' },
+        { name: '歌', generator: 'serial', texture: 'line', row: ['G', 'Eb', 'C', 'E', 'G#', 'B', 'C#', 'A', 'F#', 'Bb', 'D', 'F'], forms: ['P5', 'RI0', 'P0'], rhythm: [1.5, 0.5, 1, 2, 1], register: 'high' },
+      ],
+    },
+    neoclassical: {
+      listen: 'ハ長調の古典的な進行と、アルベルティ風の乾いた刻み、オクターブの低音。けれど4小節目の A♭、7小節目の D♭、14小節目の E♭ のように、半音ずれた遠い和音が1つだけ割り込み、旋律もそこへ急に飛んで、すぐ戻る',
+      bars: 8, tempo: 120,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:2 G/B:2 Am:2 Ab:2 C/G:2 Fmaj7:2 Db:2 G7:2 C:2 E/G#:2 Am:2 F#dim:2 G:2 Eb:2 G7:2 C:2') },
+      layers: [
+        { name: '刻み', generator: 'chords', comping: 'broken', voicing: 'close', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'octave' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('G5:0.5 E5:0.5 C5:0.5 E5:0.5 D5:0.5 G5:0.5 B5:1 C6:0.5 B5:0.5 A5:0.5 E5:0.5 Eb5:1 C5:1 E5:0.5 G5:0.5 C6:1 A5:0.5 G5:0.5 F5:0.5 E5:0.5 F5:0.5 Ab5:0.5 Db6:1 B5:0.5 A5:0.5 G5:0.5 F5:0.5 E5:1 C5:1 B4:0.5 E5:0.5 G#5:1 A5:0.5 C6:0.5 E6:1 C6:0.5 A5:0.5 F#5:1 G5:0.5 B5:0.5 D6:1 Bb5:0.5 G5:0.5 Eb5:1 F5:0.5 D5:0.5 B4:1 C5:2') },
+      ],
+    },
+    hindemith: {
+      listen: '和音は3度でなく4度を積み重ねた形(例 G・C・F)で、すっきり硬く響く。旋律は4度・5度の跳躍で線をはっきり描き、その下を対位法の声が1音に2音で歩く。中心の音(G)ははっきりしている',
+      bars: 8, tempo: 88,
+      pitch: { system: 'scale', root: 'G', scale: 'mixolydian' },
+      layers: [
+        { name: '4度和音', generator: 'chords', degrees: [1, 4, 2, 5, 1, 6, 4, 1], chordBars: 1, voicing: 'quartal', comping: 'sustain', register: 'mid' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('G4:1 C5:1 D5:1 G5:1 F5:1.5 E5:0.5 D5:1 C5:1 A4:1 D5:1 E5:2 D5:1 G5:1 A5:1 D6:1 C6:1.5 B5:0.5 A5:1 G5:1 E5:1 A5:1 D5:2 C5:1 B4:1 A4:1 D5:1 G4:4') },
+        { name: '対の声', generator: 'counterpoint', against: '旋律', species: 2, position: 'below' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+      ],
+    },
+    film_orchestra: {
+      listen: '最初の2小節は、弦のパッド(C → A♭)と低弦の8分の刻みだけで期待を作る。3小節目から金管のファンファーレが付点と4度・5度の跳躍で上り、同主短調から借りた A♭・B♭ を通って、最後の C で最高音へ。打楽器の脈動が加わって大きく盛り上がる',
+      bars: 8, tempo: 84,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 Ab:4 Bb:4 C:4 Am:4 F:4 Ab:2 Bb:2 C:4') },
+      arc: { sections: [sec('静けさ', 1, 3), sec('登場', 3, 6), sec('頂点', 7, 9)] },
+      layers: [
+        { name: '弦のパッド', generator: 'chords', comping: 'sustain', voicing: 'open' },
+        { name: '低弦の刻み', generator: 'ostinato', cell: 'C3:0.5 C3:0.5 G2:0.5 C3:0.5', register: 'low' },
+        { name: 'ファンファーレ', generator: 'line', role: 'melody', notes: seq('R:8 F4:0.75 F4:0.25 Bb4:1 D5:2 G4:0.75 G4:0.25 C5:1 E5:1 G5:1 A5:3 G5:0.5 E5:0.5 F5:1 C5:1 A4:2 Ab4:0.75 Ab4:0.25 C5:0.5 Eb5:0.5 Bb4:0.75 Bb4:0.25 D5:0.5 F5:0.5 G5:1 C6:3') },
+        { name: '低音', generator: 'bass', pattern: 'octave' },
+        { name: '打楽器', generator: 'gesture', gesture: 'drone_pulse', occurrence: 'continuous', role: 'ground', register: 'low', active: ['頂点'] },
+      ],
+    },
+    indeterminacy: {
+      listen: '区間ごとに枠だけが決まっている: はじめは低く疎らで長い音、次は中くらいの高さの点々、その次は高く細かい粒、最後は3つの枠が重なる。どの音が鳴るかは偶然(振り直すと中身が変わる)だが、枠が作る形は同じ',
+      bars: 8, tempo: 66,
+      pitch: { system: 'scale', root: 'C', scale: 'chromatic' },
+      arc: { sections: [sec('低い霧', 1, 3), sec('点々', 3, 5), sec('粒', 5, 6), sec('重なり', 7, 8)] },
+      layers: [
+        { name: '低い枠', generator: 'stochastic', register: 'low', density: 2, spread: 0.6, durMin: 1, durMax: 3, distribution: 'uniform', active: ['低い霧', '重なり'] },
+        { name: '中の枠', generator: 'stochastic', register: 'mid', density: 5, spread: 0.8, durMin: 0.25, durMax: 0.5, distribution: 'uniform', active: ['点々', '重なり'] },
+        { name: '高い枠', generator: 'stochastic', register: 'high', density: 10, spread: 0.8, durMin: 0.125, durMax: 0.25, cluster: 2, distribution: 'uniform', active: ['粒', '重なり'] },
+      ],
+    },
+    total_serial: {
+      listen: '音列の音名ごとに、長さ・強さ・音域が決まっている。たとえば C はいつも同じ長さで同じ強さ、同じ高さで鳴る。2つの声(ふつうの速さと倍の速さ)が規則だけで点を並べ、どこにも旋律らしい流れが生まれない',
+      bars: 8, tempo: 72,
+      pitch: { system: 'row' },
+      layers: [
+        { name: '点の列', generator: 'totalserial', row: ['C', 'F#', 'B', 'F', 'Bb', 'E', 'A', 'Eb', 'Ab', 'D', 'G', 'C#'], forms: ['P0', 'RI4', 'I7', 'R2'], step: 0.25, register: 'mid' },
+        { name: '速い列', generator: 'totalserial', row: ['C', 'F#', 'B', 'F', 'Bb', 'E', 'A', 'Eb', 'Ab', 'D', 'G', 'C#'], forms: ['I3', 'P9', 'RI0'], step: 0.125, register: 'high' },
+      ],
+    },
+    in_c: {
+      listen: '高い D の8分の脈がずっと鳴る上で、12個の短い断片を、4人がそれぞれ自分のペースで繰り返しては次へ進む。入る時も回数も違うので、違う番号の断片が重なり、模様が少しずつ移り変わる。終わり近くで、全員が最後の長い音にそろう',
+      bars: 16, tempo: 132,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      layers: [
+        { name: '断片', generator: 'fragments', voices: 4, repeats: 4, phrases: ['D5:0.5 A5:0.5 R:1', 'D5:0.5 A5:0.5 G5:0.5 R:0.5', 'A5:0.5 G5:0.5 E5:1', 'R:1 E5:0.5 G5:0.5 A5:1', 'C6:0.5 A5:0.5 G5:0.5 A5:0.5', 'B5:3', 'G5:0.5 E5:0.5 D5:0.5 E5:0.5 G5:1', 'R:0.5 F5:0.5 E5:0.5 D5:0.5', 'C5:2 D5:2', 'A4:0.5 D5:0.5 E5:0.5 A5:0.5', 'G5:0.25 A5:0.25 G5:0.5 R:1', 'D6:4'] },
+        { name: '脈', generator: 'ostinato', cell: 'D6:0.5 D6:0.5' },
+      ],
+    },
   };
 
   const cache = {};

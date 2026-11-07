@@ -1956,6 +1956,107 @@ ${vocabCatalogText()}`,
     },
   });
 
+  /* ================= 音楽史マップ 近代・戦後の波2(2026-11-07): 総音列・断片の自由反復 ================= */
+
+  /** 音列の形(P0・RI5 など)→ ピッチクラスの並び。serial と同じ読み方 */
+  function rowForm(row, f) {
+    const m = /^(RI|P|I|R)(\d{1,2})?$/i.exec(String(f).trim());
+    const kind = m ? m[1].toUpperCase() : 'P';
+    const n = m && m[2] ? Number(m[2]) : 0;
+    let pcs = kind === 'I' || kind === 'RI' ? row.map((p) => mod12(2 * row[0] - p)) : row.slice();
+    pcs = pcs.map((p) => mod12(p + n));
+    return kind === 'R' || kind === 'RI' ? pcs.reverse() : pcs;
+  }
+
+  /**
+   * 総音列主義(メシアン「音価と強度のモード」・ブーレーズ): 音高だけでなく、長さ・強さ・音域も音列から決める。
+   * 音名ごとに長さ(1〜12単位)・強さ(8段)・音域(低・中・高)が固定で結び付くので、同じ音名はいつ出ても同じ長さ・強さ・高さで鳴る
+   */
+  register('totalserial', {
+    fixed: true, // 乱数を使わない
+    label: '総音列',
+    roles: ['texture'],
+    text: '十二音列の音名ごとに、長さ(step の 1〜12 倍)・強さ(8段)・音域(低・中・高)を1つずつ結び付ける(結び付け方も音列の順から決める)。forms の順に音列をたどると、同じ音名はいつ出ても同じ長さ・強さ・高さで鳴り、規則だけで決まった点の並びになる',
+    params: ['row', 'forms', 'step'],
+    paramText: 'row: 12の音名(C〜B を1回ずつ)。forms: たどる形の並び(例 ["P0","RI3","I7","R5"])。step: いちばん短い長さ(拍。0.125〜0.5。音名ごとの長さは、この 1〜12 倍)',
+    render(ctx, L) {
+      const row = L.row && L.row.length === 12 ? L.row : [0, 11, 7, 8, 3, 1, 2, 10, 6, 5, 4, 9];
+      const forms = L.forms && L.forms.length ? L.forms : ['P0', 'RI3', 'I7', 'R5'];
+      const unit = Math.max(0.125, Math.min(0.5, L.step || 0.25));
+      // 結び付け: 長さ=原型での位置、強さ=5つずらした位置、音域=7つずらした位置
+      const rank = (pc, shift) => (row.indexOf(pc) + shift) % 12;
+      const lowRegion = ctx.range[0];
+      const out = [];
+      const markers = [];
+      let t = 0;
+      for (let fi = 0; t < ctx.total - EPS && fi < 200; fi++) {
+        const f = forms[fi % forms.length];
+        if (fi < 24) markers.push({ beat: t, label: `総音列: ${f}` });
+        rowForm(row, f).forEach((pc) => {
+          if (t >= ctx.total - EPS) return;
+          const d = unit * (rank(pc, 0) + 1);
+          const velocity = 30 + Math.round((rank(pc, 5) * 7) / 11) * 13;
+          const zone = Math.floor(rank(pc, 7) / 4); // 0 低 / 1 中 / 2 高
+          const base = Math.max(24, Math.min(84, lowRegion - 12 + zone * 14));
+          let p = base + mod12(pc - base);
+          if (p > 108) p -= 12;
+          out.push(note(p, t, Math.min(d * 0.85, ctx.total - t), velocity));
+          t += d;
+        });
+      }
+      return { voices: [out], markers };
+    },
+  });
+
+  /**
+   * 断片の自由反復(ライリー型): 番号順の短い断片を、奏者ごとに自分のペースで繰り返し、好きな時に次へ進む。
+   * 全員が同じ拍の格子(8分)の上で動く。全体の終わり近くで、全員が最後の断片にそろうように進み方を配る
+   */
+  register('fragments', {
+    label: '断片の自由反復',
+    roles: ['figure'],
+    text: '番号順に並べた短い断片(phrases)を、voices 人の奏者が、それぞれ自分のペースで何回か繰り返しては次の断片へ進む。奏者ごとに入る時と繰り返しの回数がずれるので、違う番号の断片が同時に重なり、模様が少しずつ移り変わる。終わり近くで全員が最後の断片にそろう。全員が同じ8分の格子の上で動く',
+    params: ['phrases', 'voices', 'repeats'],
+    paramText: 'phrases: 番号順の断片の並び(各断片は「E4:0.5 F4:0.5 E4:1」の形の文字列。R:0.5 で休み。3〜16個。1つの断片は1〜4拍。隣の断片とは少しずつ違える)。voices: 奏者の数(2〜4)。repeats: 1つの断片を繰り返す回数の目安の最大(2〜8。奏者ごとにばらつく)',
+    render(ctx, L) {
+      const phrases = (L.phrases || []).filter((p) => p.length);
+      if (!phrases.length) return { voices: [] };
+      const players = Math.max(2, Math.min(4, L.voices || 3));
+      const maxRep = Math.max(2, Math.min(8, L.repeats || 4));
+      const voices = [];
+      const names = [];
+      for (let v = 0; v < players; v++) {
+        const rng = T.rng(T.mixSeed(ctx.rng.int(1, 1e9), v));
+        const out = [];
+        let t = v === 0 ? 0 : Math.round(rng.between(0.5, 4) * 2) / 2; // 入りをずらす(8分の格子に乗せる)
+        const finishAt = ctx.total * (0.78 + rng.next() * 0.1);
+        const shift = v === players - 1 && players > 2 ? -12 : 0; // 1人はオクターブ下で弾く
+        for (let i = 0; i < phrases.length && t < ctx.total - EPS; i++) {
+          const ph = phrases[i];
+          const len = ph.reduce((s, n) => s + n.duration, 0) || 1;
+          const last = i === phrases.length - 1;
+          // 残りの断片で finishAt までに着くよう、1つの断片にかける時間を配り、回数をばらつかせる
+          const budget = Math.max(len, (finishAt - t) / (phrases.length - i));
+          // この後の断片(最後の1つを除く)を1回ずつ弾く時間は残す。そうしないと回数のばらつきが積もって最後の断片に着かない
+          const after = phrases.slice(i + 1, -1).reduce((s, q) => s + (q.reduce((a, n) => a + n.duration, 0) || 1), 0);
+          const room = Math.max(1, Math.floor((finishAt - t - after) / len));
+          const reps = last ? Infinity : Math.max(1, Math.min(maxRep * 2, room, Math.round((budget / len) * rng.between(0.6, 1.4))));
+          for (let r = 0; r < reps && t < ctx.total - EPS; r++) {
+            ph.forEach((n, k) => {
+              if (n.pitch != null && t < ctx.total - EPS) {
+                out.push(note(n.pitch + shift, t, Math.min(n.duration * 0.9, ctx.total - t), (k === 0 && r === 0 ? 84 : 70) + rng.between(-5, 5)));
+              }
+              t += n.duration;
+            });
+          }
+        }
+        voices.push(out);
+        names.push(`${v + 1}`);
+      }
+      return { voices, names };
+    },
+  });
+
   /* ================= ドラム(ビート。基本の楽典モデル由来) ================= */
 
   const DRUM_MAP = {
