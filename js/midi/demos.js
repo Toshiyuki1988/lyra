@@ -776,6 +776,156 @@
         { name: 'バネ', generator: 'physics', body: 'spring', damping: 0.4, step: 0.125, register: 'high' },
       ],
     },
+    /* ---- 音楽史マップ 古典派・ロマン派・戦後の波(2026-11-07) ---- */
+    sentence: {
+      listen: '1〜2小節の着想(ミ・ソ・高いド…)を、3〜4小節目でほぼ同じ形のままもう一度言う。5小節目からは和音が2拍ごとに変わって、着想が1小節、さらに半小節の断片へ縮まり、速まって、最後の小節でハ長調の主音に収まる',
+      bars: 8, tempo: 108,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 G7:4 C:4 G7:4 F:2 G:2 Am:2 Dm:2 G7:4 C:4') },
+      arc: { sections: [sec('提示', 1, 3), sec('反復', 3, 4), sec('展開と終止', 5, 8)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'broken', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('E5:1.5 G5:0.5 C6:1 G5:1 A5:1 F5:1 D5:2 E5:1.5 G5:0.5 C6:1 G5:1 B5:1 G5:1 D5:2 C6:1 A5:1 D6:1 B5:1 E6:1 C6:1 F6:1 D6:1 D6:1 B5:1 G5:1 F5:1 C6:4') },
+      ],
+    },
+    sonata_form: {
+      listen: '提示部は、ハ長調の第1主題(1〜3小節)から、ト長調の歌う第2主題(4〜6小節)へ。7〜10小節目の展開部は、第1主題の断片が Em・B7・Am・G7 と調を変えて上へ登る。再現部(11小節目〜)は、第1主題も第2主題も、ともにハ長調に戻って収まる',
+      bars: 16, tempo: 120,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 F:2 G7:2 C:4 G:4 D7:4 G:4 Em:4 B7:4 Am:4 G7:4 C:4 F:2 G7:2 C:4 C:4 G7:4 C:4') },
+      arc: { sections: [sec('提示', 1, 4), sec('展開', 7, 8), sec('再現', 11, 5)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'broken', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq([
+          'E5:1 G5:1 C6:2 A5:1 F5:1 G5:1 E5:1 D5:1 B4:1 C5:2',
+          'D6:1.5 B5:0.5 G5:1 B5:1 A5:1 C6:1 B5:1 A5:1 G5:1 F#5:1 G5:2',
+          'G5:1 B5:1 E6:2 F#5:1 A5:1 B5:2 A5:1 C6:1 E6:2 D6:1 B5:1 G5:1 F5:1',
+          'E5:1 G5:1 C6:2 A5:1 F5:1 G5:1 E5:1 D5:1 B4:1 C5:2',
+          'G5:1.5 E5:0.5 C5:1 E5:1 D5:1 F5:1 E5:1 D5:1 C5:1 B4:1 C5:2',
+        ].join(' ')) },
+      ],
+    },
+    variations: {
+      listen: '4小節の主題(ミ・ソ・ラ・ファ…の簡素な2分音符)が、そのまま4回、衣装を変えて出てくる。変奏1は細かい装飾、変奏2はハ短調で付点のリズム、変奏3は16分の速い走句。どれも和音の並び(I-IV-V7-I)と4小節の長さは変わらない',
+      bars: 16, tempo: 108,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 F:4 G7:4 C:4 C:4 F:4 G7:4 C:4 Cm:4 Fm:4 G7:4 Cm:4 C:4 F:4 G7:4 C:4') },
+      arc: { sections: [sec('主題', 1, 3), sec('変奏1', 5, 4), sec('変奏2(短調)', 9, 6), sec('変奏3(走句)', 13, 8)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'broken', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq([
+          'E5:2 G5:2 A5:2 F5:2 G5:1 F5:1 D5:2 C5:4',
+          'E5:0.5 F5:0.25 E5:0.25 D5:0.5 E5:0.5 G5:0.5 A5:0.25 G5:0.25 F5:0.5 G5:0.5 A5:0.5 B5:0.25 A5:0.25 G5:0.5 A5:0.5 F5:0.5 G5:0.25 F5:0.25 E5:0.5 F5:0.5 G5:0.5 A5:0.25 G5:0.25 F5:0.5 E5:0.5 D5:0.5 E5:0.25 D5:0.25 B4:0.5 D5:0.5 C5:1 E5:0.5 G5:0.5 C6:2',
+          'Eb5:1.5 Eb5:0.5 G5:2 Ab5:1.5 Ab5:0.5 F5:2 G5:1 F5:1 D5:1 B4:1 C5:4',
+          'E5:0.25 G5:0.25 C6:0.25 G5:0.25 E5:0.25 G5:0.25 C6:0.25 G5:0.25 E5:0.25 G5:0.25 C6:0.25 G5:0.25 E5:0.25 G5:0.25 C6:0.25 G5:0.25',
+          'F5:0.25 A5:0.25 C6:0.25 A5:0.25 F5:0.25 A5:0.25 C6:0.25 A5:0.25 F5:0.25 A5:0.25 C6:0.25 A5:0.25 F5:0.25 A5:0.25 C6:0.25 A5:0.25',
+          'G5:0.25 B5:0.25 D6:0.25 B5:0.25 G5:0.25 B5:0.25 D6:0.25 F6:0.25 D6:0.25 B5:0.25 G5:0.25 B5:0.25 D6:0.25 B5:0.25 G5:0.25 F5:0.25',
+          'E6:0.5 C6:0.5 G5:1 C5:2',
+        ].join(' ')) },
+      ],
+    },
+    dice_game: {
+      listen: '3拍子の8小節。1小節ごとに、同じ和音(C・G7・C・G7・C・F・G7・C)の上で完結した短い旋律の別案から1つずつ選んで並べた形で、どの小節をつないでも和声が崩れない。小節ごとに旋律の形がちがうのが聞きどころ',
+      bars: 8, tempo: 120,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:3 G7:3 C:3 G7:3 C:3 F:3 G7:3 C:3') },
+      layers: [
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '和音', generator: 'chords', hits: '..o.o.', hitSteps: 2, voicing: 'close', register: 'mid' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('E5:1 G5:1 C6:1 D6:2 B5:1 C6:1 G5:1 E5:1 G5:2 F5:1 E5:0.5 F5:0.5 G5:1 C6:1 A5:1 C6:1 F5:1 D6:2 B5:1 C6:3') },
+      ],
+    },
+    leitmotif: {
+      listen: '1〜4小節は明るく上がる「英雄」の動機(ド・ソ・ミ…)、5〜8小節は低く下りる「運命」の動機。9〜12小節の「絡み合い」では2つの動機が同時に鳴り、13〜16小節で英雄の動機が長調で戻る。同じ動機が、移高・断片・拡大で形を変えながら出てくる',
+      bars: 16, tempo: 84,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 F:4 G:4 C:4 Cm:4 Ab:4 Fm:4 G7:4 Cm:4 Ab:4 G7:4 Cm:4 C:4 F:4 G7:4 C:4') },
+      arc: { sections: [sec('英雄', 1, 4), sec('運命', 5, 6), sec('絡み合い', 9, 9), sec('勝利', 13, 6)] },
+      layers: [
+        { name: '英雄の動機', generator: 'motif', role: 'melody', cell: 'C5:1 G5:1 E5:0.5 F5:0.5 G5:1', chain: ['ORIG', 'T+2', 'FRAG', 'ORIG', 'AUG'], gap: 1, active: ['英雄', '絡み合い', '勝利'] },
+        { name: '運命の動機', generator: 'motif', role: 'counter', cell: 'G3:0.5 G3:0.5 G3:0.5 Eb3:2', chain: ['ORIG', 'ORIG', 'I', 'ORIG'], gap: 1, active: ['運命', '絡み合い'] },
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+      ],
+    },
+    transformation: {
+      listen: '同じ主題(ド・ミ♭・ソ・ラ♭…)が3つの顔で出てくる。最初は静かな長い音(ハ短調)、次は付点の力強い行進(同じ音の並びで、後半は3度上へ)、最後は同主長調(ハ長調)の息の長い歌。音の並びは同じまま、リズム・和声・強さが変わる',
+      bars: 12, tempo: 84,
+      pitch: { system: 'chords', root: 'C', scale: 'minor', chords: prog('Cm:4 Ab:4 Fm:4 G7:4 Cm:4 Ab:4 Fm:4 G7:4 C:4 F:4 G7:4 C:4') },
+      arc: { sections: [sec('静かな主題', 1, 2), sec('行進', 5, 8), sec('歌', 9, 5)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'broken', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '主題', generator: 'line', role: 'melody', notes: seq([
+          'C5:2 Eb5:1 G5:1 Ab5:1.5 G5:0.5 F5:1 D5:1 C5:2 Eb5:1 G5:1 F5:2 G5:2',
+          'C5:1.5 Eb5:0.5 G5:1.5 G5:0.5 Ab5:1.5 G5:0.5 F5:1 D5:1 Eb5:1.5 G5:0.5 Bb5:1.5 Bb5:0.5 C6:1.5 Bb5:0.5 Ab5:1 F5:1',
+          'E5:2 G5:1 C6:1 D6:1.5 C6:0.5 B5:1 G5:1 E5:2 G5:1 C6:1 D6:2 C6:2',
+        ].join(' ')) },
+      ],
+    },
+    cyclic_form: {
+      listen: '3つの部分の、どれもが2小節の同じ合言葉(ニ・ファ・ラ・ソ・ミ・ニ)で始まる。第1楽章はニ短調で重く、第2楽章はヘ長調で、合言葉が半分の長さで軽く走る。終楽章はニ長調で、合言葉が高い音域へ広がって凱旋する',
+      bars: 12, tempo: 96,
+      pitch: { system: 'chords', root: 'D', scale: 'minor', chords: prog('Dm:4 Gm:4 A7:4 Dm:4 F:4 Bb:4 C7:4 F:4 D:4 G:4 A7:4 D:4') },
+      arc: { sections: [sec('第1楽章', 1, 3), sec('第2楽章', 5, 6), sec('終楽章', 9, 9)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'broken', voicing: 'close', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '主題', generator: 'line', role: 'melody', notes: seq([
+          'D5:2 F5:1 A5:1 G5:1.5 E5:0.5 D5:2 F5:1 E5:1 D5:1 C#5:1 D5:4',
+          'D5:1 F5:0.5 A5:0.5 G5:0.75 E5:0.25 D5:1 A5:0.5 C6:0.5 A5:0.5 F5:0.5 G5:0.5 Bb5:0.5 G5:0.5 E5:0.5 F5:0.5 A5:0.5 C6:0.5 A5:0.5 F5:0.5 A5:0.5 C6:1 C6:2 A5:1 F5:1',
+          'D5:2 F#5:1 A5:1 G5:1.5 E5:0.5 D5:2 A5:2 D6:1 F#6:1 E6:1.5 C#6:0.5 D6:2',
+        ].join(' ')) },
+      ],
+    },
+    nationalist_modes: {
+      listen: 'ニ・ドリア旋法(ニ短調のようで、6度が B ♮ のまま)の民謡風の旋律。低い5度の和音が「タタタ、タタタ、タタ」(3+3+2)のはずむ型を刻み続け、Dm・G・C・Am の長調とも短調ともつかない和音をたどる',
+      bars: 8, tempo: 132,
+      pitch: { system: 'chords', root: 'D', scale: 'dorian', chords: prog('Dm:4 G:4 Dm:4 C:4 Dm:4 G:4 C:4 Dm:4') },
+      layers: [
+        { name: 'ドローンの5度', generator: 'chords', hits: 'o..o..o.', hitSteps: 2, voicing: 'open', register: 'low' },
+        { name: '低音', generator: 'bass', pattern: 'root-fifth' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('D5:1 F5:0.5 E5:0.5 D5:1 A4:1 B4:1 D5:1 G5:2 F5:1.5 E5:0.5 D5:1 C5:1 E5:1 D5:1 C5:2 D5:1 F5:0.5 E5:0.5 D5:1 A5:1 B5:1 A5:1 G5:2 E5:1.5 D5:0.5 C5:1 E5:1 D5:4') },
+      ],
+    },
+    symphonic_climax: {
+      listen: '16小節をかけて1つの山を登る。1〜4小節は低く短い音で静かに始まり、積み上げでは Dm・E7(属和音)の上で音域が上へ、11〜14小節目の頂点でイ長調の最高音を長く鳴らす。最後は属和音から主和音へ収まって、静かに降りる',
+      bars: 16, tempo: 76,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:8 F:8 Dm:8 E7:8 F:4 G:4 Am:4 E7:4 A:4 D:4 E7:4 A:4') },
+      arc: { sections: [sec('静かな始まり', 1, 2), sec('積み上げ', 5, 5), sec('頂点', 11, 10), sec('余韻', 15, 3)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open', register: 'mid' },
+        { name: '低音', generator: 'bass', pattern: 'pedal' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('A4:4 C5:2 B4:2 A4:4 E5:2 D5:2 D5:3 F5:1 E5:2 A5:2 G#5:4 B5:2 A5:2 C6:3 A5:1 D6:3 B5:1 E6:4 G#6:2 A6:2 A6:4 F#6:2 E6:2 E6:2 D6:1 C#6:1 A5:4') },
+      ],
+    },
+    chance: {
+      listen: '半音階のどの音も、同じ確率で出る。音の高さも長さも、好みではなく乱数で決まっていて、旋律や調性の傾きが生まれない。音のあいだの長い静けさもそのまま残る。同じシードなら毎回同じ並びになる',
+      bars: 8, tempo: 60,
+      pitch: { system: 'scale', root: 'C', scale: 'chromatic' },
+      layers: [
+        { name: '低い音', generator: 'stochastic', density: 1, spread: 1, durMin: 1, durMax: 6, register: 'low', distribution: 'uniform' },
+        { name: '中高域', generator: 'stochastic', density: 2, spread: 1, durMin: 0.5, durMax: 4, register: 'mid', distribution: 'uniform' },
+      ],
+    },
+    drone_music: {
+      listen: '低いDの基音と、その整数倍の倍音(2・3・4・6・8・9倍)が、ゆっくり1つずつ入ってきて、32拍のあいだ動かずに鳴り続ける。倍音は平均律の音の間(特に第9倍音など)にあって、ピッチベンドで鳴る。倍音どうしのうなりが、波のように聞こえる。もう1つの層は、高い倍音(8・9・12・16倍)だけで上に重なる',
+      bars: 8, tempo: 48,
+      pitch: { system: 'scale', root: 'D', scale: 'chromatic' },
+      layers: [
+        { name: '倍音のドローン', generator: 'spectral', partials: [1, 2, 3, 4, 6, 8, 9], hold: 32, tuning: 'exact', spectrum: 'harmonic', step: 3 },
+        { name: '高い倍音', generator: 'spectral', partials: [8, 9, 12, 16], hold: 32, tuning: 'exact', spectrum: 'harmonic', step: 2 },
+      ],
+    },
+    complexity: {
+      listen: '1拍を 3・2・3 や 2・1・3・2 のような不規則な12分割で割り、3連符・6連符・2拍3連が入れ子になる。拍に収まりきらない音が広い音域を跳び回り、強弱(弱い・強い)が1音ごとに変わる。上の声と下の声が、別のリズムで重なる',
+      bars: 8, tempo: 66,
+      pitch: { system: 'free' },
+      arc: { sections: [sec('ざわめき', 1, 4), sec('密になる', 4, 8), sec('ほどける', 7, 3)] },
+      layers: [
+        { name: '上の声', generator: 'line', role: 'melody', notes: (() => { const u = 'C6:0.25 F#5:0.125 Bb6:0.125 E5:0.25 A5:0.125 G#6:0.125 R:0.25 D6:0.333 Ab5:0.333 B6:0.333 Eb5:0.5 F#6:0.25 C5:0.25 G6:0.1667 D#5:0.1667 A6:0.1667 E6:0.1667 Bb4:0.1667 F6:0.1667 R:0.5 C#6:0.5 G5:0.25 B5:0.25 F5:0.167 A6:0.167 D5:0.167 Ab6:0.167 E5:0.167 C7:0.167 G#5:0.333 D6:0.333 F#6:0.333 Bb5:0.25 E6:0.25 C6:0.25 Ab4:0.25 F#6:0.125 C5:0.125 A6:0.25 R:0.25 D#6:0.25 B4:0.5 G6:0.25 E5:0.25 A#5:0.5'; return seq([u, u.split(' ').reverse().join(' '), u].join(' ')); })().map((n, i) => ({ ...n, velocity: [38, 108, 62, 96, 44, 115, 70, 52][i % 8] })) },
+        { name: '下の声', generator: 'line', role: 'counter', notes: (() => { const u = 'R:0.5 G3:0.667 D4:0.333 Bb3:0.5 F#4:0.5 C3:0.25 E4:0.25 A3:0.5 R:0.5 Eb4:0.333 B3:0.333 G#3:0.333 D3:1 F4:0.25 C#4:0.25 A3:0.25 E3:0.25 Bb3:0.667 F3:0.333 B4:0.5 G3:0.5 R:1 C#3:0.333 G4:0.333 D#4:0.333'; return seq([u, u.split(' ').reverse().join(' '), u].join(' ')); })().map((n, i) => ({ ...n, velocity: [92, 48, 110, 56, 80, 36][i % 6] })) },
+      ],
+    },
     /* ---- 音楽史マップ 30件の波(2026-11-07) ---- */
     chant: {
       listen: '伴奏のない1本の旋律が、D のドリア旋法の中を、順次進行を中心に上り下りする。拍子を刻まず、句の終わりで長く伸ばして息をつぎ、最後は終止音の D に静かに帰る',
