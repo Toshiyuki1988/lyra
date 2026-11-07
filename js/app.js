@@ -1089,7 +1089,7 @@ function showChoiceDialog({ title, message, options }) {
  *   type 'color' は SOUL_COLORS のスウォッチから選ぶ
  * @returns {Promise<object|null>}
  */
-function showFormDialog({ title, message, submitLabel, fields }) {
+function showFormDialog({ title, message, submitLabel, fields, onOpen }) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay visible';
@@ -1140,6 +1140,7 @@ function showFormDialog({ title, message, submitLabel, fields }) {
     });
     attachBackgroundTapToClose(overlay, () => finish(null));
     document.body.appendChild(overlay);
+    if (onOpen) onOpen(form); // 欄の下へ説明などを足したい時(ビートのモデルの解説・お手本、2026-11-07)
     const first = form.querySelector('input[type="text"], textarea');
     if (first) setTimeout(() => first.focus(), 30);
   });

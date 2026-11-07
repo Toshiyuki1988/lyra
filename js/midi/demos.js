@@ -1704,9 +1704,57 @@
 
   const cache = {};
 
+  /* ビート帳のモデルのお手本(2026-11-07、ユーザー要望「ビートにも視聴、子どもの解説、参照などつけてほしい」)。
+   * 8小節: イントロ(上物と頭のキック・2小節)→ メイン(全部・4小節)→ 山場(全部・2小節)。ビートの入口(compose.js の sanitizeBeat)が
+   * Gemini の構成から作るのと同じ形の設計図を、モデルごとに決まった構成で組む(Gemini は呼ばない)。つまみは既定、旋律は無い */
+  const beatModelOf = (id) => (window.LyraBeatbook && window.LyraBeatbook.byId(id)) || null;
+
+  function beatDesign(model) {
+    const B = window.LyraBeatbook;
+    const T = window.LyraTheory;
+    const bars = 8;
+    const secs = [
+      { name: 'イントロ', startBar: 1, bars: 2, energy: 4, arrange: 'intro', fill: 'none' },
+      { name: 'メイン', startBar: 3, bars: 4, energy: 7, arrange: 'full', fill: model.fills[0] },
+      { name: '山場', startBar: 7, bars: 2, energy: 9, arrange: 'full', fill: model.fills[1] || model.fills[0] },
+    ];
+    const design = {
+      bars,
+      tempo: model.tempo[2],
+      meters: model.meter ? [{ bar: 1, num: model.meter[0], den: model.meter[1] }] : T.sanitizeMeters([], 4),
+      meterMode: 'fixed',
+      swing: 0,
+      pitch: { system: 'free', root: 0, scale: null, chords: [], modulations: [], rotate: false },
+      arc: {
+        form: model.label, story: '', climaxBar: 0, turn: '',
+        sections: secs.map((x) => ({ name: x.name, startBar: x.startBar, bars: x.bars, scene: '', tension: x.energy, register: 'mid', comping: null, voicing: null, bass: null, role: B.ARRANGES[x.arrange].label.split('(')[0], ending: B.FILLS[x.fill] })),
+      },
+      layers: [{
+        name: 'ドラム', generator: 'groove', role: 'drums', model: model.id,
+        plan: secs.map((x) => ({ section: x.name, arrange: x.arrange, fill: x.fill, energy: x.energy })),
+        accents: [], density: 50, humanize: 40, variation: 45, swing: model.swing,
+        active: [], register: null, timbre: '', why: '', muted: false, reroll: 0,
+      }],
+      signature: [], techniques: [], automation: [], beatModel: model.id, genre: model.label, reference: '', tempoChanges: [],
+    };
+    if (model.breath) design.meters = B.breathMeters(bars, 7);
+    design.tempoChanges = B.accelTempo(design, model);
+    return design;
+  }
+
   /** お手本の MIDI({ tempo, beatsPerBar, meters, notes, partNames, partRoles, … })。無ければ null */
   function render(presetId) {
     if (cache[presetId]) return cache[presetId];
+    const bm = !DEMOS[presetId] && beatModelOf(presetId);
+    if (bm) {
+      const design = beatDesign(bm);
+      const out = window.LyraEngine.render(design, { seed: 7 });
+      const midi = { ...out, model: 'beat', design, seed: 7 };
+      delete midi.totalBeats;
+      midi.total = out.totalBeats;
+      cache[presetId] = midi;
+      return midi;
+    }
     const raw = DEMOS[presetId];
     const preset = window.LyraPresets.byId(presetId);
     if (!raw || !preset) return null;
@@ -1719,5 +1767,5 @@
     return midi;
   }
 
-  window.LyraDemos = { has: (id) => Boolean(DEMOS[id]), listen: (id) => (DEMOS[id] || {}).listen || '', render, _raw: DEMOS };
+  window.LyraDemos = { has: (id) => Boolean(DEMOS[id] || beatModelOf(id)), listen: (id) => (DEMOS[id] || beatModelOf(id) || {}).listen || '', render, _raw: DEMOS };
 })();

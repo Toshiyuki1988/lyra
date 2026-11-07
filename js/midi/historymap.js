@@ -62,8 +62,8 @@
             `<span>${escapeHtml(item.tier)}</span>`}
         </span>
       </button>
-      ${!reason ? `<div class="history-map-icons">
-        ${pinButton(id)}
+      ${!reason || kind === 'beat' ? `<div class="history-map-icons">
+        ${kind === 'beat' ? '' : pinButton(id)}
         ${demo ? `<button type="button" class="model-demo" data-demo="${escapeHtml(id)}" aria-label="お手本の演奏を聴く">${midi.DEMO_ICON}</button>` : ''}
         ${kids ? `<button type="button" class="model-kids" data-kids="${escapeHtml(id)}" aria-label="小学生向けの解説">${midi.KIDS_ICON}</button>` : ''}
       </div>` : ''}
@@ -82,7 +82,7 @@
         reason = 'プレミックスの MIDI カードの「応答」「展開」から使います';
       }
       return { ...model, src, reason, done: Boolean(src), kids: src?.kids,
-        demo: kind !== 'beat' && window.LyraDemos.has(id) };
+        demo: Boolean(src) && window.LyraDemos.has(id) };
     });
     const done = items.filter((item) => item.done);
     overlay.querySelector('.history-map-summary').textContent =

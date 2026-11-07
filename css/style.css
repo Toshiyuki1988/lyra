@@ -1933,6 +1933,11 @@ a.btn-secondary { display: block; }
 .demo-kids-text { margin: 0; font-size: 13px; line-height: 1.8; color: var(--ink); }
 .demo-listen { font-size: 13px; line-height: 1.8; margin: 4px 0 10px; }
 .demo-listen b { display: inline-block; font-size: 11px; padding: 1px 7px; margin-right: 6px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 600; }
+/* ビートのモデルを選ぶ欄の下の、解説・参照曲・お手本のボタン(2026-11-07) */
+.beat-preview { margin: 2px 0 12px; }
+.beat-preview[hidden] { display: none; }
+.beat-preview .demo-listen { margin: 6px 0; }
+.beat-preview-demo { display: inline-flex; align-items: center; gap: 6px; }
 .demo-roll { position: relative; border-radius: 8px; overflow: hidden; background: #1d1a16; padding: 6px 0; }
 .demo-roll .piano-roll { display: block; height: 240px; margin: 0; background: transparent; border-radius: 0; }
 .demo-roll .roll-bars line { stroke: rgba(255, 255, 255, 0.08); }

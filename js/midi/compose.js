@@ -154,7 +154,7 @@
       current = null;
     };
     const show = (icon) => {
-      const preset = P.PRESETS.find((x) => x.id === icon.dataset.kids);
+      const preset = P.byId(icon.dataset.kids) || (window.LyraBeatbook && window.LyraBeatbook.byId(icon.dataset.kids)); // ビート帳のモデルも同じ吹き出し(2026-11-07)
       if (!preset || !preset.kids) return;
       current = icon;
       pop.innerHTML = `<div class="kids-pop-head">${KIDS_ICON}<span>${escapeHtml(preset.kids.title)}</span></div>` +
@@ -205,14 +205,14 @@
   const hasDemo = (id) => Boolean(window.LyraDemos && window.LyraDemos.has(id));
 
   function openDemo(presetId) {
-    const preset = P.byId(presetId);
+    const preset = P.byId(presetId) || BB().byId(presetId); // ビート帳のモデルのお手本もここで開く(2026-11-07)
     const midi = window.LyraDemos.render(presetId);
     if (!preset || !midi || !midi.notes.length) {
       setStatus('このモデルのお手本を鳴らせませんでした', { important: true });
       return;
     }
     if (M.stopAll) M.stopAll();
-    const card = { voice: preset.voice || M.DEFAULT_VOICE, midi };
+    const card = { voice: preset.voice || (P.byId('beat') && P.byId('beat').voice) || M.DEFAULT_VOICE, midi };
     const beats = Math.max(T.endBeat(midi.notes), midi.beatsPerBar || 4);
     const secs = M.beatToSeconds(midi)(beats);
     const parts = M.partsOf(midi);
@@ -1010,6 +1010,28 @@ ${JSON.stringify(layer.notes.map((n) => ({ note: T.midiToNote(n.pitch), start: n
     ];
   }
 
+  /** ビートのモデルを選ぶ欄の下に、選んだモデルの子どもの解説・参照曲・お手本を聴くボタンを出す(2026-11-07、ユーザー要望「ビートにも視聴、子どもの解説、参照などつけてほしい」)。showFormDialog の onOpen に渡す */
+  function attachBeatPreview(form) {
+    const select = form.querySelector('[data-field="model"], [data-field="beatModel"]');
+    if (!select) return;
+    const box = document.createElement('div');
+    box.className = 'beat-preview';
+    select.closest('label').after(box);
+    const show = () => {
+      const m = BB().byId(select.value);
+      box.hidden = !m;
+      if (!m) return;
+      box.innerHTML = (m.kids ? `<div class="demo-kids-box"><div class="demo-kids">${KIDS_ICON}<span>${escapeHtml(m.kids.title)}</span></div><p class="demo-kids-text">${escapeHtml(m.kids.text)}</p></div>` : '') +
+        (Array.isArray(m.works) ? `<p class="demo-listen demo-works"><b>参照曲</b>${escapeHtml(P.worksText(m))}</p>` : '') +
+        (hasDemo(m.id) ? `<button type="button" class="secondary beat-preview-demo" data-beat-demo>${DEMO_ICON}<span>お手本を聴く</span></button>` : '');
+    };
+    select.addEventListener('change', show);
+    box.addEventListener('click', (event) => {
+      if (event.target.closest('[data-beat-demo]')) openDemo(select.value);
+    });
+    show();
+  }
+
   function readBeat(values) {
     const knobs = {};
     BEAT_KNOBS.forEach((k) => { knobs[k.name] = Math.round(clamp(values[`k_${k.name}`], 0, 100, k.value)); });
@@ -1183,6 +1205,7 @@ ${opts.response ? '- followInst: 元のMIDIのリズムをなぞって叩く楽�
         'ジャンルの型はアプリのビート帳が叩き、Geminiは1回だけ、構成(区間ごとの編成・勢い・フィル)と差し色の行を書きます。' + feedbackNote(P.byId('beat')),
       submitLabel: '作る',
       fields: beatFields({ bars: opts.promptCard && opts.promptCard.bars }),
+      onOpen: attachBeatPreview,
     });
     if (!values) return;
     const v = readBeat(values);
@@ -1207,6 +1230,7 @@ ${opts.response ? '- followInst: 元のMIDIのリズムをなぞって叩く楽�
       message: 'どう変えたいかを書いてください。前の構成とこのコメントを踏まえた改善版を、右隣に線でつないで置きます。モデル(ジャンル)を替えてもかまいません。' +
         '型の叩き方だけを変えたい時は、パネルの「振り直す」(Geminiを使いません)を使ってください。',
       submitLabel: '作り直す',
+      onOpen: attachBeatPreview,
       fields: [
         { name: 'comment', label: 'コメント', type: 'textarea', placeholder: '後半はハーフタイムに、差し色はカウベルで など' },
         ...beatFields({ model: L ? L.model : '', bars: cur ? cur.design.bars : 8, knobs: L ? { density: L.density, humanize: L.humanize, variation: L.variation } : null, reference: cur && cur.design.reference }),
@@ -1651,7 +1675,7 @@ ${models}
 
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
-    bindKidsPopups, openDemo, KIDS_ICON, DEMO_ICON, PIN_ICON, pinnedModels, togglePin,
+    bindKidsPopups, openDemo, attachBeatPreview, KIDS_ICON, DEMO_ICON, PIN_ICON, pinnedModels, togglePin,
     analyzeMidi, createResponse, renderResponse, ruminateNotes, createBeatResponse, rhythmAnalysis, BEAT_KNOBS, beatFields, readBeat,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries, beatPrompt, sanitizeBeat, writeBeat },
   });
