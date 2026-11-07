@@ -212,7 +212,11 @@
       return;
     }
     if (M.stopAll) M.stopAll();
-    const card = { voice: preset.voice || (P.byId('beat') && P.byId('beat').voice) || M.DEFAULT_VOICE, midi };
+    // お手本(音楽史マップ・ピッカーの ▶)の既定の音色は VSCO(2026-11-08、ユーザー依頼「音楽史マップのデフォルト再生音源をVSCOに」)。
+    // GM の音色を同じ種類の VSCO に読み替える(撥弦=ハープ・パッド=ストリングス)。対応が無い音色はそのまま。読み込めない時は play.js が GM に切り替える。窓の「音色」で変えられる
+    const DEMO_VSCO = { flute: 'vsco_flute', piano: 'vsco_piano', epiano: 'vsco_piano', vibes: 'vsco_marimba', strings: 'vsco_strings', guitar: 'vsco_harp', pad: 'vsco_strings' };
+    const baseVoice = preset.voice || (P.byId('beat') && P.byId('beat').voice) || M.DEFAULT_VOICE;
+    const card = { voice: DEMO_VSCO[baseVoice] || baseVoice, midi };
     const beats = Math.max(T.endBeat(midi.notes), midi.beatsPerBar || 4);
     const secs = M.beatToSeconds(midi)(beats);
     const parts = M.partsOf(midi);

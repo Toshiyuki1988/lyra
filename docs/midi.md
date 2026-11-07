@@ -452,6 +452,7 @@ CLAUDE.md から移した機能別の経緯と決まり(2026-10-03 に分割)。
 - 音色: `play.js` の `VOICES` に `{ vsco }` の音色16個(ストリングスは音域で コントラバス→チェロ→ヴィオラ→ヴァイオリン と切り替える1つ)。カードごとの音色の選択肢にも出る。読み込みは `js/midi/vsco.js`(`LyraVsco`)。鳴らし方は自作の音色(sampler)と同じ(近いサンプルの再生速度を変える。cents も反映)。音は今まで通り `safeOut` を通る(WAV 書き出しには入らない)
 - **設定の「プレビュー音源」**(GM / VSCO。`state.prefs.previewEngine`。Drive の `prefs` に入る。保存形式の version は変えていない=無ければ GM): VSCO にすると、GM の flute→フルート・piano→ピアノ・vibes→マリンバ・strings→ストリングス を VSCO に読み替える(`voiceOf()`)。guitar・epiano・pad・ドラムは対応が無いので GM・簡易シンセのまま
 - 失敗したら: VSCO のパックを読み込めない時は、音色ごとの `fallback`(GM の音色)で鳴り、それも読めなければ簡易シンセ。状態欄に出る
+- **お手本(音楽史マップ・ピッカーの ▶)の既定の音色は VSCO**(2026-11-08、ユーザー依頼): compose.js の `openDemo()` が、モデルの音色を flute→フルート・piano/epiano→ピアノ・vibes→マリンバ・strings/pad→ストリングス・guitar→ハープ に読み替える(synth・lyra_mu はそのまま)。窓の「音色」で戻せる。設定の「プレビュー音源」とは別(カードの試聴は設定に従う)
 - パックの置き場は `state.prefs.vscoBase` で変えられる(既定 `https://toshiyuki1988.github.io/lyra-vsco/`。開発中は `http://localhost:8000/mockups/vsco-pack/` などに置く)
 - 公開の手順(ユーザー): GitHub で公開リポジトリ `lyra-vsco` を作る → `C:\Users\Toshiyuki\Desktop\lyra-vsco`(パックを入れて git init・コミット済み)で `git remote add origin https://github.com/Toshiyuki1988/lyra-vsco.git` と `git push -u origin main` → リポジトリの Settings → Pages で main / root を公開
 - 確かめたこと(Node。`node docs/duo/test-vsco.cjs パックのフォルダ`): パックの目録・全195ファイル・mp3 の頭・17楽器・合計 25MB 未満/音域の切り替え・近いサンプルと再生速度・全楽器の読み込み/パックが無い時に落ちない。play.js は Node で、音色の読み替えと「パックがある時はサンプルで、無い時は GM を経て簡易シンセで」の経路を確認した
