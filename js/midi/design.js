@@ -43,6 +43,7 @@
     partials: ARR(S('INTEGER')), spectrum: S('STRING'), tuning: S('STRING'), strands: S('INTEGER'), ratio: S('NUMBER'), groups: ARR(S('INTEGER')),
     phraseLen: S('NUMBER'), chromatic: S('NUMBER'), triplets: S('NUMBER'),
     speed: S('NUMBER'), drift: S('NUMBER'), swell: S('STRING'),
+    pulses: S('INTEGER'), span: S('INTEGER'), offset: S('INTEGER'), mutation: S('NUMBER'), target: S('STRING'), cohesion: S('NUMBER'), body: S('STRING'), damping: S('NUMBER'),
     stepsPerBeat: S('INTEGER'), swing: S('NUMBER'), patterns: ARR(OBJ({ section: S('STRING'), rows: DRUM_ROWS, fill: DRUM_ROWS }, ['rows'])),
   };
 
@@ -301,6 +302,15 @@
     if (has('speed')) L.speed = num(raw.speed, 0.25, 4, 1);
     if (has('drift')) L.drift = num(raw.drift, -0.5, 0.5, 0);
     if (has('swell')) L.swell = pickWord(raw.swell, ['pass', 'rise', 'fade', 'distant', 'steady'], 'steady');
+    // 音楽史マップ ロマン派・アルゴリズムの波(2026-11-07): ユークリッド・遺伝的アルゴリズム・群れ・物理
+    if (has('span')) L.span = int(raw.span, 2, 32, 8);
+    if (has('pulses')) L.pulses = int(raw.pulses, 1, L.span || 32, 3);
+    if (has('offset')) L.offset = int(raw.offset, 0, 31, 0);
+    if (has('mutation')) L.mutation = num(raw.mutation, 0, 1, 0.2);
+    if (has('target')) L.target = pickWord(raw.target, ['leaping', 'arch', 'wave'], 'smooth');
+    if (has('cohesion')) L.cohesion = num(raw.cohesion, 0, 1, 0.6);
+    if (has('body')) L.body = pickWord(raw.body, ['pendulum', 'spring'], 'bounce');
+    if (has('damping')) L.damping = num(raw.damping, 0, 1, 0.3);
     if (has('stepsPerBeat')) L.stepsPerBeat = [2, 3, 4, 6].includes(Math.round(Number(raw.stepsPerBeat))) ? Math.round(Number(raw.stepsPerBeat)) : 4;
     if (generator === 'drums') L.swing = (L.stepsPerBeat || 4) % 3 === 0 ? 0 : num(raw.swing, 0, 1, 0);
     if (has('patterns')) {

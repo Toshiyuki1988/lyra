@@ -668,6 +668,114 @@
         { name: '脈', generator: 'ostinato', cell: 'D6:0.5 D6:0.5' },
       ],
     },
+    /* ---- 音楽史マップ ロマン派の波(2026-11-07) ---- */
+    nocturne: {
+      listen: '左手が低い E♭ から2オクターブ近く上まで分散和音を広く流し、その上で旋律が、長い音とそれを飾る細かい音で歌う。6小節目で6度の跳躍で高い C へ伸び、細かい音で下りてきて、主音の長い音で終わる',
+      bars: 8, tempo: 66,
+      pitch: { system: 'chords', root: 'Eb', scale: 'major', chords: prog('Ebmaj7:4 Cm7:4 Fm9:4 Bb7:4 Gm7:2 C7:2 Fm7:4 Bb7sus4:2 Bb7:2 Eb:4') },
+      arc: { sections: [sec('歌い出し', 1, 3), sec('高まり', 5, 7), sec('おさまり', 7, 3)] },
+      layers: [
+        { name: '分散和音', generator: 'chords', comping: 'arpeggio', voicing: 'open', register: 'low' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('G5:1.5 F5:0.5 Eb5:1 Bb4:1 C5:1.5 Eb5:0.5 G5:1 Bb5:1 Ab5:2 G5:0.5 F5:0.5 C5:1 D5:1.5 Eb5:0.25 F5:0.25 Ab5:2 G5:1 Bb5:1 E5:1 G5:1 F5:2 Ab5:1 C6:1 Bb5:0.5 Ab5:0.5 G5:0.5 F5:0.5 Eb5:0.5 D5:0.5 F5:1 Eb5:4') },
+      ],
+    },
+    waltz: {
+      listen: '3拍子で、1拍目に低い音、2拍目と3拍目に短い和音の「ズン・チャッ・チャッ」がずっと続く。旋律は長い音と上り下りで、4小節ずつの句になり、16小節で1つの踊りの節が終わる',
+      bars: 16, tempo: 160,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:3 C:3 G7:3 G7:3 G7:3 G7:3 C:3 C:3 C7:3 C7:3 F:3 F:3 D7:3 G7:3 G7:3 C:3') },
+      layers: [
+        { name: '低い音', generator: 'bass', pattern: 'root' },
+        { name: '和音', generator: 'chords', hits: '..x.x.', hitSteps: 2, voicing: 'close', register: 'mid' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('E5:2 G5:1 C6:3 B5:2 A5:1 G5:3 F5:1 G5:1 A5:1 D6:2 B5:1 C6:1 B5:1 G5:1 E5:3 Bb5:2 G5:1 E5:2 C5:1 A5:2 C6:1 F5:3 F#5:1 A5:1 C6:1 B5:2 D5:1 E5:1.5 F5:0.5 D5:1 C5:3').map((n) => ({ ...n, velocity: 84 })) },
+      ],
+    },
+    mazurka: {
+      listen: '3拍子で、2拍目の和音がいちばん強く、小節の頭は「タッ・タ」と付点ではずむ。旋律にときどき D#(イ短調の4度を半音上げた音)が混ざり、民謡の旋法の色が出る',
+      bars: 8, tempo: 132,
+      meters: [{ bar: 1, num: 3, den: 4 }],
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Am:3 Am:3 E7:3 Am:3 Dm:3 Am:3 E7:3 Am:3') },
+      layers: [
+        { name: '低い音', generator: 'bass', pattern: 'root' },
+        { name: '和音', generator: 'chords', hits: '..X.o.', hitSteps: 2, voicing: 'close', register: 'mid' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('A4:0.75 B4:0.25 C5:1 E5:1 D#5:0.75 E5:0.25 E5:2 G#4:0.75 A4:0.25 B4:1 D5:1 E5:0.5 C5:0.5 A4:2 F5:0.75 E5:0.25 D5:1 F5:1 E5:0.75 D#5:0.25 E5:1 A5:1 G#5:0.75 F5:0.25 E5:1 D5:1 C5:0.5 B4:0.5 A4:2').map((n) => ({ ...n, velocity: 82 })) },
+      ],
+    },
+    endless_melody: {
+      listen: '半減七と属七の和音が、主和音に一度も解決しないまま、短3度ずつ上へずれていく。旋律は和音が変わるたびに和音の外の音を長く伸ばしてから半音上へ解決し、句の切れ目を作らずに上り続け、最後も属七のまま止まる',
+      bars: 8, tempo: 60,
+      pitch: { system: 'chords', root: 'A', scale: 'minor', chords: prog('Fm7b5:4 E7:4 G#m7b5:4 G7:4 Bm7b5:4 Bb7:4 Dm7b5:4 E7:4') },
+      arc: { sections: [sec('あこがれ', 1, 4), sec('高まり', 3, 6), sec('頂', 7, 9)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('R:1 G#4:2 A4:1 A#4:2.5 B4:1.5 R:1 B4:2 C5:1 C#5:2.5 D5:1.5 R:1 D5:2 Eb5:1 E5:2.5 F5:1.5 R:1 F5:2 F#5:1 G5:1 G#5:3') },
+      ],
+    },
+    chromatic_mediant: {
+      listen: 'C → E → A♭ → C と長3度ずつ上へ、C → A → F → D♭ → C と3度ずつ下へ、準備なしに和音が飛ぶ。旋律は和音が変わる所で前の和音と共通の音から入るので、つながったまま景色の色だけがぱっと変わる',
+      bars: 8, tempo: 72,
+      pitch: { system: 'chords', root: 'C', scale: 'major', chords: prog('C:4 E:4 Ab:4 C:4 A:4 F:4 Db:4 C:4') },
+      arc: { sections: [sec('上へ', 1, 5), sec('下へ', 5, 7), sec('戻る', 8, 4)] },
+      layers: [
+        { name: '和音', generator: 'chords', comping: 'sustain', voicing: 'open' },
+        { name: '低音', generator: 'bass', pattern: 'root' },
+        { name: '旋律', generator: 'line', role: 'melody', notes: seq('G4:1 C5:1 E5:2 E5:2 G#5:1 B5:1 C6:2 Ab5:1 Eb5:1 C5:2 E5:1 G5:1 E5:2 A5:1 C#6:1 C6:2 A5:1 F5:1 F5:2 Ab5:1 Db6:1 C6:4') },
+      ],
+    },
+    /* ---- 音楽史マップ アルゴリズムの波(2026-11-07) ---- */
+    euclidean: {
+      listen: '3つの層が、それぞれ 3/8(トレシーリョ)・5/12・7/13 のユークリッドリズムを繰り返す。周期が 8・12・13 拍の枠で違うので、重なり方が毎回ずれていき、同じ形に戻らない',
+      bars: 8, tempo: 110,
+      pitch: { system: 'scale', root: 'D', scale: 'dorian' },
+      arc: { sections: [sec('1', 1, 4), sec('2', 5, 7)] },
+      layers: [
+        { name: '3/8', generator: 'euclid', pulses: 3, span: 8, step: 0.25, cell: 'D3:1', register: 'low' },
+        { name: '5/12', generator: 'euclid', pulses: 5, span: 12, step: 0.25, cell: 'A4:1 C5:1', register: 'mid' },
+        { name: '7/13', generator: 'euclid', pulses: 7, span: 13, step: 0.25, offset: 2, cell: 'F5:1 G5:1 A5:1 C6:1', register: 'high' },
+      ],
+    },
+    lsystem: {
+      listen: '「F を F[+F]F[-F]F に書き換える」規則を2回繰り返した枝分かれの文字列を、8分の歩みで旋律にする。枝の先へ上り、根もとへ戻ってまた別の枝へ。下の声は雪の結晶の形(コッホ曲線)の規則で、16分で細かく上下する',
+      bars: 8, tempo: 96,
+      pitch: { system: 'scale', root: 'C', scale: 'major-pentatonic' },
+      layers: [
+        { name: '枝分かれ', generator: 'automaton', mode: 'lsystem', axiom: 'F', productions: ['F=F[+F]F[-F]F'], iterations: 2, step: 0.5, register: 'high' },
+        { name: 'コッホ曲線', generator: 'automaton', mode: 'lsystem', axiom: 'F', productions: ['F=F+F--F+F'], iterations: 2, step: 0.25, register: 'mid' },
+        { name: '地', generator: 'gesture', gesture: 'sustained_open', occurrence: 'continuous', role: 'ground', register: 'low' },
+      ],
+    },
+    genetic: {
+      listen: '最初の世代は跳躍の多いばらばらな7音。1小節ごとに次の世代のいちばん良い動機が鳴り、だんだん順次進行の滑らかな形に進化して、主音で終わる形に落ち着く。目標に近づくほど音が強くなる',
+      bars: 12, tempo: 100,
+      pitch: { system: 'scale', root: 'C', scale: 'major' },
+      layers: [
+        { name: '進化する動機', generator: 'genetic', cell: 'C5:0.5 G4:0.5 E5:0.5 A4:0.5 D5:0.5 F4:0.5 B4:1', target: 'smooth', mutation: 0.15 },
+        { name: '和音', generator: 'chords', comping: 'sustain', degrees: [1, 6, 4, 5], chordBars: 2, voicing: 'open', register: 'low' },
+      ],
+    },
+    boids: {
+      listen: '6羽の鳥が五音音階の上を群れで飛ぶ。まとまって上り、緊張の高い真ん中の区間でいちばん高く速く飛び、ばらけ、また集まって下りてくる。高い層はまとまりの弱い3羽の群れで、ばらばらに飛ぶ',
+      bars: 12, tempo: 92,
+      pitch: { system: 'scale', root: 'D', scale: 'major-pentatonic' },
+      arc: { sections: [sec('飛び立つ', 1, 3), sec('舞い上がる', 4, 8), sec('ねぐらへ', 9, 2)] },
+      layers: [
+        { name: 'まとまった群れ', generator: 'boids', strands: 6, cohesion: 0.75, step: 0.25, register: 'mid' },
+        { name: 'ばらけた群れ', generator: 'boids', strands: 3, cohesion: 0.25, step: 0.5, register: 'high' },
+        { name: '地', generator: 'gesture', gesture: 'sustained_open', occurrence: 'continuous', role: 'ground', register: 'low' },
+      ],
+    },
+    physics: {
+      listen: '区間の頭ごとにボールが落とされ、弾むたびに間隔が縮んで「ポーン、ポン、ポポポ」と止まる。低い声は振り子で、大きく揺れてから少しずつ小さくなり、高い声はバネで、小節の頭に弾かれて細かく震えて収まる',
+      bars: 12, tempo: 90,
+      pitch: { system: 'scale', root: 'D', scale: 'lydian' },
+      arc: { sections: [sec('1', 1, 3), sec('2', 4, 6), sec('3', 7, 9), sec('4', 10, 2)] },
+      layers: [
+        { name: '弾むボール', generator: 'physics', body: 'bounce', damping: 0.3, register: 'mid' },
+        { name: '振り子', generator: 'physics', body: 'pendulum', damping: 0.25, step: 0.5, register: 'low' },
+        { name: 'バネ', generator: 'physics', body: 'spring', damping: 0.4, step: 0.125, register: 'high' },
+      ],
+    },
   };
 
   const cache = {};

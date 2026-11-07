@@ -95,7 +95,7 @@
     { "id": "transformation", "era": "romantic", "kind": "preset", "tier": "P", "label": "主題変容", "text": "1つの主題を性格ごとに変える(リスト)" },
     { "id": "cyclic_form", "era": "romantic", "kind": "preset", "tier": "P", "label": "循環形式", "text": "全楽章に同じ主題を戻す(フランク)" },
     { "id": "nationalist_modes", "era": "romantic", "kind": "preset", "tier": "P", "label": "国民楽派の旋法", "text": "民謡の旋法・リズムに和声を付ける" },
-    { "id": "chromatic_mediant", "era": "romantic", "kind": "preset", "tier": "G", "label": "3度の転調", "text": "長3度・短3度の関係の和音へ飛ぶ(ネオ・リーマン)" },
+    { "id": "chromatic_mediant", "era": "romantic", "kind": "preset", "tier": "P", "label": "3度の転調", "text": "長3度・短3度の関係の和音へ飛ぶ(ネオ・リーマン)" },
     { "id": "symphonic_climax", "era": "romantic", "kind": "preset", "tier": "P", "label": "交響的クライマックス", "text": "長い漸増と頂点" },
 
     { "id": "debussy", "era": "modern", "kind": "preset", "tier": "P", "label": "ドビュッシー風", "text": "平行和音+全音音階・旋法" },

@@ -6,7 +6,7 @@
 // プリセットの欄:
 //   id, group(ピッカーの見出し), label, short(カードに出す短い名前), text(ピッカーの説明)
 //   kids       … 小学生向けの解説 { title, text }(ピッカーの子どものアイコンにかざすと出る。2026-09-27、文はユーザーが書いたもの)
-//   works      … 参照曲(その技法がよく聞こえる実在の曲名。1〜3曲。元になる曲が無い LYRA 独自のモデルは [])。曲名は事実の情報で、旋律は引用しない。
+//   works      … 参照曲(その技法がよく聞こえる実在の曲名。1〜3曲。元になる特定の曲が無いモデル(LYRA 独自のもの・アルゴリズムだけのもの)は [])。曲名は事実の情報で、旋律は引用しない。
 //                2026-11-07、ユーザー要望「既にできているモデルに参照曲を置いて。これから作るモデルにも都度つけて」。Claude Code が記憶から書いたもので、まだ出典で監修していない
 //                (docs/duo/task-midi-history-review.md の監修の対象。確かめたら worksChecked: true を付ける)
 //   generators … Geminiが使ってよい生成器(プロンプトとスキーマはこの分だけになる)
@@ -689,6 +689,125 @@
       fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain'],
     },
 
+    /* ---------------- 音楽史マップ ロマン派の波(2026-11-07): 今ある生成器の組み合わせ ---------------- */
+    {
+      id: 'nocturne', group: 'ロマン派', label: '夜想曲(広い分散和音の上で歌う旋律)', short: '夜想曲',
+      text: '左手が低い音から高い音へ広く分散和音を流し、その上で右手が、声で歌うような息の長い旋律を、少し揺らしながら歌う。夜の静けさと、ひとりの思いの歌(フィールド・ショパン)',
+      kids: { title: '夜の、ひとりごとの歌', text: 'みんなが寝しずまった夜、窓の外をながめながら、小さな声で歌う。下では、ピアノの低い音から高い音へ、波がよせるように和音がゆったり流れる。その上で、メロディーが、ため息をついたり、ふっと高くのびたりしながら、自分の気持ちを歌っていく。' },
+      works: ['フィールド『夜想曲集』', 'ショパン『夜想曲 第2番 変ホ長調 作品9の2』'],
+      generators: ['chords', 'line', 'bass'],
+      pitch: { systems: ['chords'], hint: 'chords で長調か短調の機能和声(7th・9th を混ぜ、属7の和音で区切る)。和音は1小節か2拍ずつ' },
+      meter: 'four', arc: true, ruminate: true, bars: 8, tempo: 66, voice: 'piano',
+      guide: 'chords は comping arpeggio、voicing open、register low(低音から広く上がる分散和音)。line(role melody)は伴奏より上の音域で、長い音(1.5〜2拍)とそれを飾る細かい音(0.25〜0.5拍)の組み合わせ、6度などの大きな跳躍で上がってから順次進行で下りる、声で歌える息の長い句。山場の区間で最高音。bass は無くてよい',
+      style: '夜想曲の技法(フィールド・ショパン): 広い音域の分散和音の伴奏、ベル・カント(声の歌)を写した息の長い旋律、旋律の装飾、テンポの揺れ(ルバート)。旋律は既存曲から引用しない',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['leap', 'emotion'],
+    },
+    {
+      id: 'waltz', group: 'ロマン派', label: 'ワルツ(1拍目の低音と2・3拍目の和音)', short: 'ワルツ',
+      text: '3拍子で、1拍目に低い音、2拍目と3拍目に軽い和音を打つ「ズン・チャッ・チャッ」の伴奏の上で、くるくる回るような旋律が流れる。1小節を1つに数えるくらいの速さで、舞踏会の踊りの音楽',
+      kids: { title: 'くるくる回るダンス', text: '「ズン・チャッ・チャッ、ズン・チャッ・チャッ」。1つ目で床をふんで、2つ目と3つ目でかろやかに回る。広いお城の大広間で、ドレスのすそをふわっと広げながら、みんながくるくる回っておどる。メロディーも、そのくるくるに合わせて、のぼったりおりたりする。' },
+      works: ['ヨハン・シュトラウス2世『美しく青きドナウ』', 'ショパン『ワルツ 第7番 嬰ハ短調 作品64の2』'],
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords'], hint: 'chords で長調の機能和声(I・V7 を中心に、ときどき IV・副属和音)。和音は1小節ずつ(同じ和音が続く時も1小節ずつ書く)' },
+      meter: 'free', arc: true, ruminate: true, bars: 16, tempo: 160, voice: 'piano',
+      guide: 'meters は 3/4 を最初の小節から。bass は pattern root(1拍目の低い音)。chords は hits "..x.x."(hitSteps 2。2拍目と3拍目の短い和音)、voicing close、register mid。line(role melody)は伴奏より上で、付点2分・2分+4分の長い音と、4分の上り下りを組み合わせ、4小節・8小節の句で区切る',
+      style: 'ワルツの技法: 3/4拍子、1拍目の低音と2・3拍目の和音の伴奏、1小節を1拍に感じる速さ、4小節・8小節の規則正しい句。旋律は既存曲から引用しない',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['emotion'],
+    },
+    {
+      id: 'mazurka', group: 'ロマン派', label: 'マズルカ(3拍子の2拍目の重み)', short: 'マズルカ',
+      text: 'ポーランドの民族舞曲の3拍子。1拍目に付点のはずむリズム、2拍目(か3拍目)に強いアクセントが来て、重心がずれる。旋律は短調に、ときどき半音上がった4度(民謡の旋法の色)が混ざる(ショパン)',
+      kids: { title: '足をならすおどり', text: '3つ数えるおどりだけど、ふつうのワルツとちがって、2つ目で「ドン!」と強く足をならす。1つ目は「タッ・タ」とはずんで、2つ目で強く、3つ目でふわっと回る。遠い国の村のお祭りで、みんながかかとを鳴らしておどる、少しさびしくて元気なおどりの音楽。' },
+      works: ['ショパン『マズルカ 作品7の1』', 'ショパン『マズルカ 作品17の4』'],
+      generators: ['chords', 'bass', 'line'],
+      pitch: { systems: ['chords'], hint: 'chords で短調(ときどき平行調の長調)。和音は1小節ずつ。旋律に、音階の4度を半音上げた音(イ短調なら D#)を経過音・刺繍音として混ぜてよい' },
+      meter: 'free', arc: true, ruminate: true, bars: 8, tempo: 132, voice: 'piano',
+      guide: 'meters は 3/4 を最初の小節から。bass は pattern root。chords は hits "..X.o."(hitSteps 2。2拍目を強く、3拍目は弱く)、voicing close、register mid。line(role melody)は、小節の頭が付点のリズム(0.75+0.25)で、2拍目に長い音か高い音を置いて重みを付ける。半音上がった4度の音を、刺繍音として小節に1つくらい',
+      style: 'マズルカの技法(ショパン): 3/4拍子、2拍目・3拍目のアクセント、小節の頭の付点のリズム、民謡の旋法(リディアの増4度)、短調の憂い。旋律は既存曲から引用しない',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['emotion'],
+    },
+    {
+      id: 'endless_melody', group: 'ロマン派', label: '無限旋律(解決を先延ばしにし続ける和声)', short: '無限旋律',
+      text: '不安定な和音(半減七・属七)から次の不安定な和音へ、主和音に解決しないまま、半音ずつずれながら移り続ける。旋律も句の切れ目を作らず、倚音(和音の外の音から半音で解決する音)で、あこがれのように上へ伸び続ける(ワーグナー)',
+      kids: { title: 'ゴールの見えない階段', text: '階段をのぼって、「やっと着いた」と思ったら、その先にまた階段がある。のぼっても、のぼっても、ゴールにたどり着かない。この音楽も、「ここで終わるかな」と思うところで、和音がするりと別の方へ進んでしまう。だから、ずっとあこがれているような、胸がきゅっとする気持ちが続いていく。' },
+      works: ['ワーグナー『トリスタンとイゾルデ』の前奏曲'],
+      generators: ['chords', 'line', 'bass'],
+      pitch: { systems: ['chords'], hint: 'chords で、半減七(m7b5)と属七(7)を交互に、主和音へ解決しないまま半音・短3度ずつずらして並べる(例 Fm7b5 → E7 → G#m7b5 → G7 …)。最後も属七で止めて解決しない。和音は1小節ずつ' },
+      meter: 'four', arc: true, ruminate: true, bars: 8, tempo: 54, voice: 'strings',
+      guide: 'chords は comping sustain、voicing open。line(role melody)は、和音が変わる所で和音の外の音を長く伸ばし(倚音)、半音上へ解決する形をくり返して、全体として少しずつ上っていく。句の切れ目に休みを置かない(小節の頭の休みは1拍まで)。最高音は最後の区間。bass は pattern root',
+      style: 'ワーグナーの技法: 無限旋律(句の終止を作らない)、解決の先延ばし(偽終止・属七から属七へ)、半音階の声部進行、倚音、あこがれの上行。トリスタンの動機そのものは使わない(旋律は新しく書く)',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['emotion'],
+    },
+    {
+      id: 'chromatic_mediant', group: 'ロマン派', label: '3度の転調(長3度・短3度離れた和音へ飛ぶ)', short: '3度の転調',
+      text: '機能和声の決まった道(I → IV → V → I)を通らず、長3度・短3度離れた長三和音へ、いきなり飛ぶ(C → E → A♭ → C)。和音の1つの音だけが共通で、残りが半音ずつ滑るので、景色がぱっと変わるような色の変化が生まれる(シューベルト・リスト。のちの映画音楽)',
+      kids: { title: '魔法のとびら', text: 'ふつうの道は、となりの部屋へ、ろうかを通って歩いていく。でもこの方法は、とびらを開けると、いきなり遠くの、まったくちがう色の部屋に出る。それでも、1つの音だけは前の部屋とつながっているから、迷子にならない。ぱっ、ぱっと景色が変わる、魔法みたいな響き。' },
+      works: ['ベートーヴェン『ピアノ・ソナタ第21番「ワルトシュタイン」』の第1楽章(ハ長調から第2主題のホ長調へ)', 'シューベルト『ピアノ・ソナタ第21番 変ロ長調 D960』の第1楽章'],
+      generators: ['chords', 'line', 'bass'],
+      pitch: { systems: ['chords'], hint: 'chords で長三和音(または短三和音)を、長3度・短3度ずつ上下に動かして並べる(例 C → E → Ab → C、C → A → F → Db → C)。ドミナントの準備はしない。和音は1小節ずつ' },
+      meter: 'four', arc: true, ruminate: true, bars: 8, tempo: 72, voice: 'strings',
+      guide: 'chords は comping sustain、voicing open。line(role melody)は、和音が変わる所で前の和音と共通の音から入り、新しい和音の音へ広がる(色の変化が旋律で分かるように)。bass は pattern root。最後は最初の和音に戻ってよい',
+      style: '3度関係の転調の技法(シューベルト・リスト・ブルックナー。ネオ・リーマン理論の P・L・R の変換): 長3度・短3度の関係の和音への直接の移動、共通音の保持と半音の声部進行、色彩的な転調。旋律は既存曲から引用しない',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['emotion'],
+    },
+
+    /* ---------------- 音楽史マップ アルゴリズムの波(2026-11-07): 生成器を4つ足した(euclid・genetic・boids・physics)。L-システムは automaton の lsystem ---------------- */
+    {
+      id: 'euclidean', group: '生成モデル', label: 'ユークリッドリズム(打点をなるべく均等に散らす)', short: 'ユークリッド',
+      text: '枠の数と打点の数だけを決め、打点を枠の中になるべく均等に散らす(ユークリッドの互除法と同じ手順)。3と8でトレシーリョ、5と8でシンキージョなど、世界の民族のリズムが出てくる。周期の違う層を重ねて、ずれていく模様にする(トゥーサン)',
+      kids: { title: 'おかしを公平に配る', text: '8人の席に、3つのおかしを配るとき、なるべくはなれるように、等しく配る。それを「タン」と「ウン」のリズムにすると、「タンウンウンタンウンウンタンウン」と、南の国のおどりのリズムになる。人数とおかしの数を変えるだけで、世界中のいろいろなリズムが生まれる。' },
+      works: [],
+      generators: ['euclid', 'chords'],
+      pitch: { systems: ['scale'], defaultScale: 'dorian', hint: 'scale でドリアン・五音音階など(打点の音は少なく、音階の中から)' },
+      meter: 'four', arc: true, bars: 8, tempo: 110, voice: 'vibes',
+      guide: '主役は euclid を3〜4つ。層ごとに span を違える(例 8・12・16 か、ずれを強めるなら 7・9・13)。pulses は span の3〜5割(例 3/8・5/12・7/16)。step は 0.25 か 0.5。低い層は cell を主音1つ、高い層ほど cell の音を増やす(2〜4音)。offset で頭をずらしてもよい。chords は無くてよい(使うなら comping sustain の静かな和音を degrees で、chordBars 4)',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain'],
+    },
+    {
+      id: 'lsystem', group: '生成モデル', label: 'L-システム(植物の枝分かれの規則で旋律を育てる)', short: 'L-システム',
+      text: '「F を F[+F]F[-F]F に書き換える」のような規則を何回か繰り返して、植物の枝分かれのような文字列を育て、それを亀の歩みで旋律にする(F=鳴らす、+=1段上へ、-=1段下へ、[ ]=枝の根もとへ戻る)。同じ形が枝ごとにくり返し、自己相似の旋律になる(リンデンマイヤー)',
+      kids: { title: '木の枝のように育つ歌', text: '木は、1本の枝から2本に分かれ、その枝がまた分かれて、どんどん育っていく。この音楽も、「1つの音を、5つの音に書きかえる」という決まりを何回もくり返して、メロディーを育てる。枝の先まで行ったら根もとに戻って、また別の枝をのぼる。だから、同じ形があちこちに出てくる。' },
+      works: [],
+      generators: ['automaton', 'gesture'],
+      pitch: { systems: ['scale'], defaultScale: 'major-pentatonic', hint: 'scale で五音音階・リディアン・長調など(順次進行が多くなるので、どの音も濁らない音階がよい)' },
+      meter: 'four', arc: false, bars: 8, tempo: 96, voice: 'flute',
+      guide: 'automaton を1〜2つ(mode lsystem)。axiom は "F" か "X"、productions は枝分かれの規則(例 ["F=F[+F]F[-F]F"]、["X=F[+X][-X]FX", "F=FF"]、["F=F+F--F+F"])、iterations 2〜3、step 0.25〜0.5。2つ目は別の規則と別の step・register で。gesture の sustained_open で地の持続音を足してよい',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain'],
+    },
+    {
+      id: 'genetic', group: '生成モデル', label: '遺伝的アルゴリズム(動機を掛け合わせて進化させる)', short: '遺伝的',
+      text: '短い動機の候補を何個も作り、目標(滑らか・跳躍・山型・うねり)への近さで選び、良いものどうしを掛け合わせ、少しだけ変えて次の世代を作る。世代ごとにいちばん良い動機を鳴らすので、ばらばらの音の並びが、だんだん1つの形へ進化していくのが聞こえる',
+      kids: { title: '音の生きものの進化', text: '音の生きものが12ぴきいる。目標の形に近い子どうしで子どもを作り、ときどき少しだけちがう子が生まれる。それを何代もくり返すと、はじめはバラバラだった音の並びが、だんだんきれいな形にまとまっていく。生きものが長い時間をかけて進化するのを、早回しで聞くような音楽。' },
+      works: ['ジョン・バイルズの即興プログラム『GenJam』'],
+      generators: ['genetic', 'chords', 'bass'],
+      pitch: { systems: ['scale'], defaultScale: 'major', hint: 'scale で長調・ドリアンなど(進化の行き先が分かりやすいよう、はっきりした音階)' },
+      meter: 'four', arc: false, bars: 12, tempo: 100, voice: 'vibes',
+      guide: '主役は genetic を1つ(cell は 5〜8音で、最初はばらばらな跳躍の多い並び。長さは 0.5 と 1 を混ぜる。target は story の気分に合わせて smooth・arch・wave・leaping から1つ。mutation 0.1〜0.25)。2つ目の genetic を別の target・別の register で重ねてもよい。chords は degrees で、comping sustain、chordBars 2 のゆっくりした和音。bass は root',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['emotion'],
+    },
+    {
+      id: 'boids', group: '生成モデル', label: '群れ(ボイド。鳥の群れの動きを音の高さに写す)', short: '群れ',
+      text: '何羽かの「鳥」を、音の高さの上で群れとして飛ばす。鳥は、近づきすぎない・まわりと向きをそろえる・群れの中心へ寄る、の3つの規則だけで動き、別の段へ移るたびに音が鳴る。群れがまとまって上り、ばらけ、また集まる動きが、音の雲になる(レイノルズ)',
+      kids: { title: 'ムクドリの群れ', text: '夕方の空で、何百羽ものムクドリが、1つの大きな生きもののように形を変えながら飛ぶ。どの鳥も「となりとぶつからない」「となりと同じ方へ」「みんなのまん中へ」の3つしか考えていないのに、群れ全体はふしぎな形をえがく。その鳥たちの高さを、音の高さにした音楽。' },
+      works: [],
+      generators: ['boids', 'gesture'],
+      pitch: { systems: ['scale'], defaultScale: 'major-pentatonic', hint: 'scale で五音音階・全音音階・リディアンなど(音がいくつ重なっても濁りにくい音階)' },
+      meter: 'four', arc: true, bars: 12, tempo: 84, voice: 'vibes',
+      guide: '主役は boids を1〜2つ(strands 4〜7、step 0.25。1つ目は cohesion 0.6〜0.8 のまとまった群れ、2つ目を足すなら cohesion 0.2〜0.4 のばらけた群れを別の register で)。arc の tension で群れの高さと速さが変わるので、区間を3〜4つ作って、上がって下がる形にする。gesture の sustained_open を register low で地に',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain'],
+    },
+    {
+      id: 'physics', group: '生成モデル', label: '物理シミュレーション(弾むボール・振り子・バネ)', short: '物理',
+      text: '物の運動の式を解いて音にする。弾むボールは、弾むたびに間隔と高さが縮み、だんだん速く細かくなって止まる。振り子は、ゆっくり大きく揺れてから少しずつ小さくなる。バネは、弾いた瞬間に細かく震えて収まる。重力や減衰の自然な時間の変化が、そのままリズムと旋律になる',
+      kids: { title: 'ボールがはずむ音', text: 'ボールを床に落とすと、「ポーン、ポーン、ポン、ポン、ポポポポ…」と、はずむたびに間がみじかくなって、さいごは止まる。ブランコは、大きくゆれてから、だんだん小さくなる。そんな、物が動くときの決まりを、そのまま音にした音楽。だれも作曲していないのに、自然な形になる。' },
+      works: [],
+      generators: ['physics', 'chords'],
+      pitch: { systems: ['scale'], defaultScale: 'lydian', hint: 'scale でリディアン・五音音階・全音音階など(どの音が続いても濁りにくい音階)' },
+      meter: 'four', arc: true, bars: 12, tempo: 90, voice: 'vibes',
+      guide: 'physics を2〜3つ、body を違えて重ねる(bounce は register mid、pendulum は register low で step 0.5、spring は register high で step 0.125〜0.25)。damping は 0.2〜0.5。arc の区間の頭でボールが落とされ振り子が揺らされるので、区間を3〜4つ作る(tension が高い区間ほど高く落とす・大きく揺らす)。chords は無くてよい(使うなら comping sustain の静かな和音を degrees で、chordBars 4)',
+      fields: ['story', 'bars', 'gauges', 'hint'], gauges: ['grain'],
+    },
+
     /* ---------------- ジャズ(2026-09-26。ルートレス・ボイシング、コンピング、ウォーキング、アドリブ線の生成器を足して組んだ) ---------------- */
     {
       id: 'jazz_bebop', group: 'ジャズ', label: 'ジャズ・ビバップ', short: 'ビバップ',
@@ -885,6 +1004,6 @@
 
   // 参照曲の表示の文(画面で共通)。worksChecked が無いものは「未監修」と添える
   const worksText = (p) => (!p || !Array.isArray(p.works) ? '' :
-    p.works.length ? `${p.works.join('、')}${p.worksChecked ? '' : '(未監修)'}` : 'なし(元になる曲の無い、LYRA 独自のモデル)');
+    p.works.length ? `${p.works.join('、')}${p.worksChecked ? '' : '(未監修)'}` : 'なし(元になる特定の曲が無いモデル)');
   window.LyraPresets = { PRESETS, byId, gaugesOf, ALL_GAUGES, worksText };
 })();

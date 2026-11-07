@@ -63,6 +63,10 @@
       case 'totalserial': return `音列 ${(l.row || []).map((pc) => T.NOTE_NAMES[pc]).join(' ')} · ${(l.forms || []).join(' ')} · 長さ・強さ・音域も音列から(最短${l.step || 0.25}拍)`;
       case 'fragments': return `${(l.phrases || []).length}個の断片を${l.voices || 3}人が自分のペースで(最大${l.repeats || 4}回くらいずつ)`;
       case 'cluster': return `塊 最大${l.width || 10}音 · 長さ ${(l.rhythm && l.rhythm.length ? l.rhythm : [4, 2, 6]).join('・')}拍 · 上下の動き${Math.round((l.spread != null ? l.spread : 0.4) * 100)}%`;
+      case 'euclid': return `ユークリッド ${l.pulses || 3}/${l.span || 8}${l.offset ? `(${l.offset}枠回す)` : ''} · 1枠${l.step || 0.25}拍 · 音 ${cellNames(l.cell)}`;
+      case 'genetic': return `動機 ${cellNames(l.cell)} を進化させる · 目標 ${{ smooth: '滑らか', leaping: '跳躍', arch: '山型', wave: 'うねり' }[l.target || 'smooth']} · 突然変異 ${Math.round((l.mutation != null ? l.mutation : 0.2) * 100)}%`;
+      case 'boids': return `${l.strands || 5}羽の群れ · まとまり ${Math.round((l.cohesion != null ? l.cohesion : 0.6) * 100)}% · ${l.step || 0.25}拍ごと`;
+      case 'physics': return `${{ bounce: '弾むボール', pendulum: '振り子', spring: 'バネ' }[l.body || 'bounce']} · 減衰 ${Math.round((l.damping != null ? l.damping : 0.3) * 100)}%`;
       case 'groove': {
         const B = window.LyraBeatbook;
         const mdl = B && B.byId(l.model);

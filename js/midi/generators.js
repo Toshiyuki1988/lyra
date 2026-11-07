@@ -2057,6 +2057,261 @@ ${vocabCatalogText()}`,
     },
   });
 
+  /* ================= 音楽史マップ ロマン派・アルゴリズムの波(2026-11-07): ユークリッド・遺伝的アルゴリズム・群れ・物理 ================= */
+
+  /** 打点の場所を、span 個の枠の中に pulses 個なるべく均等に散らす(ブレゼンハムの形。ビョルクルンドと同じ並びの回転になる)。offset で回す */
+  function euclidPattern(pulses, span, offset) {
+    const out = [];
+    for (let i = 0; i < span; i++) out.push(((i * pulses) % span) < pulses);
+    const r = ((offset % span) + span) % span;
+    return out.slice(r).concat(out.slice(0, r));
+  }
+
+  /**
+   * ユークリッドリズム(トゥーサン): 枠の数と打点の数だけで、世界の民族のリズム(3/8=トレシーリョ、5/8=シンキージョ、7/12 など)が出てくる。
+   * 層ごとに span を違えると、周期のずれたリズムが重なる(ポリメーター)
+   */
+  register('euclid', {
+    fixed: true, // 乱数を使わない
+    label: 'ユークリッドリズム',
+    roles: ['figure'],
+    text: 'span 個の枠(1枠 = step 拍)の中に、pulses 個の打点をなるべく均等に散らしたリズムを繰り返す(3 と 8 ならトレシーリョ、5 と 8 ならシンキージョ、5 と 12・7 と 12 ならアフリカの鐘の型)。打点では cell の音を順に鳴らし、周期の頭を強くする。層ごとに span を違えると、周期のずれたリズムが重なっていく',
+    params: ['cell', 'pulses', 'span', 'offset', 'step'],
+    paramText: 'pulses: 打点の数(1〜span)。span: 枠の数(2〜32。8・12・16 が基本。層ごとに 7・9・13 のように違えると周期がずれる)。offset: 型を回す枠の数(0〜span-1。同じ型でも頭の位置が変わる)。step: 1枠の拍(0.25=16分、0.5=8分)。cell: 打点で順に鳴らす音 [{note, duration}] 1〜8音(長さは使わない。省略すると音域の真ん中の音)',
+    render(ctx, L) {
+      const span = Math.max(2, Math.min(32, L.span || 8));
+      const pulses = Math.max(1, Math.min(span, L.pulses || 3));
+      const step = Math.max(0.125, L.step || 0.25);
+      const pat = euclidPattern(pulses, span, L.offset || 0);
+      const first = pat.indexOf(true);
+      let cell = (L.cell || []).filter((n) => n.pitch != null).map((n) => n.pitch);
+      if (!cell.length) {
+        const lad = ctx.src.ladder(0, ctx.range);
+        cell = [lad[Math.floor(lad.length / 2)]];
+      }
+      const out = [];
+      let k = 0;
+      for (let i = 0; i * step < ctx.total - EPS && i < 6000; i++) {
+        if (!pat[i % span]) continue;
+        const t = i * step;
+        const head = i % span === first;
+        const ten = ctx.tension(t);
+        out.push(note(ctx.src.snap(cell[k % cell.length], t), t, step * 0.85, (head ? 96 : 70) + 14 * (ten - 0.5)));
+        k += 1;
+      }
+      return { voices: [out], markers: [{ beat: 0, label: `ユークリッド ${pulses}/${span}` }] };
+    },
+  });
+
+  const GA_TARGETS = ['smooth', 'leaping', 'arch', 'wave'];
+  const GA_STEPS = 3; // 動機を1つ鳴らすごとに進める世代の数
+
+  /**
+   * 遺伝的アルゴリズム: 短い動機の候補を何個も作り、評価(target)の高いものどうしを掛け合わせ、少しだけ突然変異させて、次の世代を作る。
+   * 世代ごとにいちばん良い動機を順に鳴らすので、最初はでたらめな音の並びが、だんだん目標の形へ「進化」していくのが聞こえる
+   */
+  register('genetic', {
+    label: '遺伝的アルゴリズム',
+    roles: ['melody'],
+    text: '短い動機の候補(12個)を、目標(target)にどれだけ近いかで評価し、良いものどうしを掛け合わせ(交叉)、少しだけ音を変えて(突然変異)次の世代を作る。世代ごとに、いちばん良い動機を順に鳴らす。最初はばらばらの音の並びが、世代を重ねるごとに目標の形へ近づき、最後は1つの動機に落ち着く。目標に近いほど強く鳴る',
+    params: ['cell', 'mutation', 'target'],
+    paramText: 'cell: 最初の世代の元になる動機 [{note, duration}] 4〜8音(長さはそのまま使い、音の高さだけが進化する)。mutation: 突然変異の強さ(0〜1。0.1〜0.3 が目安。大きいほど最後まで揺れる)。target: 進化の目標 smooth(順次進行で滑らかに、主音で終わる)/ leaping(大きな跳躍で上下に飛ぶ形)/ arch(山型。真ん中がいちばん高い)/ wave(上下にうねる)',
+    render(ctx, L) {
+      const rng = ctx.rng;
+      const seedCell = (L.cell || []).filter((n) => n.pitch != null);
+      const durs = seedCell.length >= 3 ? seedCell.map((n) => n.duration) : [0.5, 0.5, 0.5, 0.5, 1, 1];
+      const len = durs.length;
+      const motifLen = durs.reduce((a, b) => a + b, 0);
+      const ladder = ctx.src.ladder(0, ctx.range);
+      const mid = Math.floor(ladder.length / 2);
+      const idxOf = (p) => {
+        let best = 0;
+        ladder.forEach((q, i) => { if (Math.abs(q - p) < Math.abs(ladder[best] - p)) best = i; });
+        return best - mid;
+      };
+      const base = seedCell.length >= 3 ? seedCell.map((n) => idxOf(n.pitch)) : durs.map(() => 0);
+      const span = Math.max(3, mid - 1);
+      const lim = (x) => Math.max(-span, Math.min(span, Math.round(x)));
+      const target = GA_TARGETS.includes(L.target) ? L.target : 'smooth';
+      const mut = L.mutation != null ? Math.max(0, Math.min(1, L.mutation)) : 0.2;
+      const dir = (a, b) => Math.sign(b - a);
+      // 主音の段(真ん中にいちばん近い主音)。smooth はここで終わる形を目指す
+      const tonic = mod12(ctx.src.rootAt(0));
+      let home = null;
+      ladder.forEach((q, i) => { if (mod12(q) === tonic && (home == null || Math.abs(i - mid) < Math.abs(home))) home = i - mid; });
+      if (home == null) home = 0;
+      // 評価(0 が満点、低いほど悪い)
+      const fitness = (g) => {
+        let s = 0;
+        for (let i = 1; i < len; i++) {
+          const step = Math.abs(g[i] - g[i - 1]);
+          if (target === 'smooth') s -= Math.abs(step - 1) + (step === 0 ? 1 : 0) + (i >= 2 && dir(g[i - 2], g[i - 1]) !== dir(g[i - 1], g[i]) ? 0.4 : 0); // 向きを変えすぎない(上下の往復にしない)
+          else if (target === 'leaping') s -= Math.abs(step - 4) * 0.7 + (i >= 2 && dir(g[i - 2], g[i - 1]) === dir(g[i - 1], g[i]) ? 0.8 : 0);
+          else if (target === 'wave') s -= Math.abs(step - 2) * 0.5 + (i >= 2 && dir(g[i - 2], g[i - 1]) === dir(g[i - 1], g[i]) ? 1.2 : 0);
+        }
+        if (target === 'smooth') s -= Math.abs(g[len - 1] - home) * 1.5;
+        if (target === 'arch') g.forEach((x, i) => { s -= Math.abs(x - (5 * Math.sin(Math.PI * (i / Math.max(1, len - 1))) - 1)); });
+        return s;
+      };
+      // 突然変異: 1音ずつの上下に加えて、ときどき途中から後ろをまとめて上下にずらす(1音ずつでは抜け出せない形からも動けるように)
+      const mutate = (g, amount) => {
+        const out = g.map((x) => (rng.chance(amount) ? lim(x + rng.pick([-3, -2, -1, 1, 2, 3])) : x));
+        if (rng.chance(Math.min(1, amount * 2))) {
+          const cut = rng.int(1, len - 1);
+          const by = rng.pick([-2, -1, 1, 2]);
+          for (let i = cut; i < len; i++) out[i] = lim(out[i] + by);
+        }
+        return out;
+      };
+      let pop = Array.from({ length: 12 }, () => base.map((x) => lim(x + rng.int(-4, 4))));
+      const out = [];
+      const markers = [];
+      let worst = null;
+      let t = 0;
+      for (let gen = 0; t < ctx.total - EPS && gen < 400; gen++) {
+        pop.sort((a, b) => fitness(b) - fitness(a));
+        const best = pop[0];
+        const score = fitness(best);
+        if (worst == null) worst = Math.min(-1, score);
+        const near = Math.max(0, Math.min(1, 1 - score / worst)); // 0=最初の世代くらい、1=満点に近い
+        if (gen % 4 === 0) markers.push({ beat: t, label: `第${gen * GA_STEPS + 1}世代` });
+        let u = t;
+        for (let i = 0; i < len && u < ctx.total - EPS; i++) {
+          const lad = ctx.src.ladder(u, ctx.range);
+          const p = lad[Math.max(0, Math.min(lad.length - 1, mid + best[i]))];
+          out.push(note(p, u, Math.min(durs[i] * 0.9, ctx.total - u), 56 + 40 * near + (i === 0 ? 6 : 0)));
+          u += durs[i];
+        }
+        t += motifLen;
+        // 次に鳴らすまでに GA_STEPS 世代進める: 上位4つを残し、残りは上位どうしの交叉+突然変異
+        for (let s2 = 0; s2 < GA_STEPS; s2++) {
+          if (s2) pop.sort((a, b) => fitness(b) - fitness(a));
+          const elite = pop.slice(0, 4);
+          const next = elite.map((g) => g.slice());
+          while (next.length < 12) {
+            const a = rng.pick(elite);
+            const b = rng.pick(pop.slice(0, 8));
+            const cut = rng.int(1, len - 1);
+            next.push(mutate(a.slice(0, cut).concat(b.slice(cut)), mut));
+          }
+          pop = next;
+        }
+      }
+      return { voices: [out], markers };
+    },
+  });
+
+  /**
+   * 群れ(レイノルズのボイド): 鳥の群れの3つの規則(近づきすぎない・まわりと向きをそろえる・群れの中心へ寄る)で、
+   * 何羽かの「鳥」を音の高さの上で飛ばす。鳥が別の段へ移るたびに音が鳴る。時間の設計図の緊張が高い所ほど、群れは高く・速く飛ぶ
+   */
+  register('boids', {
+    label: '群れ(ボイド)',
+    roles: ['texture'],
+    text: 'strands 羽の「鳥」を、音の高さの上で群れとして飛ばす。鳥は3つの規則(近づきすぎない・まわりと向きをそろえる・群れの中心へ寄る)で動き、別の段へ移るたびに音が鳴る。群れ全体はゆっくり上下に旋回し、緊張が高い所ほど高く・速く飛ぶ。cohesion が高いと固まった塊、低いとばらけた群れになる',
+    params: ['strands', 'cohesion', 'step'],
+    paramText: 'strands: 鳥の数(3〜8)。cohesion: 群れのまとまり(0〜1。0.8 以上で密集した塊、0.3 以下でばらけて飛ぶ)。step: 動きを見る間隔(拍。0.25〜0.5)',
+    render(ctx, L) {
+      const rng = ctx.rng;
+      const n = Math.max(3, Math.min(8, L.strands || 5));
+      const coh = L.cohesion != null ? Math.max(0, Math.min(1, L.cohesion)) : 0.6;
+      const step = Math.max(0.125, Math.min(1, L.step || 0.25));
+      const top = ctx.src.ladder(0, ctx.range).length - 1;
+      const birds = Array.from({ length: n }, () => ({ x: top / 2 + rng.between(-3, 3), v: rng.between(-0.3, 0.3), last: null }));
+      const out = [];
+      for (let t = 0, k = 0; t < ctx.total - EPS && k < 4000; t += step, k++) {
+        const ten = ctx.tension(t);
+        const goal = top * (0.25 + 0.5 * ten) + Math.sin(t / 6) * top * 0.15; // 群れが目指す高さ(ゆっくり旋回する)
+        const cx = birds.reduce((a, b) => a + b.x, 0) / n;
+        const cv = birds.reduce((a, b) => a + b.v, 0) / n;
+        const maxV = 0.5 + 1.2 * ten;
+        birds.forEach((b, i) => {
+          let a = (cx - b.x) * 0.08 * coh + (cv - b.v) * 0.25 + (goal - b.x) * 0.02 + rng.gauss() * 0.12;
+          birds.forEach((o, j) => {
+            if (i !== j && Math.abs(o.x - b.x) < 1.2) a += (Math.sign(b.x - o.x) || Math.sign(i - j)) * 0.25 * (1.2 - coh * 0.5);
+          });
+          b.v = Math.max(-maxV, Math.min(maxV, b.v + a));
+          b.x = Math.max(0, Math.min(top, b.x + b.v));
+          const idx = Math.round(b.x);
+          if (idx !== b.last) {
+            const lad = ctx.src.ladder(t, ctx.range);
+            out.push(note(lad[Math.min(lad.length - 1, idx)], t, step * 1.6, 50 + 30 * ten + Math.min(14, Math.abs(b.v) * 10) + rng.between(-4, 4)));
+            b.last = idx;
+          }
+        });
+      }
+      return out;
+    },
+  });
+
+  const BODIES = ['bounce', 'pendulum', 'spring'];
+
+  /**
+   * 物理のシミュレーション: 弾むボール・振り子・バネの運動の式をそのまま解いて、音の時間と高さに写す。
+   * bounce は弾むたびに間隔が縮む(だんだん速くなって止まる)、pendulum は左右に揺れて少しずつ小さくなる、spring は弾いた瞬間に細かく震えて収まる
+   */
+  register('physics', {
+    fixed: true, // 乱数を使わない(物理の式だけで決まる)
+    label: '物理シミュレーション',
+    roles: ['figure'],
+    text: '物の運動の式を解いて音にする。bounce=床で弾むボール(弾むたびに音が鳴り、間隔と高さが縮んでいって、だんだん速く細かくなって止まる。止まったら次の区間の頭でまた落とす)/ pendulum=振り子(揺れの位置を音の高さにして、区間の頭で大きく揺らし、少しずつ小さくなる)/ spring=バネ(小節の頭で弾き、細かく震えて収まる)。damping で減衰の強さ、時間の設計図の緊張で、落とす高さ・揺らす強さが変わる',
+    params: ['body', 'damping', 'step'],
+    paramText: 'body: bounce / pendulum / spring。damping: 減衰の強さ(0〜1。bounce なら弾むたびに失う高さ、pendulum・spring なら揺れの収まる速さ。0.2〜0.5 が目安)。step: pendulum・spring で位置を音にする間隔(拍。0.25〜0.5。bounce では使わない)',
+    render(ctx, L) {
+      const body = BODIES.includes(L.body) ? L.body : 'bounce';
+      const damp = L.damping != null ? Math.max(0, Math.min(1, L.damping)) : 0.3;
+      const out = [];
+      const markers = [{ beat: 0, label: { bounce: '弾むボール', pendulum: '振り子', spring: 'バネ' }[body] }];
+      const starts = (ctx.sections.length ? ctx.sections.map((s) => s.start) : [0]).filter((s, i, a) => a.indexOf(s) === i).sort((a, b) => a - b);
+      if (!starts.includes(0)) starts.unshift(0);
+      const top = ctx.src.ladder(0, ctx.range).length - 1;
+      const pitchAt = (t, x) => {
+        const lad = ctx.src.ladder(t, ctx.range);
+        return lad[Math.max(0, Math.min(lad.length - 1, Math.round(x)))];
+      };
+      if (body === 'bounce') {
+        const r = 0.92 - 0.4 * damp; // 弾むたびの速さの残り(反発係数)
+        let t = 0;
+        for (let drop = 0; t < ctx.total - EPS && drop < 200; drop++) {
+          const ten = ctx.tension(t);
+          let gap = 1.2 + 1.6 * ten; // 最初に弾むまでの拍
+          let h = 1;
+          for (let k = 0; t < ctx.total - EPS && gap > 0.06 && k < 60; k++) {
+            out.push(note(pitchAt(t, top * (0.2 + 0.75 * h * (0.5 + 0.5 * ten))), t, Math.min(0.4, gap * 0.8), 46 + 54 * Math.sqrt(h)));
+            t += gap;
+            gap *= r;
+            h *= r * r;
+          }
+          const nextStart = starts.find((s) => s > t + EPS);
+          t = nextStart != null ? nextStart : t + 2; // 止まったら、次の区間の頭(無ければ2拍おいて)でまた落とす
+        }
+        return { voices: [out], markers };
+      }
+      const step = Math.max(0.125, Math.min(1, L.step || 0.25));
+      const period = body === 'pendulum' ? 4 : 0.75;
+      const gamma = (body === 'pendulum' ? 0.08 : 0.6) * (0.3 + 2.4 * damp);
+      let kick = 0;
+      let amp = 0;
+      let lastIdx = null;
+      for (let t = 0; t < ctx.total - EPS; t += step) {
+        const reset = body === 'pendulum' ? starts.some((s) => Math.abs(s - t) < EPS) : onBar(ctx, t);
+        if (reset) {
+          kick = t;
+          amp = (0.25 + 0.7 * ctx.tension(t)) * top / 2;
+          lastIdx = null;
+        }
+        const swing = Math.exp(-gamma * (t - kick));
+        const x = top / 2 + amp * swing * Math.cos(2 * Math.PI * (t - kick) / period);
+        const idx = Math.round(x);
+        if (idx !== lastIdx) {
+          out.push(note(pitchAt(t, x), t, step * 0.9, 44 + 50 * swing));
+          lastIdx = idx;
+        }
+      }
+      return { voices: [out], markers };
+    },
+  });
+
   /* ================= ドラム(ビート。基本の楽典モデル由来) ================= */
 
   const DRUM_MAP = {
