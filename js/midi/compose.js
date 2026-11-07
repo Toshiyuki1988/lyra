@@ -408,7 +408,8 @@
         resolve(id);
       };
       overlay.querySelector('[data-history-map]').addEventListener('click', () => {
-        window.LyraHistoryMap.open({ onPick: finish });
+        // 2026-11-07、ユーザー要望「音楽史マップでピンを付けたモデルが、最初の窓に出るようにして」: 地図を閉じたら、ピン留めを描き直す
+        window.LyraHistoryMap.open({ onPick: finish, onClose: () => { if (overlay.isConnected) render(); } });
       });
       viewBtns.forEach((b) => b.addEventListener('click', () => {
         filter.view = b.dataset.modelView;
@@ -1650,7 +1651,7 @@ ${models}
 
   Object.assign(M, {
     GAUGES, gaugeLabel, pickModel, refinePrompt, createSketch, createFromSpeech, createBeat, reviseMidi, rerender, designOf, notesText, renderMidi,
-    bindKidsPopups, openDemo, KIDS_ICON, DEMO_ICON,
+    bindKidsPopups, openDemo, KIDS_ICON, DEMO_ICON, PIN_ICON, pinnedModels, togglePin,
     analyzeMidi, createResponse, renderResponse, ruminateNotes, createBeatResponse, rhythmAnalysis, BEAT_KNOBS, beatFields, readBeat,
     _test: { buildPrompt, presetFields, readPresetValues, applyFixed, imageSeries, beatPrompt, sanitizeBeat, writeBeat },
   });

@@ -1687,6 +1687,9 @@ a.btn-secondary { display: block; }
 .history-map .history-map-icons .model-kids { background: #fff8ec; border-color: var(--accent-line); }
 .history-map .history-map-icons .model-demo { color: var(--accent-deep); background: #fff; border-color: var(--accent-line); }
 .history-map .history-map-icons .model-demo:hover { color: #fff; background: var(--accent); }
+.history-map .history-map-icons .model-pin { background: #fff; border-color: var(--line); color: #b9b2a6; }
+.history-map .history-map-icons .model-pin:hover { color: var(--accent-deep); border-color: var(--accent-line); }
+.history-map .history-map-icons .model-pin.is-pinned { background: var(--accent); border-color: var(--accent); color: #fff; }
 .history-map-controls[hidden], .history-map-row[hidden] { display: none; }
 .modal .history-map-controls button[aria-pressed="true"] {
   background: var(--accent-deep);

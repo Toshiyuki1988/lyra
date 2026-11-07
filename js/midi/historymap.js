@@ -7,6 +7,14 @@
     plan: ['未作成', (item) => !item.done],
     nokids: ['解説が無い', (item) => item.done && !item.kids],
     nodemo: ['お手本が無い', (item) => item.done && !item.demo],
+    pinned: ['ピン留め', (item) => isPinned(item.id)],
+  };
+  // ピン留めは、モデルのピッカーと同じ state.prefs.pinnedModels(2026-11-07、ユーザー要望「音楽史マップにつけてほしい。ピンを付けたモデルが、最初の窓に出るように」)
+  const isPinned = (id) => window.LyraMidi.pinnedModels().includes(id);
+  const pinButton = (id) => {
+    const on = isPinned(id);
+    const label = on ? 'ピン留めを外す' : 'ピン留めする';
+    return `<button type="button" class="model-pin${on ? ' is-pinned' : ''}" data-pin="${escapeHtml(id)}" aria-pressed="${on}" title="${label}" aria-label="${label}">${window.LyraMidi.PIN_ICON}</button>`;
   };
   const kinds = { beat: 'ビート帳', response: '応答', extend: '伸ばす' };
   let mapRequest;
@@ -54,7 +62,8 @@
             `<span>${escapeHtml(item.tier)}</span>`}
         </span>
       </button>
-      ${!reason && (demo || kids) ? `<div class="history-map-icons">
+      ${!reason ? `<div class="history-map-icons">
+        ${pinButton(id)}
         ${demo ? `<button type="button" class="model-demo" data-demo="${escapeHtml(id)}" aria-label="お手本の演奏を聴く">${midi.DEMO_ICON}</button>` : ''}
         ${kids ? `<button type="button" class="model-kids" data-kids="${escapeHtml(id)}" aria-label="小学生向けの解説">${midi.KIDS_ICON}</button>` : ''}
       </div>` : ''}
@@ -126,6 +135,13 @@
     list.addEventListener('click', (event) => {
       const el = event.target.closest('[data-history-id]');
       if (!el) return;
+      const pin = event.target.closest('[data-pin]');
+      if (pin) {
+        window.LyraMidi.togglePin(pin.dataset.pin);
+        pin.outerHTML = pinButton(pin.dataset.pin);
+        if (filter === 'pinned') update();
+        return;
+      }
       const button = event.target.closest('.history-map-toggle');
       if (button) {
         if (expanded) expand(expanded, false);
@@ -141,7 +157,7 @@
     update();
   }
 
-  function open({ onPick }) {
+  function open({ onPick, onClose }) {
     const opener = document.activeElement;
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay visible history-map-overlay';
@@ -160,6 +176,7 @@
     </div>`;
     const close = () => {
       overlay.remove();
+      if (onClose) onClose();
       if (opener?.isConnected) opener.focus();
     };
     const closeButton = overlay.querySelector('[data-history-close]');
