@@ -374,7 +374,7 @@
       ],
     },
     cantus_firmus: {
-      listen: '真ん中の低い声が、1音4拍の長い定旋律を据える。その上で2つの声が、1対2の動きと掛留(タイでずらす音)で、規則を守りながら包む',
+      listen: 'いちばん低い声が、1音4拍の長い定旋律を据える(ミサ曲では真ん中の声に置くことが多いが、ここでは聞き取りやすいよう一番下に置いた形)。その上で2つの声が、1対2の動きと掛留(タイでずらす音)で、規則を守りながら包む',
       bars: 8, tempo: 76,
       pitch: { system: 'scale', root: 'D', scale: 'dorian' },
       layers: [
@@ -439,12 +439,13 @@
       ],
     },
     chorale: {
-      listen: 'ソプラノが4分音符で歌い、その下の内声とバスが1拍ごとに和音を変えて支える4声体。2小節ごとの句の終わりで伸ばし、4小節目で半終止(D)、最後に完全終止(G)',
+      listen: 'ソプラノが4分音符で歌い、その下のアルト・テノール・バスが1拍ごとに和音を変えて支える4声体。2小節ごとの句の終わりで伸ばし、4小節目で半終止(D)、最後に完全終止(G)',
       bars: 8, tempo: 72,
       pitch: { system: 'chords', root: 'G', scale: 'major', chords: prog('G:1 D/F#:1 Em:1 C:1 G/D:1 D:1 G:2 Em:1 Bm/D:1 C:1 G/B:1 Am:1 A7/C#:1 D:2 G:1 C/E:1 D:1 G:1 C:1 Am:1 D:2 Em:1 C:1 G/D:1 D7:1 G:4') },
       layers: [
-        { name: 'ソプラノ', generator: 'line', role: 'melody', notes: seq('B4:1 A4:1 G4:1 G4:1 B4:1 A4:1 G4:2 B4:1 D5:1 C5:1 B4:1 C5:1 A4:1 A4:2 D5:1 C5:1 A4:1 B4:1 C5:1 E5:1 D5:2 B4:1 C5:1 B4:1 A4:1 G4:4') },
-        { name: '内声', generator: 'chords', comping: 'sustain', voicing: 'close', register: 'low' },
+        { name: 'ソプラノ', generator: 'line', role: 'melody', notes: seq('B4:1 A4:1 G4:1 G4:1 B4:1 A4:1 G4:2 B4:1 B4:1 C5:1 D5:1 C5:1 A4:1 A4:2 D5:1 C5:1 A4:1 B4:1 C5:1 E5:1 D5:2 B4:1 C5:1 B4:1 A4:1 G4:4') },
+        { name: 'アルト', generator: 'line', role: 'counter', notes: seq('D4:1 D4:1 E4:1 E4:1 D4:1 D4:1 D4:2 G4:1 F#4:1 G4:1 G4:1 A4:1 G4:1 F#4:2 G4:1 G4:1 F#4:1 G4:1 G4:1 C5:1 A4:2 G4:1 G4:1 G4:1 F#4:1 D4:4') },
+        { name: 'テノール', generator: 'line', role: 'counter', notes: seq('G3:1 A3:1 B3:1 C4:1 G3:1 F#3:1 B3:2 B3:1 B3:1 E4:1 D4:1 E4:1 E4:1 D4:2 B3:1 C4:1 D4:1 D4:1 E4:1 E4:1 F#4:2 E4:1 E4:1 D4:1 C4:1 B3:4') },
         { name: 'バス', generator: 'bass', pattern: 'root' },
       ],
     },

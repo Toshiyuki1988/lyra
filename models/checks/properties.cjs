@@ -251,13 +251,14 @@ const PROPERTIES = {
     { claim: 'さらに2小節遅れの2オクターブ下で追いかける', check: (m, h) => follows(h, '先の声', '追う声2', 16, -24) },
   ],
   chorale: [
-    { claim: '4声体(同時に鳴る音の高さが4つ)', known: '2026-11-09 の検証で判明。内声のパートが和音を3音持ち、バスと足すと5つの高さになる拍が多い(直すならお手本の音が変わる)', check: (m, h) => {
-      const all = [...h.part('ソプラノ'), ...h.part('内声'), ...h.part('バス')];
-      const bad = h.onsets('ソプラノ').filter((start) => new Set(all.filter((n) => near(n.start, start)).map((n) => n.pitch)).size > 4);
-      return bad.length === 0 || `高さが5つ以上の拍 ${bad.length} か所`;
+    { claim: '4声体(どの拍も4つの声が1音ずつ鳴らす)', check: (m, h) => {
+      const voices = ['ソプラノ', 'アルト', 'テノール', 'バス'];
+      const counts = h.onsets('ソプラノ').map((start) => voices.map((name) => h.part(name).filter((n) => near(n.start, start)).length));
+      const bad = counts.filter((list) => !list.every((x) => x === 1));
+      return bad.length === 0 || `4声でない拍 ${bad.length} か所`;
     } },
     { claim: 'ソプラノの下を、ほかの声が支える', check: (m, h) => {
-      const bad = [...h.part('内声'), ...h.part('バス')].filter((n) => {
+      const bad = [...h.part('アルト'), ...h.part('テノール'), ...h.part('バス')].filter((n) => {
         const top = h.part('ソプラノ').filter((x) => x.start <= n.start + 1e-6 && x.start + x.duration > n.start + 1e-6);
         return top.length && n.pitch > Math.max(...top.map((x) => x.pitch));
       });
