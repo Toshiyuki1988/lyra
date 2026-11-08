@@ -5,16 +5,17 @@
 Gemini による監修(3つ目の層の案)と、人(先生・耳)による確認は、この計画の外に置く。
 
 ## 進め方
-- B(重い: Claude Codeが計画)。理由: 95件(今後212件)のモデルにまたがる/モデルの説明文(Gemini へのプロンプトの一部 `guide`・`style` を含む)を直す流れを作る/
+- B(重い: Claude Codeが計画)。理由: 212件のモデルにまたがる/モデルの説明文(Gemini へのプロンプトの一部 `guide`・`style` を含む)を直す流れを作る/
   地図のデータ(外の C++ アプリからも読む `models/history-map.json`)のまわりに、新しい記録の形を足す
 - 実装は、計画の確認が済めば Claude Code が行う(このタスクの親の決まり「段階0から全部の波まで Claude Code」に合わせる【推測】)。
   2(文章の監修)は、作った Claude Code と**別のセッション**で行うこと自体が要件
 
 ## 状態
 - [x] 計画作成(Claude Code、2026-11-07)
-- [ ] 計画確認(ユーザー)
-- [ ] 1. 機械の検証の実装・確認
-- [ ] 2. 監修の手順書と記録の形の実装
+- [x] 実装の計画に具体化(Claude Code、2026-11-09)。地図が212件すべて作成済みになった今のコードと照合して、下の「今のコードとの照合」のとおり設計を直した
+- [x] 計画確認(ユーザー、2026-11-09。確認の問い1〜5はすべて提案どおり「おすすめで」)
+- [x] 1. 機械の検証の実装・確認(Claude Code、2026-11-09)
+- [x] 2. 監修の手順書と記録の形の実装・地図への印(Claude Code、2026-11-09)
 - [ ] 2. 監修の試行(別のセッション。最初は近代・戦後の10件)
 - [ ] 最終チェック(Claude Code)
 - [ ] 人によるレビュー・コミット(ユーザー)
@@ -35,6 +36,19 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 - 地図の説明文・子どもの解説・お手本は、Claude Code が書いたもの(2026-11-06〜07)。専門家の目も耳での確認も通っていない
 - 今の確認は、波ごとに Node で数値を見たものだけで、**その場限りのスクリプト**(作業用の一時フォルダ)だった。次の変更で壊れても気づけない
 - 書いた本人が見直すと、同じ思い込みを共有しやすい。会話を共有しない別のセッションにし、主張ごとに出典を確かめさせることで減らす
+
+## 今のコードとの照合(2026-11-09、Node で実測)
+| 分かったこと | 計画への反映 |
+|---|---|
+| 地図は212件(preset 161・beat 39・response 6・extend 6)。全件作成済み、解説とお手本は各200件 | 応答・伸ばすの12件は解説・お手本が無いのが正しい。「解説・お手本がある」の確認は preset と beat だけにする |
+| 今の `docs/duo/test-midi-history-map.cjs` は、比べる元のフォルダを渡さないと NG で終わる。前から 10〜32 秒を超えるお手本が11件ある(variations・leitmotif・transformation・symphonic_climax・drone_music・power_ballad・post_rock・eno_loops・shomyo・shakuhachi_honkyoku・fluct) | 11件は既知の例外の表に入れて警告にとどめる。表に無いお手本の長さの外れは落とす。短くするかは別の話(この計画の対象外) |
+| 200件の描画は約0.9秒、既存のテスト全体で約2秒 | 2回描いて決定性を見ても 30 秒に十分収まる |
+| 地図の `text` とプリセットの `text` は212件すべて別の文。ほかに `label`・`short`・`works`・`style`・`guide`・`listen` が主張を持つ | 監修の対象の欄を増やす(2-3)。地図の説明は `mapText` と呼び分ける |
+| ビート帳のお手本は part が1つで、既存のテストは .mid を飛ばしている。1件試すと書き出せた | .mid の確認は200件すべてで行う |
+| 計画の性質の例を近代・戦後の10件で実測: 全音音階は6音以内、複調の上は嬰ヘ長調の音だけ、ウェーベルンの鳴っている割合 0.34、ナンカロウの間隔 0.306 : 0.245 : 0.205、フェルドマンの強さ 30〜34 | 書いた性質の例は成り立つ。パート名は `partNames`(例 p4=行進曲B)で引ける |
+| 波2〜3の id は `organum_parallel`・`imitative_poly`(下の一覧が正)。`Math.random` は生成の中に1か所あるが、Gemini に見せる語彙の並びだけで音符には関係しない | 指紋は安定して取れる |
+| AGENTS.md は「`docs/duo/` のタスクを必ず先に読む」と書いていて、新しいセッションはこれを自動で読む | 監修のセッションだけの例外を AGENTS.md に1行足す(2-2) |
+| `presets.js` には作った側の経緯のコメントがある | 監修のセッションにはソースを読ませず、必要な文だけを書き出した「監修の材料」を渡す(2-2) |
 
 ## 関係する記録
 - `docs/duo/task-midi-history-map.md`(地図の計画と、波ごとの Node の確認の記録)、`docs/midi-history-map.md`(外のアプリ向けの説明。6節の決まり)
@@ -66,28 +80,35 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 ## 受け入れ条件
 ### 1. 機械の検証
 - [ ] `node <テストのファイル>` 1つで、地図の全モデルの全体の確認とモデルごとの性質が走り、結果の表が出る。落ちた時は終了コードが 0 以外
-- [ ] 近代・戦後の10件と、波2〜3・波6〜7の15件に、それぞれ1つ以上の性質がある(説明文の主張から作る。下の例)
+- [ ] 次の25件に、それぞれ1つ以上の性質がある(説明文の主張から作る。下の例):
+  近代・戦後 `ives` `whole_tone` `octatonic` `bitonality` `webern` `cluster` `additive` `nancarrow` `feldman` `satie` /
+  波2〜3 `organum_parallel` `fauxbourdon` `imitative_poly` `cantus_firmus` `folia` `romanesca` `passacaglia` `lament_bass` `canon` `chorale` /
+  波6〜7 `spectral` `micropolyphony` `messiaen` `fractal` `bartok`
 - [ ] 性質が無いモデルは「性質なし」と表に出る(落ちにはしない)。性質の数の合計も出す
-- [ ] 既存のお手本の指紋の一覧があり、生成器をわざと1か所壊すと、影響したお手本の名前が出て落ちる(確かめた後、壊した所は戻す)
-- [ ] 外部の依存を足さない(Node の標準だけ)。ブラウザー・Gemini・Drive を使わない
+- [ ] 前から長いお手本11件は警告として出て、落ちない。表に無いお手本が 10〜32.5 秒を外れると落ちる
+- [ ] 既存のお手本の指紋の一覧があり、生成器をわざと1か所壊すと、影響したお手本の名前が出て落ちる(作業ツリーは触らず、js/ を一時フォルダへ写して壊し、`--root` で確かめる)
+- [ ] 外部の依存を足さない(Node の標準だけ)。ブラウザー・Gemini・Drive を使わない。既定の実行はファイルを書き換えない
 - [ ] 実行が 30 秒以内【推測】
 ### 2. 文章の監修
 - [ ] 手順書だけを読んだ別のセッションが、追加の説明なしで、指定した id の監修を終えて記録を書ける
 - [ ] 記録は、主張1つずつに 判定・理由・出典(書名や URL と、どの箇所か)を持つ。出典の無い指摘は「出典なし」と分かる
-- [ ] 記録から、モデルごとの状態(未監修/監修済み・指摘なし/指摘あり/直した)が出せる
+- [ ] 記録から、モデルごとの状態(未監修/指摘なし/指摘あり/直した/監修の後に文が変わった)が出せる
 - [ ] 試行: 近代・戦後の10件を監修し、記録が10件そろう。見つかった指摘の一覧をユーザーに見せる
-- [ ] 記録に、出典の原文を長く写していない(1か所につき短い要約か、15語程度までの引用)
+- [ ] 記録に、出典の原文を長く写していない(1か所につき短い要約か、15語程度までの引用)。`quote` の長さと `reason` の長さは run.cjs が機械で確かめる
+- [ ] 材料の欄のうち、読んだのに記録に現れない欄が無い(`claims` か `noClaims` のどちらかに入っていることを run.cjs が確かめる)
 
 ## 設計・制約
 
 ### 1. 機械の検証
 #### 1-1. 置き場所【推測】
 - テスト本体: `models/checks/run.cjs`(地図の JSON の隣。外の C++ アプリの開発者も同じ確認を回せる)。
-  既存の `docs/duo/test-*.cjs` はタスクごとの使い捨てなので、地図全体の検証はそちらに置かない
+  既存の `docs/duo/test-*.cjs` はタスクごとの使い捨てなので、地図全体の検証はそちらに置かない。`docs/duo/test-midi-history-map.cjs` は変えずに残す
+- 読み込みと計り方: `models/checks/lib.cjs`(アプリの読み込み・道具 `h`・指紋の計算・文のハッシュ)
 - 性質の定義: `models/checks/properties.cjs`(モデルの id → 性質の配列)
+- 既知の例外: `models/checks/properties.cjs` の `KNOWN_LONG`(前から長いお手本11件)
 - 指紋の一覧: `models/checks/fingerprints.json`(id → お手本の音符のハッシュ)。生成器を意図して変えた時は、`node models/checks/run.cjs --update-fingerprints` で書き直す
-- 読み込みは既存のテストと同じ形(`vm` で js/scales.js・js/midi/ の theory・engine・generators・beatbook・design・presets・demos・play・export を読む。
-  `state`・`document`・`TextEncoder` は空の代わりを渡す)
+- 読み込みは既存の `docs/duo/test-midi-history-map.cjs` と同じ形(`vm` で js/ の scales と midi/ の theory・engine・generators・design・presets・beatbook・demos・play・export・extend を読む。
+  `state`・`document`・`TextEncoder` は空の代わりを渡す)。`--root <フォルダ>` で別の js/ を読める(壊して確かめる時に使う)
 
 #### 1-2. 性質の書き方
 - 1つの性質は `{ claim, check }`。`claim` は説明文のどの主張を確かめるかの短い文、`check(m, h)` はお手本の MIDI `m` と道具 `h` を受け取って true/false か、落ちた理由の文を返す
@@ -107,7 +128,7 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 - 性質は「お手本がこうなっているか」を見るもので、Gemini が書く設計図の出来は見ない(それは本物の Gemini での確認=未確認のまま)
 
 #### 1-3. 指紋
-- お手本ごとに、音符(pitch・start・duration・velocity・cents とパート)を並べた文字列のハッシュ(Node の `crypto` の sha1)を持つ
+- お手本ごとに、音符(pitch・start・duration・velocity・cents とパート)を並べた文字列のハッシュ(Node の `crypto` の sha1)を持つ。start・duration は小数6桁に丸めてから並べる(計算の端数で落ちないように)
 - 違ったら「意図した変更か」を人が決める。意図した変更なら `--update-fingerprints` で書き直し、コミットのメッセージに、変わったお手本の名前を書く
 
 ### 2. 文章の監修
@@ -119,7 +140,12 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 - 同じ作業ツリーを同時に編集しない(AGENTS.md)。監修のブランチは `git worktree` で別のフォルダにする【推測】
 
 #### 2-2. 手順書
-- `models/review/README.md`【推測: 置き場所】。監修のセッションは最初にこれと、監修する id のプリセット・解説・お手本・地図の行だけを読む(作った側の `docs/duo/` のタスクは読まない。思い込みを引き継がないため)
+- `models/review/README.md`【推測: 置き場所】。監修のセッションはこれと、`node models/checks/run.cjs --packet <id...>` が出す**監修の材料**だけを読む
+- 監修の材料(1件ごとの JSON): 地図の行(時代・`mapText`)・`label`・`short`・`text`・`kids`・`works`・`style`・`guide`・`listen`・お手本の設計図・実測の値(パート名・長さ・テンポ・パートごとの音の種類)・`textHash`・`userKids`(ユーザーが書いた解説か)。
+  ソースのファイルを読ませないのは、作った側の経緯のコメントを見せないためと、使用量を抑えるため
+- 読まないもの: `docs/duo/`・`docs/midi*.md`・`js/`(作った側の思い込みを引き継がないため)。AGENTS.md の「`docs/duo/` のタスクを必ず先に読む」と食い違うので、AGENTS.md の情報源の節に「音楽史マップの文章の監修のセッションは `models/review/README.md` に従い、`docs/duo/` を読まない」と1行足す
+- 始め方(ユーザーがそのまま貼る文を README の先頭に置く): 「`models/review/README.md` に従って、次の id を監修して: ives whole_tone …」
+- 主張の粒度: 1件につき `wrong` になりうる事実の主張を中心に、おおむね10件まで。同じ内容が `text` と `style` にあれば1つの主張にまとめる(`fields` に両方書く)。`works` は1曲1主張
 - 見る観点:
   1. **音楽史の事実**: 人名・年代・地域・用語(例「ナンカロウは自動ピアノのために書いた」)
   1-2. **参照曲(`works`、2026-11-07 追加)**: 曲が実在するか・作曲者と題名・楽章が合っているか・その技法がその曲で本当に聞こえるか。確かめたものはプリセットに `worksChecked: true`(監修の記録をユーザーが読んでから付ける)
@@ -133,24 +159,42 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 #### 2-3. 記録の形
 - `models/review/<id>.json`【推測】。外の C++ アプリの開発者も読めるよう JSON にする:
   ```json
-  { "id": "ives", "reviewedAt": "2026-11-08", "reviewer": "Claude Code(別のセッション)", "target": "<プリセットとお手本のコミットの短い id>",
-    "status": "issues",
+  { "id": "ives", "reviewedAt": "2026-11-08", "reviewer": "Claude Code(別のセッション)", "target": "<見たコミットの短い id>", "textHash": "<材料の textHash>",
+    "noClaims": ["guide"],
     "claims": [
-      { "field": "style", "claim": "層ごとに違うテンポと違う調", "verdict": "ok", "reason": "…", "sources": [{ "title": "…", "url": "…", "where": "…" }] },
-      { "field": "kids", "claim": "子どものころに町で聞いた景色", "verdict": "unsure", "reason": "…", "sources": [] }
+      { "fields": ["style", "text"], "claim": "層ごとに違うテンポと違う調", "verdict": "ok", "reason": "…", "sources": [{ "title": "…", "url": "…", "where": "…" }] },
+      { "fields": ["kids"], "claim": "子どものころに町で聞いた景色", "verdict": "overstated", "reason": "…", "suggestion": "…", "sources": [] }
     ] }
   ```
-  - `field` は text・kids・style・guide・listen・label のどれか。`status` は claims から出す(1つでも wrong / overstated があれば issues)
-  - `target` で、どの版の説明を見たかを残す。説明が後で直されたら、その id は「監修の後に変わった」と分かる(機械の検証のテストで、presets.js の該当プリセットの文の変化を検出する【推測】)
-- 出典の原文は写さない。`reason` は自分の言葉の要約、引用するなら1か所15語程度まで
+  - `fields` は label・short・mapText・era・text・kids・works・style・guide・listen・demo のどれか(複数可)。`noClaims` は「読んだが、確かめる事実が無かった欄」(`guide` の組み立ての指示など)
+  - `wrong` と `overstated` には `suggestion`(直し方の案、1〜2文)が必須。`sources: []` は「出典なし」として表と画面に出す
+  - 出典の短い引用は `sources[].quote` にだけ書く(英語15語、日本語40字まで)。`reason` は自分の言葉の要約で 240 字まで
+  - `status` は記録に持たせず、`run.cjs` が claims から計算する(同じ情報を二重に持たない):
+    `issues`=wrong / overstated が残っている、`clean`=残っていない(`unsure` の数は別に出す)、`fixed`=wrong / overstated が1つ以上あり全部に `fixed` が付いた、`stale`=`textHash` が今の文と違う
+  - `textHash` は 監修の対象の文とお手本の設計図のハッシュ。文が変わると `stale`(監修の後に変わった)になる。git の履歴に頼らず Node だけで判定できる
+- 出典の原文は写さない。`reason` は自分の言葉の要約、引用は `quote` に1か所15語程度まで
 
 #### 2-4. 指摘を直す流れ
-- ユーザーが記録を読み、直すと決めた指摘だけを、元のセッション(または Codex)が直す。直したら、記録の claims に `fixed: "<コミットの短い id>"` を足し、`status` を `fixed` にする
-- ユーザーが書いた子どもの解説(11件)は、指摘があっても直さず、ユーザーに見せるだけ
+- ユーザーが記録を読み、直すと決めた指摘だけを、元のセッション(または Codex)が直す。直したら、記録のその claim に `fixed: "<直した日付>"` を足し、記録の `textHash` を新しい材料の値に更新する(同じコミットで直せるよう、コミットの id でなく日付にする)
+- ユーザーが書いた子どもの解説(11件: `process` `stochastic` `automaton` `markov` `counterpoint` `sonify` `fluct` `tension` `dialogue` `motif` `serial`。2026-11-06 より前のコミットの `presets.js` で確認)は、指摘があっても直さず、ユーザーに見せるだけ。id の一覧は `models/checks/properties.cjs` の `USER_KIDS` に持ち、材料の `userKids` に出す
 
 #### 2-5. 地図の画面への表示【推測: 確認の問い2】
 - 音楽史マップの窓(`js/midi/historymap.js`)の各行に、監修の状態の小さな印を足す(未監修/指摘なし/指摘あり/直した)。詳細を開くと、指摘の要約と出典の数が出る
-- 記録は `models/review/index.json`(id → status と件数)にまとめ、地図の窓はそれだけを読む【推測】(95件の JSON を毎回読まない)。index.json はテスト(1-1)が記録から作り直す
+- 記録は `models/review/index.json`(id → status・判定ごとの件数・出典の総数・指摘の要約)にまとめ、地図の窓はそれだけを読む【推測】(212件の JSON を毎回読まない)
+- `index.json` は `node models/checks/run.cjs --update-review-index` で作り直す。既定の実行は書き換えず、記録と一致しなければ落ちる
+- 監修のブランチでは `index.json` に触らない(ブランチが重なった時の衝突を避ける)。確認は `--validate-review <id...>`(記録だけを見る)で行い、main へ取り込んだ後に1回だけ作り直す
+- `index.json` が読めない時も地図は今までどおり開く(印が出ないだけ)。絞り込みに「指摘あり」を足す。`index.html` の `historymap.js` と `css/style.css` の `?v=` を更新する
+
+### 実装の手順(計画確認の後)
+1. `models/checks/lib.cjs`: 読み込み・道具 `h`・指紋・`textHash`(手順1の確認: 200件を描いて、計り方の値が上の実測と合う)
+2. `run.cjs` の全体の確認と表、`--root`、`--update-fingerprints`、`fingerprints.json` の作成(確認: `--root` の写しで生成器を壊して、影響したお手本の名前が出て落ちる)
+3. `properties.cjs` に25件の性質(確認: 全部通る。各モデルで1つは写しの設計図を壊して落ちることを確かめ、常に通るだけの性質を残さない)
+4. `--packet`・`--validate-review`・`--update-review-index`、`models/review/README.md`、AGENTS.md の1行(確認: 手で作った壊れた記録を落とす)
+5. `historymap.js`・`css/style.css` に監修の印と詳細(確認: `docs/duo/check-history-review.html` で記録あり・なし・index が無い時。スマホの幅も見る)
+6. ここまでをユーザーが確認してコミットしたあと、`git worktree add ../lyra-review -b review/midi-history-<日付>` で別のフォルダを作り、新しいセッションで試行の10件を監修する(このセッションでは行わない)
+7. 記録をユーザーが読んで main へ取り込み、`--update-review-index`。指摘の一覧をもとに、README で分かりにくかった所を直す
+
+手順1〜5は Opus の1回の作業に収まる見込み【推測】。手順6は別のセッションが必要で、ユーザーの起動が要る。
 
 ### 費用・回数の見積もり
 - 1. 機械の検証: 実行の費用なし。作るのは、道具と25件ぶんの性質で1回の作業【推測】
@@ -167,22 +211,36 @@ Gemini による監修(3つ目の層の案)と、人(先生・耳)による確�
 ## 確認コマンド
 - `node models/checks/run.cjs`(全モデルの確認と結果の表)
 - `node models/checks/run.cjs --update-fingerprints`(意図して変えた後の指紋の書き直し)
-- 監修の記録の形の確認も run.cjs に入れる(JSON が読めるか・判定の値が4つのどれかか・index.json が記録と一致するか)
+- `node models/checks/run.cjs --packet ives webern`(監修の材料を出す)
+- `node models/checks/run.cjs --validate-review ives webern`(監修のブランチで、記録だけを確かめる)
+- `node models/checks/run.cjs --update-review-index`(main へ取り込んだ後、記録から index.json を作り直す)
+- `node models/checks/run.cjs --root <写したフォルダ>`(別の js/ で確かめる)
+- 監修の記録の形の確認も run.cjs に入れる(JSON が読めるか・判定の値が4つのどれかか・必須の欄・引用と理由の長さ・欄の漏れ・index.json が記録と一致するか)
 
 ## 画面検証
 - URL: http://localhost:8000/(リポジトリ直下で `python -m http.server 8000`)
-- 初期状態: 監修の記録が数件ある状態(試行の10件)
-- 操作: モデルのピッカー → 「音楽史マップ」を開き、近代・戦後の行を見る。行を開いて指摘の要約を読む
-- 期待結果: 監修した10件に状態の印が出て、未監修の行と見分けられる。指摘の要約と出典の数が出る
+- 確認用ページ: `docs/duo/check-history-review.html`(`docs/duo/check-history-complete.html` と同じ形でアプリを読み込む。`index.json` の応答だけ模擬データに差し替える。Drive・Gemini は使わない)
+- 初期状態: 5つの状態の記録が1件以上ずつある状態。試行の後は本物の10件でも見る
+- 操作: モデルのピッカー → 「音楽史マップ」を開き、近代・戦後の行を見る。行を開いて指摘の要約を読む。「指摘あり」で絞り込む
+- 期待結果: 状態の印が色だけに頼らず文字でも見分けられる。指摘の要約・判定・出典の数が出て、出典の無い指摘は「出典なし」と出る。`index.json` が読めなくても地図が開く
 - 耳・実機での確認が要るもの: なし(この作業は音を変えない)。お手本の耳での確認は、引き続き未確認のまま
 
 ## Codexの実装・検証記録
-- 変更した箇所:
-- `index.html` の `?v=` を更新したか:
+(このタスクは Claude Code が実装した。2026-11-09)
+- 変更した箇所: `models/checks/`(`lib.cjs`・`properties.cjs`・`run.cjs`・`fingerprints.json`)、`models/review/`(`README.md`・空の `index.json`)、`js/midi/historymap.js`、`css/style.css`、`index.html`、`AGENTS.md`(監修のセッションの例外を1行)、`docs/duo/check-history-review.html`(確認用)
+- `index.html` の `?v=` を更新したか: した(historymap.js・style.css を 20261109a)
 - 実行した確認:
-- 結果:
-- 未確認・既知の問題:
-- 追記した `docs/*.md`:
+  - `node models/checks/run.cjs`: 終了コード 0、約2秒。地図212件・お手本200件・同じシードで同じ音符200件・.mid 200件・性質 52/53(既知のずれ1)・性質のあるモデル25件・性質なし187件・警告11件(前から長いお手本)
+  - 作業ツリーの外に js/ を写して `collage` 生成器の音を半音ずらし、`--root` で実行: `ives` の名前が指紋の変化として出て、性質でも落ち、終了コード 1。`js/` の作業ツリーは変えていない
+  - 性質の感度: お手本の音符を12通りに壊して49の性質が落ちることを確認。残り4つ(伴奏の高さ・細かさの関係)は、その関係だけを狙った壊し方で落ちることを確認
+  - 監修の記録: 正しい記録は OK、壊れた記録(日付・status・欄の名前・判定・理由の長さ・suggestion の欠け・欄の漏れ)は NG。引用は日本語40字 OK/41字 NG、英語16語 NG
+  - 画面: `docs/duo/check-history-review.html` をヘッドレス Edge で実行し全項目 OK(索引が 404・壊れている・通信失敗でも地図が開く、4つの状態の印、未監修は印なし、詳細の件数と「出典なし」、記録の文のエスケープ、絞り込み、375px で横にはみ出さない)。スクリーンショットで見た目も確認。試行の前なので、印は模擬データでの確認
+- 結果: 上のとおり
+- 検証で分かった、説明とお手本のずれ(音は変えていない。直すかはユーザーが決める):
+  - `chorale`: 説明は「4声体」だが、内声のパートが3音持つため、バスとソプラノを足すと高さが5つになる拍が20か所ある。性質に `known`(既知のずれ)として残した
+  - `cantus_firmus`: 説明は定旋律を「真ん中に据え、その上下で」だが、お手本では定旋律(D4〜G4)がいちばん低い声で、ほかの2声は上にいる。`listen` も「真ん中の低い声」。性質にはしていない
+- 未確認・既知の問題: 耳での確認、スマホの実機。試行の監修は別のセッションが必要でまだ行っていない
+- 追記した `docs/*.md`: `docs/midi-history-map.md`(検証のコマンド)
 
 ## Claude Codeの最終チェック
 - 結果: 問題なし / 直してほしい所あり

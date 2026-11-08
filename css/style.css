@@ -1745,6 +1745,12 @@ a.btn-secondary { display: block; }
 }
 .history-map-badges .history-map-yes { color: #286347; border-color: #79a08a; }
 .history-map-badges .history-map-no { color: #805658; }
+.history-map-badges .history-map-review-clean,
+.history-map-badges .history-map-review-fixed { color: #286347; border-color: #79a08a; }
+.history-map-badges .history-map-review-issues { color: #8a3b2e; border-color: #c08a7f; font-weight: 600; }
+.history-map-badges .history-map-review-stale { color: #805658; border-style: dashed; }
+.history-map-review-detail ul { margin: 2px 0 0; padding-left: 18px; }
+.history-map-review-detail small { display: block; color: var(--muted); }
 .history-map-detail {
   grid-column: 1 / -1;
   margin: 0 0 6px 22px;

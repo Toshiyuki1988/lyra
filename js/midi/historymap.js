@@ -8,7 +8,16 @@
     nokids: ['解説が無い', (item) => item.done && !item.kids],
     nodemo: ['お手本が無い', (item) => item.done && !item.demo],
     pinned: ['ピン留め', (item) => isPinned(item.id)],
+    reviewIssues: ['監修の指摘あり', (item) => item.review?.status === 'issues'],
   };
+  // 監修の状態(models/review/index.json。docs/duo/task-midi-history-review.md)。記録が無い行は未監修で、印を出さない
+  const reviewStatus = {
+    clean: '指摘なし',
+    issues: '指摘あり',
+    fixed: '直した',
+    stale: '監修の後に文が変わった',
+  };
+  const verdictLabel = { wrong: '誤り', overstated: '言い過ぎ' };
   // ピン留めは、モデルのピッカーと同じ state.prefs.pinnedModels(2026-11-07、ユーザー要望「音楽史マップにつけてほしい。ピンを付けたモデルが、最初の窓に出るように」)
   const isPinned = (id) => window.LyraMidi.pinnedModels().includes(id);
   const pinButton = (id) => {
@@ -18,6 +27,12 @@
   };
   const kinds = { beat: 'ビート帳', response: '応答', extend: '伸ばす' };
   let mapRequest;
+
+  /** 監修の記録の索引。読めなくても地図は開く(印が出ないだけ) */
+  function loadReview() {
+    return fetch('models/review/index.json').then((response) => (response.ok ? response.json() : null))
+      .then((index) => index?.models || {}, () => ({}));
+  }
 
   function loadMap() {
     if (!mapRequest) {
@@ -32,8 +47,20 @@
     return mapRequest;
   }
 
+  function reviewDetail(review) {
+    if (!review) return '<div>監修 まだ(AI の監修も人の監修も通っていません)</div>';
+    const esc = escapeHtml;
+    const { status, reviewedAt, reviewer, counts, sources, issues } = review;
+    const checked = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    const unsure = counts.unsure ? `・判断できず ${counts.unsure}` : '';
+    return `<div class="history-map-review-detail">監修 <b>${esc(reviewStatus[status] || status)}</b>(${esc(reviewedAt)}・${esc(reviewer)}・主張 ${checked}${unsure}・出典 ${sources})
+      ${issues.length ? `<ul>${issues.map((issue) => `<li><b>${esc(issue.fixed ? '直した' : verdictLabel[issue.verdict] || issue.verdict)}</b> ${esc(issue.claim)}
+        <small>${issue.suggestion ? `${esc(issue.suggestion)} ` : ''}(${issue.sources ? `出典 ${issue.sources}` : '出典なし'})</small></li>`).join('')}</ul>` : ''}
+    </div>`;
+  }
+
   function describe(item) {
-    const { src, kids, demo, id, reason } = item;
+    const { src, kids, demo, id, reason, review } = item;
     const esc = escapeHtml;
     return `<div class="history-map-detail" hidden>
       <div>id ${esc(id)}</div>
@@ -41,14 +68,15 @@
       ${src.text ? `<div>説明 ${esc(src.text)}</div>` : ''}
       <div>子どもの解説 ${kids ? `<b>${esc(kids.title)}</b> — ${esc(kids.text)}` : '(まだ無い)'}</div>
       <div>お手本の聴きどころ ${demo ? esc(window.LyraDemos.listen(id)) : '(まだ無い)'}</div>
-      ${Array.isArray(src.works) ? `<div>参照曲 ${esc(window.LyraPresets.worksText(src))}</div>` : ''}` : ''}
+      ${Array.isArray(src.works) ? `<div>参照曲 ${esc(window.LyraPresets.worksText(src))}</div>` : ''}
+      ${reviewDetail(review)}` : ''}
       ${reason ? `<div>${esc(reason)}</div>` :
         '<button type="button" class="primary" data-history-pick>このモデルで作る</button>'}
     </div>`;
   }
 
   function row(item) {
-    const { id, kind, done, kids, demo, reason } = item;
+    const { id, kind, done, kids, demo, reason, review } = item;
     const midi = window.LyraMidi;
     return `<div class="history-map-row" data-history-id="${escapeHtml(id)}">
       <button type="button" class="history-map-toggle" aria-expanded="false">
@@ -60,6 +88,7 @@
           ${done ? `<span class="${kids ? 'history-map-yes' : 'history-map-no'}">解説</span>
             <span class="${demo ? 'history-map-yes' : 'history-map-no'}">お手本</span>` :
             `<span>${escapeHtml(item.tier)}</span>`}
+          ${review ? `<span class="history-map-review history-map-review-${escapeHtml(review.status)}">監修: ${escapeHtml(reviewStatus[review.status] || review.status)}</span>` : ''}
         </span>
       </button>
       ${!reason || kind === 'beat' ? `<div class="history-map-icons">
@@ -71,7 +100,7 @@
     </div>`;
   }
 
-  function populate(overlay, map, pick) {
+  function populate(overlay, map, pick, reviews) {
     const items = map.models.map((model) => {
       const { id, kind, tier } = model;
       const src = kind === 'beat' ? window.LyraBeatbook.byId(id) : window.LyraPresets.byId(id);
@@ -82,7 +111,7 @@
         reason = 'プレミックスの MIDI カードの「応答」「展開」から使います';
       }
       return { ...model, src, reason, done: Boolean(src), kids: src?.kids,
-        demo: Boolean(src) && window.LyraDemos.has(id) };
+        demo: Boolean(src) && window.LyraDemos.has(id), review: reviews[id] };
     });
     const done = items.filter((item) => item.done);
     overlay.querySelector('.history-map-summary').textContent =
@@ -170,7 +199,7 @@
           `<button type="button" class="secondary" data-history-filter="${id}" aria-pressed="${id === 'all'}">${label}</button>`).join('')}
         <input type="search" aria-label="名前・説明で絞り込む" placeholder="名前・説明で絞り込む">
       </div>
-      <p class="history-map-legend" hidden>★ 作成済み ・ 未作成 / 未作成の P=プリセットだけ G=生成器を足す M=微分音などの仕組み</p>
+      <p class="history-map-legend" hidden>★ 作成済み ・ 未作成 / 未作成の P=プリセットだけ G=生成器を足す M=微分音などの仕組み / 「監修:」の印が無い行は未監修</p>
       <div class="history-map-list"></div>
       <p class="history-map-empty" hidden>該当するモデルがありません</p>
     </div>`;
@@ -184,12 +213,12 @@
     attachBackgroundTapToClose(overlay, close);
     document.body.appendChild(overlay);
     closeButton.focus();
-    loadMap().then((map) => {
+    Promise.all([loadMap(), loadReview()]).then(([map, reviews]) => {
       if (!overlay.isConnected) return;
       populate(overlay, map, (id) => {
         close();
         onPick(id);
-      });
+      }, reviews);
       overlay.querySelector('.history-map-controls').hidden = false;
       overlay.querySelector('.history-map-legend').hidden = false;
     }, () => {
