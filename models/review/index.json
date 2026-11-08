@@ -1,4 +1,291 @@
 {
  "version": 1,
- "models": {}
+ "models": {
+  "additive": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 3,
+    "overstated": 1,
+    "wrong": 0,
+    "unsure": 0
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "text",
+      "mapText",
+      "kids"
+     ],
+     "verdict": "overstated",
+     "claim": "音を1つずつ足し、全部そろったら1つずつ引く(グラス型)",
+     "suggestion": "「足す(曲によっては引く)」と書く。",
+     "sources": 2
+    }
+   ]
+  },
+  "bitonality": {
+   "status": "fixed",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 3,
+    "overstated": 1,
+    "wrong": 0,
+    "unsure": 0
+   },
+   "sources": 3,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "overstated",
+     "claim": "『ペトルーシュカ』のペトルーシュカ和音(ハ長調と嬰ヘ長調)",
+     "suggestion": "「複調的に聞こえる例(八音音階とみる説もある)」と注記する。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    }
+   ]
+  },
+  "cluster": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 2,
+    "overstated": 2,
+    "wrong": 0,
+    "unsure": 1
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works",
+      "text"
+     ],
+     "verdict": "overstated",
+     "claim": "ペンデレツキ『広島の犠牲者に捧げる哀歌』は半音でぎっしりの塊",
+     "suggestion": "works の注記に「四分音のクラスター」と書く。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    },
+    {
+     "fields": [
+      "era"
+     ],
+     "verdict": "overstated",
+     "claim": "クラスターは戦後の前衛・実験(1945〜)",
+     "suggestion": "era に「カウエルは戦前」と注記するか、ペンデレツキの代表を戦後の例とする。",
+     "sources": 1
+    }
+   ]
+  },
+  "feldman": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 3,
+    "overstated": 1,
+    "wrong": 0,
+    "unsure": 0
+   },
+   "sources": 3,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "overstated",
+     "claim": "『ロスコ・チャペル』は反復のずれの例",
+     "suggestion": "works の注記に「静けさの例。反復のずれは次の曲」と書き分ける。",
+     "sources": 1
+    }
+   ]
+  },
+  "ives": {
+   "status": "fixed",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 3,
+    "overstated": 1,
+    "wrong": 0,
+    "unsure": 1
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "overstated",
+     "claim": "『答えのない質問』を「別々の音楽の重ね」の例とする",
+     "suggestion": "works の注記を「層ごとに別のテンポ・性格が重なる例」とし、行進曲の例は『パトナム将軍の野営地』に限ると明確にする。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    }
+   ]
+  },
+  "nancarrow": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 4,
+    "overstated": 2,
+    "wrong": 0,
+    "unsure": 0
+   },
+   "sources": 5,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "text",
+      "listen"
+     ],
+     "verdict": "overstated",
+     "claim": "速い声が遅い声から離れ、一周して追い越す",
+     "suggestion": "「ずれながら進み、終わりに近い一点で合流する」と書く。",
+     "sources": 1
+    },
+    {
+     "fields": [
+      "style"
+     ],
+     "verdict": "overstated",
+     "claim": "ブギウギ・ブルースの素材",
+     "suggestion": "「初期の習作ではブギウギ」と限定する。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    }
+   ]
+  },
+  "octatonic": {
+   "status": "clean",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 5,
+    "overstated": 0,
+    "wrong": 0,
+    "unsure": 0
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": []
+  },
+  "satie": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 1,
+    "overstated": 2,
+    "wrong": 1,
+    "unsure": 0
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "wrong",
+     "claim": "『グノシエンヌ』も3拍子の伴奏",
+     "suggestion": "works の注記を「旋法的な旋律の例(拍子記号なし)」とするか外す。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    },
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "overstated",
+     "claim": "不意の和声の横すべり",
+     "suggestion": "「遠い和声への移り」を、『サラバンド』などを参照にした演出と書く。",
+     "sources": 1
+    },
+    {
+     "fields": [
+      "era"
+     ],
+     "verdict": "overstated",
+     "claim": "サティは近代(1890〜1945)",
+     "suggestion": "「1888〜1920年代」と注記する。",
+     "sources": 1
+    }
+   ]
+  },
+  "webern": {
+   "status": "fixed",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 4,
+    "overstated": 0,
+    "wrong": 1,
+    "unsure": 0
+   },
+   "sources": 5,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "wrong",
+     "claim": "『管弦楽のための5つの小品』作品10は、十二音列の技法の例",
+     "suggestion": "works の注記を「(十二音以前の自由な無調。点描・音色旋律の例)」とする。",
+     "sources": 2,
+     "fixed": "2026-11-09"
+    }
+   ]
+  },
+  "whole_tone": {
+   "status": "issues",
+   "reviewedAt": "2026-11-09",
+   "reviewer": "Claude Code(別のセッション)",
+   "counts": {
+    "ok": 2,
+    "overstated": 2,
+    "wrong": 0,
+    "unsure": 1
+   },
+   "sources": 4,
+   "noSource": 0,
+   "issues": [
+    {
+     "fields": [
+      "works"
+     ],
+     "verdict": "overstated",
+     "claim": "ドビュッシー『帆』は全音音階の曲",
+     "suggestion": "works の注記に「両端が全音音階(中間は五音音階)」と足す。",
+     "sources": 1,
+     "fixed": "2026-11-09"
+    },
+    {
+     "fields": [
+      "era"
+     ],
+     "verdict": "overstated",
+     "claim": "全音音階は近代(1890〜1945)",
+     "suggestion": "mapText などに「ドビュッシーらが象徴的に使った」と書く程度で十分。",
+     "sources": 1
+    }
+   ]
+  }
+ }
 }

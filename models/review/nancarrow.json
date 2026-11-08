@@ -1,0 +1,106 @@
+{
+ "id": "nancarrow",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "57c2081885cb077d",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "mapText",
+    "kids",
+    "style"
+   ],
+   "claim": "自動ピアノのために書かれた、速度比のテンポ・カノン",
+   "verdict": "ok",
+   "reason": "手の弾けない細かさと速さ、紙のロールを使う自動ピアノ、テンポ・カノンの比はいずれも事実。",
+   "sources": [
+    {
+     "title": "Wikipedia: Conlon_Nancarrow",
+     "url": "https://en.wikipedia.org/wiki/Conlon_Nancarrow",
+     "where": "Studies for Player Piano"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "習作36番は17:18:19:20のカノン",
+   "verdict": "ok",
+   "reason": "4声のテンポ・カノンで、4つのテンポが17:18:19:20の比。",
+   "sources": [
+    {
+     "title": "Wikipedia: Conlon_Nancarrow",
+     "url": "https://en.wikipedia.org/wiki/Conlon_Nancarrow",
+     "where": "Studies"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "習作37番",
+   "verdict": "ok",
+   "reason": "12声・12のテンポのカノン。テンポ比は半音階の振動数比。",
+   "sources": [
+    {
+     "title": "Wikipedia: Conlon_Nancarrow",
+     "url": "https://en.wikipedia.org/wiki/Conlon_Nancarrow",
+     "where": "Studies"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "text",
+    "listen"
+   ],
+   "claim": "速い声が遅い声から離れ、一周して追い越す",
+   "verdict": "overstated",
+   "reason": "テンポ・カノンは設計上、最後に全声が合流する点へ向かうのが通例。「追い越す」は単純化。",
+   "suggestion": "「ずれながら進み、終わりに近い一点で合流する」と書く。",
+   "sources": [
+    {
+     "title": "Wikipedia: Conlon_Nancarrow",
+     "url": "https://en.wikipedia.org/wiki/Conlon_Nancarrow",
+     "where": "Tempo canon"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "style"
+   ],
+   "claim": "ブギウギ・ブルースの素材",
+   "verdict": "overstated",
+   "reason": "初期の習作3番などのブギウギ・ブルースを指す。36番・37番はブルースではない。",
+   "suggestion": "「初期の習作ではブギウギ」と限定する。",
+   "sources": [
+    {
+     "title": "Wikipedia: Conlon_Nancarrow",
+     "url": "https://en.wikipedia.org/wiki/Conlon_Nancarrow",
+     "where": "Early work"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "戦後",
+   "verdict": "ok",
+   "reason": "習作は1948年以降。",
+   "sources": []
+  }
+ ]
+}

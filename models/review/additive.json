@@ -1,0 +1,78 @@
+{
+ "id": "additive",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "de86b9c06aefc605",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "mapText",
+    "kids"
+   ],
+   "claim": "音を1つずつ足し、全部そろったら1つずつ引く(グラス型)",
+   "verdict": "overstated",
+   "reason": "加算プロセスはグラスの特徴だが、足した後に引く対称な形が中心ではなく、足す側が主。引く操作は別の曲で出てくる。",
+   "suggestion": "「足す(曲によっては引く)」と書く。",
+   "sources": [
+    {
+     "title": "Wikipedia: Minimalist_music",
+     "url": "https://en.wikipedia.org/wiki/Minimalist_music",
+     "where": "Philip Glass"
+    },
+    {
+     "title": "Music Theory for the 21st-Century Classroom: Additive Minimalism",
+     "url": "https://human.libretexts.org/Bookshelves/Music/Music_Theory/Music_Theory_for_the_21st-Century_Classroom_(Hutchinson)/35%3A_Minimalism/35.01%3A_Additive_Minimalism",
+     "where": "加算"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "グラス『トゥー・ページズ』は加算プロセス",
+   "verdict": "ok",
+   "reason": "加算の初期の例として挙げられる。年は1968年説と1969年説がある。",
+   "sources": [
+    {
+     "title": "Two Pages 1968",
+     "url": "https://www.ufrgs.br/mvs/Periodo03-1968-TwoPages.html",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『浜辺のアインシュタイン』は加算プロセスの例",
+   "verdict": "ok",
+   "reason": "冒頭の「Train」などで、和音の拍数を足して延ばす手法が使われる。",
+   "sources": [
+    {
+     "title": "Wikipedia: Einstein_on_the_Beach",
+     "url": "https://en.wikipedia.org/wiki/Einstein_on_the_Beach",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "era",
+    "listen"
+   ],
+   "claim": "戦後の前衛・実験",
+   "verdict": "ok",
+   "reason": "1960年代後半のミニマル・ミュージックで、区分に合う。",
+   "sources": []
+  }
+ ]
+}

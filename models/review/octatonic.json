@@ -1,0 +1,87 @@
+{
+ "id": "octatonic",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "9d4d5700423ed35a",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo",
+  "mapText"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "kids",
+    "listen"
+   ],
+   "claim": "半音・全音の交互の8音。短3度ずつの移高で自分に戻り、減七の和音や三全音離れた長三和音が作れる",
+   "verdict": "ok",
+   "reason": "移高形は3つしかなく(短3度で一致)、減七和音・三全音離れた長三和音を含む。",
+   "sources": [
+    {
+     "title": "Wikipedia: Octatonic_scale",
+     "url": "https://en.wikipedia.org/wiki/Octatonic_scale",
+     "where": "構造"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『ペトルーシュカ』は八音音階を使う",
+   "verdict": "ok",
+   "reason": "ペトルーシュカ和音(ハ長調+嬰ヘ長調)は八音音階の部分集合で、タルスキンらが八音音階的語法として分析した。",
+   "sources": [
+    {
+     "title": "Wikipedia: Petrushka_chord",
+     "url": "https://en.wikipedia.org/wiki/Petrushka_chord",
+     "where": "分析"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "メシアンの移調の限られた旋法第2番",
+   "verdict": "ok",
+   "reason": "第2旋法は半音・全音の交互の八音音階そのもの。",
+   "sources": [
+    {
+     "title": "Wikipedia: Modes_of_limited_transposition",
+     "url": "https://en.wikipedia.org/wiki/Modes_of_limited_transposition",
+     "where": "Mode 2"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "style"
+   ],
+   "claim": "リムスキー=コルサコフ・ストラヴィンスキー・メシアンの技法",
+   "verdict": "ok",
+   "reason": "八音音階はリムスキー=コルサコフ(ロシア楽派)から受け継がれた。",
+   "sources": [
+    {
+     "title": "Wikipedia: Octatonic_scale",
+     "url": "https://en.wikipedia.org/wiki/Octatonic_scale",
+     "where": "歴史"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "八音音階は近代",
+   "verdict": "ok",
+   "reason": "リスト・リムスキー=コルサコフが先行するが、主な用例は近代にあたる。",
+   "sources": []
+  }
+ ]
+}

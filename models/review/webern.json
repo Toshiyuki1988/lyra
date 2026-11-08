@@ -1,0 +1,94 @@
+{
+ "id": "webern",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "657f811eac1582a5",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "style",
+    "mapText",
+    "era"
+   ],
+   "claim": "十二音列・点描・音色旋律・休符・短く凝縮した形式がウェーベルンの技法",
+   "verdict": "ok",
+   "reason": "十二音技法を1920年代から用い、短い形式・点描的な音配置・音色旋律が特徴。",
+   "sources": [
+    {
+     "title": "Wikipedia: Anton_Webern",
+     "url": "https://en.wikipedia.org/wiki/Anton_Webern",
+     "where": "Style"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "listen"
+   ],
+   "claim": "前半6音を反行・逆行すると後半6音になる対称な音列",
+   "verdict": "ok",
+   "reason": "作品21などの音列は対称構造で知られる。お手本の列は前半の逆行反行を1つ移高すると後半と一致し、12音も重複しないと確認した。",
+   "sources": [
+    {
+     "title": "Wikipedia: Symphony,_Op._21_(Webern)",
+     "url": "https://en.wikipedia.org/wiki/Symphony,_Op._21_(Webern)",
+     "where": "Row"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『管弦楽のための5つの小品』作品10は、十二音列の技法の例",
+   "verdict": "wrong",
+   "reason": "作品10(1911〜13)は十二音技法以前の自由な無調作品。点描・音色旋律・凝縮という面では合うが、十二音列の例ではない。",
+   "suggestion": "works の注記を「(十二音以前の自由な無調。点描・音色旋律の例)」とする。",
+   "sources": [
+    {
+     "title": "Klangfarbenmelodie in 1911: Timbre's Functional Roles in Webern's Opp. 9 and 10",
+     "url": "https://www.mtosmt.org/ojs/index.php/mto/article/view/794",
+     "where": "主旨"
+    },
+    {
+     "title": "Wikipedia: Anton_Webern",
+     "url": "https://en.wikipedia.org/wiki/Anton_Webern",
+     "where": "Early works"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『交響曲 作品21』は十二音の対称な音列と音色旋律",
+   "verdict": "ok",
+   "reason": "1928年の十二音作品で、対称な列・カノン・鏡の形を持つ。",
+   "sources": [
+    {
+     "title": "Wikipedia: Symphony,_Op._21_(Webern)",
+     "url": "https://en.wikipedia.org/wiki/Symphony,_Op._21_(Webern)",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "kids"
+   ],
+   "claim": "星座のたとえ",
+   "verdict": "ok",
+   "reason": "点描の比喩として妥当で、事実の誤りはない。",
+   "sources": []
+  }
+ ]
+}

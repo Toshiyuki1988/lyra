@@ -1,0 +1,89 @@
+{
+ "id": "ives",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "de53e429c6d6af04",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "style",
+    "mapText",
+    "kids"
+   ],
+   "claim": "アイヴズは性格の違う音楽(行進曲・賛美歌など)を、別々のテンポ・調で同時に重ねた",
+   "verdict": "ok",
+   "reason": "父が楽隊長で、町で別々の楽隊がすれ違う体験が重ね合わせ・複テンポの発想の元になったと広く説明される。コラージュ・複調・複テンポはアイヴズの代表的な特徴。",
+   "sources": [
+    {
+     "title": "Wikipedia: Charles_Ives",
+     "url": "https://en.wikipedia.org/wiki/Charles_Ives",
+     "where": "Style・Music of his youth"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『パトナム将軍の野営地』は別々の行進曲がぶつかり合う",
+   "verdict": "ok",
+   "reason": "『ニューイングランドの3つの場所』第2曲で、複数の楽隊の行進曲が衝突し重なる場面を持つ。遠近・すれ違いの描写も合う。",
+   "sources": [
+    {
+     "title": "Wikipedia: Three_Places_in_New_England",
+     "url": "https://en.wikipedia.org/wiki/Three_Places_in_New_England",
+     "where": "Putnam's Camp"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『答えのない質問』を「別々の音楽の重ね」の例とする",
+   "verdict": "overstated",
+   "reason": "弦(静かな和音)・トランペット・木管が別々のテンポで重なる点は合うが、行進曲や既存曲の断片のコラージュではない。mapText の「別々の行進曲」とは性格が違う。",
+   "suggestion": "works の注記を「層ごとに別のテンポ・性格が重なる例」とし、行進曲の例は『パトナム将軍の野営地』に限ると明確にする。",
+   "sources": [
+    {
+     "title": "Wikipedia: The_Unanswered_Question_(Ives)",
+     "url": "https://en.wikipedia.org/wiki/The_Unanswered_Question_(Ives)",
+     "where": "構成"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "アイヴズは近代(1890〜1945)",
+   "verdict": "ok",
+   "reason": "主要作は1900〜1920年代に書かれ、区分に収まる。",
+   "sources": [
+    {
+     "title": "Wikipedia: Charles_Ives",
+     "url": "https://en.wikipedia.org/wiki/Charles_Ives",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "listen"
+   ],
+   "claim": "賛美歌はト長調、行進曲はハ長調・変ホ長調、踊りはヘ長調",
+   "verdict": "unsure",
+   "reason": "これはお手本の設計図の内容の説明で、アイヴズの実作の調ではない。『答えのない質問』の弦がト長調という点だけが実作と合う。",
+   "sources": []
+  }
+ ]
+}

@@ -1,0 +1,83 @@
+{
+ "id": "satie",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "ecfaad9052b6404f",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "style",
+    "kids",
+    "listen",
+    "mapText"
+   ],
+   "claim": "3拍子の「ズン・チャー」の伴奏、解決しない7thの並置",
+   "verdict": "ok",
+   "reason": "『ジムノペディ』は3/4で、低音の後に和音が来る伴奏。第1番はGmaj7とDmaj7の往復が特徴。",
+   "sources": [
+    {
+     "title": "Wikipedia: Gymnopédies",
+     "url": "https://en.wikipedia.org/wiki/Gymnopédies",
+     "where": "構成"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『グノシエンヌ』も3拍子の伴奏",
+   "verdict": "wrong",
+   "reason": "第1〜3番は拍子記号も小節線もない自由なリズム。旋法的な旋律は合うが、3拍子の「ズン・チャー」の例ではない。",
+   "suggestion": "works の注記を「旋法的な旋律の例(拍子記号なし)」とするか外す。",
+   "sources": [
+    {
+     "title": "Wikipedia: Gnossiennes",
+     "url": "https://en.wikipedia.org/wiki/Gnossiennes",
+     "where": "Structure"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "不意の和声の横すべり",
+   "verdict": "overstated",
+   "reason": "『サラバンド』の平行9度など遠い和声はあるが、『ジムノペディ』の特徴は主に静かな和声の並置。Abmaj7・Dbmaj7 への横すべりは設計上の演出。",
+   "suggestion": "「遠い和声への移り」を、『サラバンド』などを参照にした演出と書く。",
+   "sources": [
+    {
+     "title": "Wikipedia: Erik_Satie",
+     "url": "https://en.wikipedia.org/wiki/Erik_Satie",
+     "where": "Music"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "サティは近代(1890〜1945)",
+   "verdict": "overstated",
+   "reason": "『ジムノペディ』は1888年で区分の前。『グノシエンヌ』は1890年。",
+   "suggestion": "「1888〜1920年代」と注記する。",
+   "sources": [
+    {
+     "title": "Wikipedia: Gymnopédies",
+     "url": "https://en.wikipedia.org/wiki/Gymnopédies",
+     "where": "概要"
+    }
+   ]
+  }
+ ]
+}

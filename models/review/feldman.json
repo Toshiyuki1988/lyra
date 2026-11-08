@@ -1,0 +1,74 @@
+{
+ "id": "feldman",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "96fd1f4f3a2384a3",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo",
+  "mapText"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "style",
+    "kids",
+    "listen"
+   ],
+   "claim": "ごく弱い音・ゆっくりした反復と反復ごとのずれ(敷物の模様)",
+   "verdict": "ok",
+   "reason": "晩年の作品の特徴で、本人が絨毯の模様にたとえて語った。",
+   "sources": [
+    {
+     "title": "Wikipedia: Morton_Feldman",
+     "url": "https://en.wikipedia.org/wiki/Morton_Feldman",
+     "where": "Style"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『ロスコ・チャペル』は反復のずれの例",
+   "verdict": "overstated",
+   "reason": "静かで遅い点は合うが、反復の小さなずれが主題の曲ではない。反復のずれは『ピアノと弦楽四重奏』などの後期作品が典型。",
+   "suggestion": "works の注記に「静けさの例。反復のずれは次の曲」と書き分ける。",
+   "sources": [
+    {
+     "title": "Wikipedia: Rothko_Chapel_(Feldman)",
+     "url": "https://en.wikipedia.org/wiki/Rothko_Chapel_(Feldman)",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『ピアノと弦楽四重奏』は反復のずれの例",
+   "verdict": "ok",
+   "reason": "1985年作で、長大な反復のずれが典型。",
+   "sources": [
+    {
+     "title": "Wikipedia: Piano_and_String_Quartet",
+     "url": "https://en.wikipedia.org/wiki/Piano_and_String_Quartet",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "戦後の前衛",
+   "verdict": "ok",
+   "reason": "1950年代以降。",
+   "sources": []
+  }
+ ]
+}

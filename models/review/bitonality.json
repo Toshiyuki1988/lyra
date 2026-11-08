@@ -1,0 +1,75 @@
+{
+ "id": "bitonality",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "9d586736863b28c2",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo",
+  "mapText"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "kids",
+    "style",
+    "listen"
+   ],
+   "claim": "2つの調を同時に鳴らす。ミヨー・ストラヴィンスキーの技法",
+   "verdict": "ok",
+   "reason": "複調はミヨーの代表的な特徴。ストラヴィンスキーでは主にペトルーシュカ和音の例で語られる。",
+   "sources": [
+    {
+     "title": "Wikipedia: Bitonality",
+     "url": "https://en.wikipedia.org/wiki/Bitonality",
+     "where": "概要・例"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "『ペトルーシュカ』のペトルーシュカ和音(ハ長調と嬰ヘ長調)",
+   "verdict": "overstated",
+   "reason": "和音がハ長調+嬰ヘ長調である点は正しい。ただ、複調ではなく八音音階的語法の例とみる分析もあり(タルスキン)、複調の一例と断定するのは単純化。",
+   "suggestion": "「複調的に聞こえる例(八音音階とみる説もある)」と注記する。",
+   "sources": [
+    {
+     "title": "Wikipedia: Petrushka_chord",
+     "url": "https://en.wikipedia.org/wiki/Petrushka_chord",
+     "where": "解釈"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "ミヨー『ブラジルの郷愁』は複調",
+   "verdict": "ok",
+   "reason": "ミヨーが複調を多用した初期の代表作として挙げられる。",
+   "sources": [
+    {
+     "title": "Wikipedia: Saudades_do_Brasil_(Milhaud)",
+     "url": "https://en.wikipedia.org/wiki/Saudades_do_Brasil_(Milhaud)",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "複調は近代",
+   "verdict": "ok",
+   "reason": "1910〜20年代に盛ん。",
+   "sources": []
+  }
+ ]
+}

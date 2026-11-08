@@ -1,0 +1,90 @@
+{
+ "id": "whole_tone",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "4e30a3127315d353",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo",
+  "mapText"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "kids",
+    "listen"
+   ],
+   "claim": "全音音階は6音で全部が全音、主音の重力が弱く、和音は増三和音になる",
+   "verdict": "ok",
+   "reason": "全音音階は全音のみの6音の対称な音階で、移高形は2つしかない。構成する三和音は増三和音で、調的な引力が弱い。",
+   "sources": [
+    {
+     "title": "Wikipedia: Whole-tone_scale",
+     "url": "https://en.wikipedia.org/wiki/Whole-tone_scale",
+     "where": "構造・和音"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "ドビュッシー『帆』は全音音階の曲",
+   "verdict": "overstated",
+   "reason": "外側の部分は全音音階だが、中間部は黒鍵の五音音階になる。曲全体が全音音階ではない。",
+   "suggestion": "works の注記に「両端が全音音階(中間は五音音階)」と足す。",
+   "sources": [
+    {
+     "title": "Wikipedia: Voiles_(Debussy)",
+     "url": "https://en.wikipedia.org/wiki/Voiles_(Debussy)",
+     "where": "分析"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "全音音階は近代(1890〜1945)",
+   "verdict": "overstated",
+   "reason": "グリンカやリストなど19世紀半ばにも使われた。ドビュッシーらが特徴的に用いたのは世紀転換期。",
+   "suggestion": "mapText などに「ドビュッシーらが象徴的に使った」と書く程度で十分。",
+   "sources": [
+    {
+     "title": "Wikipedia: Whole-tone_scale",
+     "url": "https://en.wikipedia.org/wiki/Whole-tone_scale",
+     "where": "歴史"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "guide"
+   ],
+   "claim": "跳躍は3段=増4度まで",
+   "verdict": "ok",
+   "reason": "全音3つ分は三全音(増4度)で、全音音階内の最大の跳び。",
+   "sources": [
+    {
+     "title": "Wikipedia: Whole-tone_scale",
+     "url": "https://en.wikipedia.org/wiki/Whole-tone_scale",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "listen"
+   ],
+   "claim": "最後のCも「終わった」感じがしない",
+   "verdict": "unsure",
+   "reason": "聴いた印象で、確かめる事実ではない。",
+   "sources": []
+  }
+ ]
+}

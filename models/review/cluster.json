@@ -1,0 +1,90 @@
+{
+ "id": "cluster",
+ "reviewedAt": "2026-11-09",
+ "reviewer": "Claude Code(別のセッション)",
+ "target": "2feb41d",
+ "textHash": "c927f32ac15c80ae",
+ "noClaims": [
+  "label",
+  "short",
+  "guide",
+  "demo",
+  "mapText"
+ ],
+ "claims": [
+  {
+   "fields": [
+    "text",
+    "kids"
+   ],
+   "claim": "クラスターは隣り合う音の塊。カウエル・ペンデレツキ",
+   "verdict": "ok",
+   "reason": "カウエルはこぶしや前腕で弾くクラスターを始め、ペンデレツキは弦で用いた。",
+   "sources": [
+    {
+     "title": "Wikipedia: Tone_cluster",
+     "url": "https://en.wikipedia.org/wiki/Tone_cluster",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works"
+   ],
+   "claim": "カウエル『マナウナウンの潮』",
+   "verdict": "ok",
+   "reason": "1912年作。ピアノの低音クラスターを使う初期の代表作。",
+   "sources": [
+    {
+     "title": "Wikipedia: The_Tides_of_Manaunaun",
+     "url": "https://en.wikipedia.org/wiki/The_Tides_of_Manaunaun",
+     "where": "概要"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "works",
+    "text"
+   ],
+   "claim": "ペンデレツキ『広島の犠牲者に捧げる哀歌』は半音でぎっしりの塊",
+   "verdict": "overstated",
+   "reason": "52弦による四分音のクラスターが中心で、半音の塊ではない。",
+   "suggestion": "works の注記に「四分音のクラスター」と書く。",
+   "sources": [
+    {
+     "title": "Wikipedia: Threnody_to_the_Victims_of_Hiroshima",
+     "url": "https://en.wikipedia.org/wiki/Threnody_to_the_Victims_of_Hiroshima",
+     "where": "概要"
+    }
+   ],
+   "fixed": "2026-11-09"
+  },
+  {
+   "fields": [
+    "era"
+   ],
+   "claim": "クラスターは戦後の前衛・実験(1945〜)",
+   "verdict": "overstated",
+   "reason": "カウエルの用例は1910年代で、戦前に始まった技法。",
+   "suggestion": "era に「カウエルは戦前」と注記するか、ペンデレツキの代表を戦後の例とする。",
+   "sources": [
+    {
+     "title": "Wikipedia: Tone_cluster",
+     "url": "https://en.wikipedia.org/wiki/Tone_cluster",
+     "where": "歴史"
+    }
+   ]
+  },
+  {
+   "fields": [
+    "listen"
+   ],
+   "claim": "3〜4音から14音の壁へ育つ",
+   "verdict": "unsure",
+   "reason": "設計図の説明で、音楽史の主張ではない。",
+   "sources": []
+  }
+ ]
+}

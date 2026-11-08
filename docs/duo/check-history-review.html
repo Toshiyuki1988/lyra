@@ -64,6 +64,20 @@
   const badge = (o, id) => row(o, id).querySelector('.history-map-review');
 
   try {
+    if (location.search.includes('real')) { // 本物の models/review/index.json で見る(?real)
+      win.fetch = realFetch;
+      const index = await (await realFetch('../../models/review/index.json')).json();
+      const o = await openMap();
+      const ids = Object.keys(index.models);
+      ok('記録のある行すべてに印', ids.every((id) => badge(o, id)), `${ids.length} 件`);
+      ok('印は記録の数だけ', o.querySelectorAll('.history-map-review').length === ids.length);
+      row(o, 'webern').querySelector('.history-map-toggle').click();
+      const text = row(o, 'webern').querySelector('.history-map-review-detail').textContent.replace(/\s+/g, ' ');
+      ok('指摘の要約が出る', /誤り|直した/.test(text), text);
+      row(o, 'webern').scrollIntoView({ block: 'start' });
+      ok('エラーなし', errors.length === 0, errors.join(' / '));
+      throw null;
+    }
     // 1. index.json が無い
     reviewResponse = () => new win.Response('', { status: 404 });
     let o = await openMap();
@@ -96,7 +110,7 @@
     row(o, 'ives').querySelector('.history-map-toggle').click();
     const detail = row(o, 'ives').querySelector('.history-map-review-detail');
     ok('詳細が開いて見える', !row(o, 'ives').querySelector('.history-map-detail').hidden);
-    ok('詳細に状態と件数', /指摘あり/.test(detail.textContent) && /主張 6/.test(detail.textContent) && /判断できず 1/.test(detail.textContent) && /出典 5/.test(detail.textContent), detail.textContent.replace(/\s+/g, ' '));
+    ok('詳細に状態と件数', /指摘あり/.test(detail.textContent) && /主張 6/.test(detail.textContent) && /判断できず 1/.test(detail.textContent) && /出典の記載 5/.test(detail.textContent), detail.textContent.replace(/\s+/g, ' '));
     ok('指摘の要約が2件', detail.querySelectorAll('li').length === 2);
     ok('出典の無い指摘は「出典なし」', /出典なし/.test(detail.querySelector('li').textContent));
     ok('判定の言葉が出る', detail.querySelector('li b').textContent === '誤り');
@@ -120,7 +134,7 @@
     row(o, 'ives').scrollIntoView({ block: 'start' });
     ok('エラーなし', errors.length === 0, errors.join(' / '));
   } catch (error) {
-    ok(`途中で例外: ${error.message}`, false);
+    if (error) ok(`途中で例外: ${error.message}`, false);
   }
   const ngs = log.filter((line) => line.startsWith('NG')).length;
   out.textContent = `${ngs ? `NG ${ngs} 件` : '全項目 OK'}\n${log.join('\n')}`;

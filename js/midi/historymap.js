@@ -53,9 +53,9 @@
     const { status, reviewedAt, reviewer, counts, sources, issues } = review;
     const checked = Object.values(counts).reduce((sum, n) => sum + n, 0);
     const unsure = counts.unsure ? `・判断できず ${counts.unsure}` : '';
-    return `<div class="history-map-review-detail">監修 <b>${esc(reviewStatus[status] || status)}</b>(${esc(reviewedAt)}・${esc(reviewer)}・主張 ${checked}${unsure}・出典 ${sources})
+    return `<div class="history-map-review-detail">監修 <b>${esc(reviewStatus[status] || status)}</b>(${esc(reviewedAt)}・${esc(reviewer)}・主張 ${checked}${unsure}・出典の記載 ${sources})
       ${issues.length ? `<ul>${issues.map((issue) => `<li><b>${esc(issue.fixed ? '直した' : verdictLabel[issue.verdict] || issue.verdict)}</b> ${esc(issue.claim)}
-        <small>${issue.suggestion ? `${esc(issue.suggestion)} ` : ''}(${issue.sources ? `出典 ${issue.sources}` : '出典なし'})</small></li>`).join('')}</ul>` : ''}
+        <small>${issue.suggestion ? `${esc(issue.suggestion)} ` : ''}(${issue.sources ? `出典の記載 ${issue.sources}` : '出典なし'})</small></li>`).join('')}</ul>` : ''}
     </div>`;
   }
 
